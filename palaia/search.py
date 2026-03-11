@@ -1,4 +1,4 @@
-"""BM25 search with tiered embedding support (ADR-001)."""
+"""Hybrid search: BM25 + semantic embeddings (ADR-001)."""
 
 from __future__ import annotations
 
@@ -7,10 +7,16 @@ import re
 from collections import Counter
 from pathlib import Path
 
+from palaia.embeddings import (
+    BM25Provider,
+    auto_detect_provider,
+    cosine_similarity,
+    get_provider_display_info,
+)
+
 
 def tokenize(text: str) -> list[str]:
     """Simple whitespace + punctuation tokenizer."""
-
     text = text.lower()
     tokens = re.findall(r"\b\w+\b", text)
     return tokens
@@ -80,59 +86,118 @@ def detect_search_tier() -> int:
     
     Returns:
         1: BM25 only
-        2: ollama available
-        3: API key available
+        2: Local embeddings (ollama, sentence-transformers, fastembed)
+        3: API embeddings (OpenAI)
     """
-    import shutil
-    import subprocess
-    import os
-
-    # Check Tier 3: API key
-    if os.environ.get("OPENAI_API_KEY") or os.environ.get("VOYAGE_API_KEY"):
-        return 3
-
-    # Check Tier 2: ollama
-    if shutil.which("ollama"):
-        try:
-            result = subprocess.run(
-                ["ollama", "list"], capture_output=True, text=True, timeout=5
-            )
-            if "nomic-embed-text" in result.stdout:
+    from palaia.embeddings import detect_providers
+    
+    providers = detect_providers()
+    for p in providers:
+        if p["available"]:
+            if p["name"] == "openai":
+                return 3
+            elif p["name"] in ("ollama", "sentence-transformers", "fastembed"):
                 return 2
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-
     return 1
 
 
 class SearchEngine:
-    """Unified search across tiers."""
+    """Unified hybrid search: BM25 + semantic embeddings."""
 
-    def __init__(self, store):
+    def __init__(self, store, config: dict | None = None):
         self.store = store
         self.bm25 = BM25()
-        self.tier = detect_search_tier()
+        self.config = config or store.config
+        self._provider = None
 
-    def build_index(self, include_cold: bool = False) -> None:
-        """Build search index from store entries."""
+    @property
+    def provider(self):
+        if self._provider is None:
+            self._provider = auto_detect_provider(self.config)
+        return self._provider
+
+    @property
+    def has_embeddings(self) -> bool:
+        return not isinstance(self.provider, BM25Provider)
+
+    def build_index(self, include_cold: bool = False) -> list[tuple[str, str, dict]]:
+        """Build search index from store entries. Returns (doc_id, full_text, meta) list."""
         entries = self.store.all_entries(include_cold=include_cold)
         docs = []
+        docs_with_meta = []
         for meta, body, tier in entries:
             doc_id = meta.get("id", "unknown")
-            # Index both title and body
             title = meta.get("title", "")
             tags = " ".join(meta.get("tags", []))
             full_text = f"{title} {tags} {body}"
             docs.append((doc_id, full_text))
+            docs_with_meta.append((doc_id, full_text, meta))
         self.bm25.index(docs)
+        return docs_with_meta
 
     def search(self, query: str, top_k: int = 10, include_cold: bool = False) -> list[dict]:
-        """Search memories. Returns list of result dicts."""
-        self.build_index(include_cold=include_cold)
-        results = self.bm25.search(query, top_k=top_k)
+        """Search memories using hybrid ranking (BM25 + embeddings when available)."""
+        docs_with_meta = self.build_index(include_cold=include_cold)
 
+        # BM25 scores
+        bm25_results = self.bm25.search(query, top_k=top_k * 2)  # get more candidates for hybrid
+        bm25_scores = {doc_id: score for doc_id, score in bm25_results}
+
+        # Normalize BM25 scores to [0, 1]
+        max_bm25 = max(bm25_scores.values()) if bm25_scores else 1.0
+        bm25_norm = {k: v / max_bm25 for k, v in bm25_scores.items()} if max_bm25 > 0 else {}
+
+        # Embedding scores (if available)
+        embed_norm = {}
+        if self.has_embeddings and docs_with_meta:
+            try:
+                query_vec = self.provider.embed_query(query)
+                # Only embed BM25 candidates + a few extra for recall
+                candidate_ids = set(bm25_scores.keys())
+                texts_to_embed = []
+                ids_to_embed = []
+                for doc_id, full_text, meta in docs_with_meta:
+                    # Check cache first
+                    cached = self.store.embedding_cache.get_cached(doc_id)
+                    if cached:
+                        sim = cosine_similarity(query_vec, cached)
+                        embed_norm[doc_id] = sim
+                    elif doc_id in candidate_ids or len(texts_to_embed) < top_k:
+                        texts_to_embed.append(full_text)
+                        ids_to_embed.append(doc_id)
+
+                if texts_to_embed:
+                    vectors = self.provider.embed(texts_to_embed)
+                    model_name = getattr(self.provider, 'model_name', None) or getattr(self.provider, 'model', 'unknown')
+                    for doc_id, vec in zip(ids_to_embed, vectors):
+                        self.store.embedding_cache.set_cached(doc_id, vec, model=model_name)
+                        sim = cosine_similarity(query_vec, vec)
+                        embed_norm[doc_id] = sim
+            except Exception as e:
+                # If embedding fails, fall back to BM25 only
+                import warnings
+                warnings.warn(f"Embedding search failed, using BM25 only: {e}")
+                embed_norm = {}
+
+        # Combine scores: hybrid ranking
+        all_ids = set(bm25_norm.keys()) | set(embed_norm.keys())
+        combined = {}
+        for doc_id in all_ids:
+            bm25_s = bm25_norm.get(doc_id, 0.0)
+            embed_s = embed_norm.get(doc_id, 0.0)
+            if embed_norm:
+                # Weighted combination: 40% BM25 + 60% embedding
+                combined[doc_id] = 0.4 * bm25_s + 0.6 * embed_s
+            else:
+                combined[doc_id] = bm25_s
+
+        # Sort by combined score
+        ranked = sorted(combined.items(), key=lambda x: x[1], reverse=True)[:top_k]
+
+        # Build output
         output = []
-        for doc_id, score in results:
+        search_method = "hybrid" if embed_norm else "BM25"
+        for doc_id, score in ranked:
             entry = self.store.read(doc_id)
             if entry:
                 meta, body = entry
@@ -154,3 +219,15 @@ class SearchEngine:
             if (self.store.root / tier / f"{entry_id}.md").exists():
                 return tier
         return "unknown"
+
+    def search_info(self) -> dict:
+        """Get info about current search configuration."""
+        provider = self.provider
+        provider_display = get_provider_display_info(provider)
+        has_embed = self.has_embeddings
+        return {
+            "provider": provider_display,
+            "has_embeddings": has_embed,
+            "bm25_active": True,
+            "semantic_active": has_embed,
+        }

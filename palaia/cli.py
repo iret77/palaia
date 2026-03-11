@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from palaia import __version__
-from palaia.config import DEFAULT_CONFIG, find_palaia_root, get_root, save_config
+from palaia.config import DEFAULT_CONFIG, find_palaia_root, get_root, load_config, save_config
 from palaia.store import Store
 from palaia.search import SearchEngine
 from palaia.sync import export_entries, import_entries
@@ -258,10 +258,170 @@ def cmd_status(args):
     if recovered:
         print(f"  Recovered: {recovered} entries")
 
-    from palaia.search import detect_search_tier
-    tier = detect_search_tier()
-    tier_names = {1: "BM25 (Python)", 2: "Ollama Embeddings", 3: "API Embeddings"}
-    print(f"\nSearch: {tier_names[tier]}")
+    # Embedding status
+    from palaia.embeddings import auto_detect_provider, get_provider_display_info, BM25Provider
+    provider = auto_detect_provider(store.config)
+    provider_display = get_provider_display_info(provider)
+    has_embed = not isinstance(provider, BM25Provider)
+
+    print(f"\nEmbedding: {provider_display} {'✓' if has_embed else '(fallback)'}")
+    print(f"  → BM25 keyword search: active")
+    if has_embed:
+        print(f"  → Semantic search: active ({provider.name})")
+    else:
+        print(f"  → Semantic search: not configured")
+
+    # Check API providers
+    from palaia.embeddings import _check_openai_key, _check_voyage_key
+    if _check_openai_key() or _check_voyage_key():
+        print(f"  → API search: configured")
+    else:
+        print(f"  → API search: not configured")
+
+    return 0
+
+
+def cmd_detect(args):
+    """Detect available embedding providers."""
+    import platform
+    from palaia.embeddings import detect_providers
+
+    sys_info = f"{platform.system()} {platform.machine()}"
+    py_ver = platform.python_version()
+
+    providers = detect_providers()
+
+    if _json_out({
+        "system": sys_info,
+        "python": py_ver,
+        "providers": providers,
+    }, args):
+        return 0
+
+    print("Palaia Environment Detection")
+    print("=" * 29)
+    print(f"System: {sys_info}")
+    print(f"Python: {py_ver}")
+    print()
+    print("Embedding providers found:")
+
+    available = []
+    for p in providers:
+        name = p["name"]
+        if name == "ollama":
+            if p["server_running"]:
+                has_nomic = p.get("has_nomic", False)
+                model_status = f"nomic-embed-text: {'available ✓' if has_nomic else 'not pulled (ollama pull nomic-embed-text)'}"
+                mark = "✓" if p["available"] else "△"
+                print(f"  {mark} ollama        — server running at localhost:11434")
+                print(f"                    {model_status}")
+                if p["available"]:
+                    available.append("ollama")
+            else:
+                print(f"  ✗ ollama        — server not running ({p.get('install_hint', 'start with: ollama serve')})")
+        elif name == "sentence-transformers":
+            if p["available"]:
+                print(f"  ✓ sentence-transformers {p['version']} — installed")
+                available.append("sentence-transformers")
+            else:
+                print(f"  ✗ sentence-transformers — not installed ({p['install_hint']})")
+        elif name == "fastembed":
+            if p["available"]:
+                print(f"  ✓ fastembed {p['version']} — installed")
+                available.append("fastembed")
+            else:
+                print(f"  ✗ fastembed     — not installed ({p['install_hint']})")
+        elif name == "openai":
+            if p["available"]:
+                print(f"  ✓ OpenAI API    — key found")
+                available.append("openai")
+            else:
+                print(f"  ✗ OpenAI API    — no key found")
+        elif name == "voyage":
+            if p["available"]:
+                print(f"  ✓ Voyage API    — key found")
+                available.append("voyage")
+            else:
+                print(f"  ✗ Voyage API    — no key found")
+
+    print()
+    print("BM25 keyword search: always available ✓")
+
+    if available:
+        rec = available[0]
+        rec_desc = {
+            "ollama": "ollama (server running, nomic-embed-text available)",
+            "sentence-transformers": "sentence-transformers (installed, best local quality)",
+            "fastembed": "fastembed (installed, lightweight)",
+            "openai": "OpenAI API (cloud-based)",
+        }
+        print(f"\nRecommendation: {rec_desc.get(rec, rec)}")
+        if len(available) > 1:
+            alt = available[1]
+            print(f"Alternatively:  {rec_desc.get(alt, alt)}")
+    else:
+        print("\nNo embedding providers found. Using keyword search (BM25).")
+        print("Install one for semantic search: pip install 'palaia[sentence-transformers]'")
+
+    # Show current config
+    try:
+        root = get_root()
+        config = load_config(root)
+        provider_cfg = config.get("embedding_provider", "auto")
+        print(f"\nCurrent config: embedding_provider = {provider_cfg}")
+    except FileNotFoundError:
+        print(f"\nCurrent config: not initialized (run 'palaia init' first)")
+
+    return 0
+
+
+def cmd_config(args):
+    """Get or set configuration values."""
+    if args.action == "get":
+        root = get_root()
+        config = load_config(root)
+        key = args.key
+        if key in config:
+            if _json_out({"key": key, "value": config[key]}, args):
+                return 0
+            print(f"{key} = {config[key]}")
+        else:
+            if _json_out({"error": f"Unknown key: {key}"}, args):
+                return 1
+            print(f"Unknown config key: {key}", file=sys.stderr)
+            return 1
+    elif args.action == "set":
+        root = get_root()
+        config = load_config(root)
+        key = args.key
+        value = args.value
+
+        # Type coercion based on default config
+        if key in DEFAULT_CONFIG:
+            default_val = DEFAULT_CONFIG[key]
+            if isinstance(default_val, int):
+                try:
+                    value = int(value)
+                except ValueError:
+                    pass
+            elif isinstance(default_val, float):
+                try:
+                    value = float(value)
+                except ValueError:
+                    pass
+
+        config[key] = value
+        save_config(root, config)
+        if _json_out({"key": key, "value": value}, args):
+            return 0
+        print(f"{key} = {value}")
+    elif args.action == "list":
+        root = get_root()
+        config = load_config(root)
+        if _json_out(config, args):
+            return 0
+        for k, v in sorted(config.items()):
+            print(f"{k} = {v}")
     return 0
 
 
@@ -428,6 +588,23 @@ def main():
     p_import.add_argument("--dry-run", action="store_true", help="Preview without writing")
     p_import.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # detect
+    p_detect = sub.add_parser("detect", help="Detect available embedding providers")
+    p_detect.add_argument("--json", action="store_true", help="Output as JSON")
+
+    # config
+    p_config = sub.add_parser("config", help="Get or set configuration")
+    config_sub = p_config.add_subparsers(dest="action")
+    p_config_get = config_sub.add_parser("get", help="Get a config value")
+    p_config_get.add_argument("key", help="Config key")
+    p_config_get.add_argument("--json", action="store_true", help="Output as JSON")
+    p_config_set = config_sub.add_parser("set", help="Set a config value")
+    p_config_set.add_argument("key", help="Config key")
+    p_config_set.add_argument("value", help="Config value")
+    p_config_set.add_argument("--json", action="store_true", help="Output as JSON")
+    p_config_list = config_sub.add_parser("list", help="List all config values")
+    p_config_list.add_argument("--json", action="store_true", help="Output as JSON")
+
     # migrate
     p_migrate = sub.add_parser("migrate", help="Import from external memory formats")
     p_migrate.add_argument("source", help="Source path (directory or file)")
@@ -455,6 +632,8 @@ def main():
         "export": cmd_export,
         "import": cmd_import,
         "migrate": cmd_migrate,
+        "detect": cmd_detect,
+        "config": cmd_config,
     }
     try:
         return commands[args.command](args)

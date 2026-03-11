@@ -47,6 +47,8 @@ class Store:
         title: str | None = None,
     ) -> str:
         """Write a new memory entry. Returns the entry ID."""
+        if not body or not body.strip():
+            raise ValueError("Cannot write empty content. Provide a non-empty text body.")
         scope = normalize_scope(scope, self.config["default_scope"])
         
         # Dedup check
@@ -185,11 +187,19 @@ class Store:
                     new_text = serialize_entry(meta, body)
 
                     if new_tier != tier:
-                        new_path = self.root / new_tier / p.name
-                        new_path.parent.mkdir(parents=True, exist_ok=True)
-                        with open(new_path, "w") as f:
-                            f.write(new_text)
+                        new_target = f"{new_tier}/{p.name}"
+                        old_target = f"{tier}/{p.name}"
+                        # WAL: log the move with payload for crash recovery
+                        wal_entry = WALEntry(
+                            operation="write",
+                            target=new_target,
+                            payload_hash=meta.get("content_hash", ""),
+                            payload=new_text,
+                        )
+                        self.wal.log(wal_entry)
+                        self.write_raw(new_target, new_text)
                         p.unlink()
+                        self.wal.commit(wal_entry)
                         key = f"{tier}_to_{new_tier}"
                         moves[key] = moves.get(key, 0) + 1
                     else:
