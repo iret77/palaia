@@ -1,5 +1,7 @@
 """Memory store with tier routing (ADR-004)."""
 
+from __future__ import annotations
+
 import hashlib
 import os
 import shutil
@@ -8,6 +10,7 @@ from pathlib import Path
 from palaia.config import load_config
 from palaia.decay import classify_tier, days_since, decay_score
 from palaia.entry import content_hash, create_entry, parse_entry, serialize_entry, update_access
+from palaia.index import EmbeddingCache
 from palaia.lock import PalaiaLock
 from palaia.scope import can_access, normalize_scope
 from palaia.wal import WAL, WALEntry
@@ -19,11 +22,13 @@ TIERS = ("hot", "warm", "cold")
 class Store:
     """Memory store with WAL, locking, and tier management."""
 
+
     def __init__(self, palaia_root: Path):
         self.root = palaia_root
         self.config = load_config(palaia_root)
         self.wal = WAL(palaia_root)
         self.lock = PalaiaLock(palaia_root, self.config["lock_timeout_seconds"])
+        self.embedding_cache = EmbeddingCache(palaia_root)
         
         # Ensure tier directories
         for tier in TIERS:
@@ -71,6 +76,9 @@ class Store:
 
             # Commit WAL
             self.wal.commit(wal_entry)
+
+        # Invalidate any stale embedding cache for this entry
+        self.embedding_cache.invalidate(entry_id)
 
         return entry_id
 
@@ -191,6 +199,18 @@ class Store:
         # WAL cleanup
         wal_cleaned = self.wal.cleanup(config["wal_retention_days"])
         moves["wal_cleaned"] = wal_cleaned
+
+        # Embedding cache cleanup: remove entries for deleted IDs
+        valid_ids = set()
+        for tier in TIERS:
+            tier_dir = self.root / tier
+            if tier_dir.exists():
+                for p in tier_dir.glob("*.md"):
+                    valid_ids.add(p.stem)
+        stale = self.embedding_cache.cleanup(valid_ids)
+        if stale:
+            moves["embeddings_cleaned"] = stale
+
         return moves
 
     def status(self) -> dict:

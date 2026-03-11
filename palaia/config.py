@@ -1,5 +1,7 @@
 """Palaia configuration management."""
 
+from __future__ import annotations
+
 import json
 import os
 from pathlib import Path
@@ -20,6 +22,7 @@ DEFAULT_CONFIG = {
 
 def find_palaia_root(start: str = ".") -> Path | None:
     """Walk up from start to find .palaia directory."""
+
     current = Path(start).resolve()
     while True:
         candidate = current / ".palaia"

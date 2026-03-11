@@ -2,8 +2,11 @@ __pycache__/
 *.pyc
 *.pyo
 .env
-.palaia/wal/
+.palaia/
 *.egg-info/
 dist/
 build/
 .DS_Store
+.pytest_cache/
+palaia-export/
+site/

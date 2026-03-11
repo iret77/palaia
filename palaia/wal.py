@@ -1,5 +1,7 @@
 """Write-Ahead Log (ADR-003)."""
 
+from __future__ import annotations
+
 import json
 import os
 import uuid
@@ -9,6 +11,7 @@ from pathlib import Path
 
 class WALEntry:
     """A single WAL entry."""
+
 
     def __init__(
         self,

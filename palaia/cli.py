@@ -1,5 +1,7 @@
 """Palaia CLI entry point."""
 
+from __future__ import annotations
+
 import argparse
 import json
 import sys
@@ -9,6 +11,7 @@ from palaia import __version__
 from palaia.config import DEFAULT_CONFIG, find_palaia_root, get_root, save_config
 from palaia.store import Store
 from palaia.search import SearchEngine
+from palaia.sync import export_entries, import_entries
 
 
 def cmd_init(args):
@@ -150,6 +153,47 @@ def cmd_gc(args):
     return 0
 
 
+def cmd_export(args):
+    """Export public entries."""
+    result = export_entries(
+        remote=args.remote,
+        branch=args.branch,
+        output_dir=args.output,
+    )
+    if result.get("exported", 0) == 0:
+        print(result.get("message", "Nothing exported."))
+        return 0
+    print(f"Exported {result['exported']} entries.")
+    if result.get("remote"):
+        print(f"  Remote: {result['remote']}")
+        print(f"  Branch: {result['branch']}")
+    else:
+        print(f"  Target: {result['target']}")
+    return 0
+
+
+def cmd_import(args):
+    """Import entries from export."""
+    result = import_entries(
+        source=args.source,
+        dry_run=args.dry_run,
+    )
+    if args.dry_run:
+        count = result.get("would_import", 0)
+        print(f"Dry run: {count} entries would be imported.")
+        if result.get("entries"):
+            for e in result["entries"]:
+                print(f"  {e['id'][:8]}  [{e['scope']}] {e['title']}")
+    else:
+        print(f"Imported {result['imported']} entries.")
+    if result.get("skipped_dedup"):
+        print(f"  Skipped (duplicate): {result['skipped_dedup']}")
+    if result.get("skipped_scope"):
+        print(f"  Skipped (scope): {result['skipped_scope']}")
+    print(f"  Source workspace: {result['source_workspace']}")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="palaia",
@@ -187,6 +231,17 @@ def main():
     # gc
     sub.add_parser("gc", help="Run garbage collection / tier rotation")
 
+    # export
+    p_export = sub.add_parser("export", help="Export public entries")
+    p_export.add_argument("--remote", default=None, help="Git remote URL")
+    p_export.add_argument("--branch", default=None, help="Branch name")
+    p_export.add_argument("--output", default=None, help="Output directory")
+
+    # import
+    p_import = sub.add_parser("import", help="Import entries from export")
+    p_import.add_argument("source", help="Path or git URL to import from")
+    p_import.add_argument("--dry-run", action="store_true", help="Preview without writing")
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -199,6 +254,8 @@ def main():
         "list": cmd_list,
         "status": cmd_status,
         "gc": cmd_gc,
+        "export": cmd_export,
+        "import": cmd_import,
     }
     try:
         return commands[args.command](args)

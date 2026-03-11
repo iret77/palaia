@@ -1,5 +1,7 @@
 """File-based locking for concurrent access (ADR-007)."""
 
+from __future__ import annotations
+
 import fcntl
 import json
 import os

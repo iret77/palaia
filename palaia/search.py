@@ -1,5 +1,7 @@
 """BM25 search with tiered embedding support (ADR-001)."""
 
+from __future__ import annotations
+
 import math
 import re
 from collections import Counter
@@ -8,6 +10,7 @@ from pathlib import Path
 
 def tokenize(text: str) -> list[str]:
     """Simple whitespace + punctuation tokenizer."""
+
     text = text.lower()
     tokens = re.findall(r"\b\w+\b", text)
     return tokens

@@ -1,5 +1,10 @@
 # Palaia 🧠
 
+[![CI](https://github.com/iret77/palaia/actions/workflows/ci.yml/badge.svg)](https://github.com/iret77/palaia/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/palaia)](https://pypi.org/project/palaia/)
+[![Python](https://img.shields.io/pypi/pyversions/palaia)](https://pypi.org/project/palaia/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 > *From Greek: "the old, the enduring"*
 
 **Local, cloud-free memory for OpenClaw agents.**  
@@ -99,10 +104,16 @@ scope: public       # exportable via git
 
 ---
 
+## Installation
+
+```bash
+pip install palaia
+```
+
 ## Status
 
-🚧 **Early development.** Architecture decisions are being finalized.  
-See [`docs/adr/`](docs/adr/) for Architecture Decision Records.
+**v0.1.0** — Core features complete. See [CHANGELOG](CHANGELOG.md) for details.  
+Architecture Decision Records: [`docs/adr/`](docs/adr/)
 
 ---
 

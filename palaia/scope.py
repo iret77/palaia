@@ -1,5 +1,7 @@
 """Scope-Tag parsing and enforcement (ADR-002)."""
 
+from __future__ import annotations
+
 VALID_SCOPES = {"private", "team", "public"}
 SHARED_PREFIX = "shared:"
 

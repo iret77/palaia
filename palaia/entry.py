@@ -1,5 +1,7 @@
 """Memory entry parsing and creation (ADR-006)."""
 
+from __future__ import annotations
+
 import hashlib
 import re
 import uuid
@@ -11,6 +13,7 @@ FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 
 def _parse_yaml_simple(text: str) -> dict:
     """Minimal YAML-like parser for frontmatter. No dependency needed.
+
     
     Handles: key: value, key: [a, b, c], quoted strings.
     """

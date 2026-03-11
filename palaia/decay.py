@@ -1,5 +1,7 @@
 """Memory decay scoring and tier rotation (ADR-004)."""
 
+from __future__ import annotations
+
 import math
 from datetime import datetime, timezone
 from pathlib import Path

@@ -8,19 +8,47 @@ version = "0.1.0"
 description = "Local, cloud-free memory for OpenClaw agents."
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.10"
+requires-python = ">=3.9"
+authors = [
+    {name = "Christian Schröter"},
+]
+keywords = ["memory", "agent", "ai", "local", "openclaw"]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "Programming Language :: Python :: 3",
+    "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
+
+[project.urls]
+Homepage = "https://palaia.ai"
+Repository = "https://github.com/iret77/palaia"
+Issues = "https://github.com/iret77/palaia/issues"
+Documentation = "https://github.com/iret77/palaia/tree/main/docs"
 
 [project.scripts]
 palaia = "palaia.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0"]
+dev = ["pytest>=7.0", "ruff>=0.3.0"]
 
 [tool.setuptools.packages.find]
 include = ["palaia*"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
