@@ -17,6 +17,8 @@ DEFAULT_CONFIG = {
     "default_scope": "team",
     "wal_retention_days": 7,
     "lock_timeout_seconds": 5,
+    "embedding_provider": "auto",
+    "embedding_model": "",
 }
 
 
