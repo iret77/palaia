@@ -7,7 +7,14 @@ description: >
 metadata:
   openclaw:
     emoji: 🧠
-    requires: { bins: ["python3"] }
+    requires:
+      bins: ["python3"]
+    install:
+      - id: pip
+        kind: pip
+        package: palaia
+        bins: ["palaia"]
+        label: "Install Palaia"
 ---
 
 # Palaia — Memory That Sticks
