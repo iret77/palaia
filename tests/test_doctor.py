@@ -80,10 +80,22 @@ class TestCheckEmbeddingChain:
         result = _check_embedding_chain(None)
         assert result["status"] == "error"
 
-    def test_chain_configured(self, palaia_root):
+    def test_chain_ok(self, palaia_root):
+        """Chain with openai AND local model → status ok."""
+        config = json.loads((palaia_root / "config.json").read_text())
+        config["embedding_chain"] = ["openai", "sentence-transformers", "bm25"]
+        (palaia_root / "config.json").write_text(json.dumps(config))
+
         result = _check_embedding_chain(palaia_root)
         assert result["status"] == "ok"
+        assert "openai → sentence-transformers → bm25" in result["message"]
+
+    def test_chain_warn_no_local_fallback(self, palaia_root):
+        """Chain with openai ONLY (no local model) → status warn."""
+        result = _check_embedding_chain(palaia_root)
+        assert result["status"] == "warn"
         assert "openai → bm25" in result["message"]
+        assert "no local fallback" in result["message"]
 
     def test_auto_detect(self, palaia_root):
         # Rewrite config without chain
