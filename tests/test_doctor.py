@@ -9,9 +9,9 @@ import pytest
 from palaia.doctor import (
     _check_embedding_chain,
     _check_heartbeat_legacy,
+    _check_memory_skills,
     _check_openclaw_plugin,
     _check_palaia_init,
-    _check_smart_memory_skill,
     _check_wal_health,
     format_doctor_report,
     run_doctor,
@@ -138,22 +138,50 @@ class TestCheckOpenClawPlugin:
         assert "fix" in result
 
 
-class TestCheckSmartMemorySkill:
-    def test_not_installed(self, tmp_path, monkeypatch):
+class TestCheckMemorySkills:
+    def test_no_skills_found(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))
-        result = _check_smart_memory_skill()
+        result = _check_memory_skills()
         assert result["status"] == "ok"
-        assert "Not installed" in result["message"]
+        assert result["name"] == "memory_skills"
+        assert "No conflicting" in result["message"]
 
-    def test_installed(self, tmp_path, monkeypatch):
+    def test_detects_memory_skill(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))
         skill_dir = tmp_path / ".openclaw" / "workspace" / "skills" / "smart-memory"
         skill_dir.mkdir(parents=True)
-        (skill_dir / "SKILL.md").write_text("# Smart Memory")
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: smart-memory\ndescription: 5-layer memory architecture for OpenClaw agents.\n---\n# Smart Memory\n"
+        )
 
-        result = _check_smart_memory_skill()
+        result = _check_memory_skills()
         assert result["status"] == "warn"
-        assert "Detected" in result["message"]
+        assert "smart-memory" in result["message"]
+        assert len(result["details"]["skills"]) == 1
+        assert result["details"]["skills"][0]["name"] == "smart-memory"
+
+    def test_palaia_excluded(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        skill_dir = tmp_path / ".openclaw" / "workspace" / "skills" / "palaia"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: palaia\ndescription: Local persistent memory for OpenClaw agents.\n---\n# Palaia\n"
+        )
+
+        result = _check_memory_skills()
+        assert result["status"] == "ok"
+        assert "No conflicting" in result["message"]
+
+    def test_non_memory_skill_ignored(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        skill_dir = tmp_path / ".openclaw" / "workspace" / "skills" / "weather"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: weather\ndescription: Get current weather and forecasts.\n---\n# Weather\n"
+        )
+
+        result = _check_memory_skills()
+        assert result["status"] == "ok"
 
 
 class TestCheckHeartbeatLegacy:
@@ -291,7 +319,9 @@ class TestDoctorCLI:
         # Create a smart-memory skill to trigger a warning
         skill_dir = tmp_path / ".openclaw" / "workspace" / "skills" / "smart-memory"
         skill_dir.mkdir(parents=True)
-        (skill_dir / "SKILL.md").write_text("# Smart Memory")
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: smart-memory\ndescription: 5-layer memory architecture for OpenClaw agents.\n---\n"
+        )
 
         import io
         import sys
