@@ -15,10 +15,20 @@ from palaia.sync import export_entries, import_entries
 from palaia.migrate import migrate, format_result, detect_format
 
 
+def _json_out(data, args):
+    """Print JSON if --json flag is set, return True if printed."""
+    if getattr(args, "json", False):
+        print(json.dumps(data, ensure_ascii=False))
+        return True
+    return False
+
+
 def cmd_init(args):
     """Initialize .palaia directory."""
     target = Path(args.path or ".") / ".palaia"
     if target.exists():
+        if _json_out({"status": "exists", "path": str(target)}, args):
+            return 0
         print(f"Already initialized: {target}")
         return 0
 
@@ -26,6 +36,8 @@ def cmd_init(args):
     for sub in ("hot", "warm", "cold", "wal", "index"):
         (target / sub).mkdir()
     save_config(target, DEFAULT_CONFIG)
+    if _json_out({"status": "created", "path": str(target)}, args):
+        return 0
     print(f"Initialized Palaia at {target}")
     return 0
 
@@ -37,7 +49,7 @@ def cmd_write(args):
     
     # Recovery check
     recovered = store.recover()
-    if recovered:
+    if recovered and not getattr(args, "json", False):
         print(f"Recovered {recovered} pending entries from WAL.")
 
     entry_id = store.write(
@@ -47,6 +59,29 @@ def cmd_write(args):
         tags=args.tags.split(",") if args.tags else None,
         title=args.title,
     )
+
+    # Check if this was a dedup (existing entry returned)
+    entry = store.read(entry_id)
+    tier = "hot"
+    scope = args.scope or "team"
+    deduplicated = False
+    if entry:
+        meta, _ = entry
+        scope = meta.get("scope", scope)
+        # Check tier
+        for t in ("hot", "warm", "cold"):
+            if (root / t / f"{entry_id}.md").exists():
+                tier = t
+                break
+
+    if _json_out({
+        "id": entry_id,
+        "tier": tier,
+        "scope": scope,
+        "deduplicated": deduplicated,
+    }, args):
+        return 0
+
     print(f"Written: {entry_id}")
     return 0
 
@@ -63,6 +98,9 @@ def cmd_query(args):
         top_k=args.limit,
         include_cold=args.all,
     )
+
+    if _json_out({"results": results}, args):
+        return 0
 
     if not results:
         print("No results found.")
@@ -82,6 +120,80 @@ def cmd_query(args):
     return 0
 
 
+def cmd_get(args):
+    """Read a specific memory entry by ID or path."""
+    root = get_root()
+    store = Store(root)
+    store.recover()
+
+    # Accept UUID or path like hot/uuid.md
+    entry_id = args.path
+    if "/" in entry_id:
+        # Extract ID from path
+        entry_id = entry_id.split("/")[-1].replace(".md", "")
+
+    entry = store.read(entry_id)
+    if entry is None:
+        if _json_out({"error": "not_found", "id": entry_id}, args):
+            return 1
+        print(f"Entry not found: {entry_id}", file=sys.stderr)
+        return 1
+
+    meta, body = entry
+
+    # Determine tier
+    tier = "unknown"
+    for t in ("hot", "warm", "cold"):
+        if (root / t / f"{entry_id}.md").exists():
+            tier = t
+            break
+
+    # Handle --from / --lines slicing
+    lines = body.split("\n")
+    from_line = getattr(args, "from_line", None)
+    num_lines = getattr(args, "lines", None)
+    if from_line is not None:
+        lines = lines[max(0, from_line - 1):]
+    if num_lines is not None:
+        lines = lines[:num_lines]
+    sliced_body = "\n".join(lines)
+
+    if _json_out({
+        "id": entry_id,
+        "content": sliced_body,
+        "meta": {
+            "scope": meta.get("scope", "team"),
+            "tier": tier,
+            "title": meta.get("title", ""),
+            "tags": meta.get("tags", []),
+            "agent": meta.get("agent", ""),
+            "created": meta.get("created", ""),
+            "accessed": meta.get("accessed", ""),
+            "decay_score": meta.get("decay_score", 0),
+        },
+    }, args):
+        return 0
+
+    print(sliced_body)
+    return 0
+
+
+def cmd_recover(args):
+    """Run WAL recovery."""
+    root = get_root()
+    store = Store(root)
+    recovered = store.recover()
+
+    if _json_out({"replayed": recovered, "errors": 0}, args):
+        return 0
+
+    if recovered:
+        print(f"Recovered {recovered} pending entries from WAL.")
+    else:
+        print("No pending WAL entries.")
+    return 0
+
+
 def cmd_list(args):
     """List memories in a tier."""
     root = get_root()
@@ -90,6 +202,21 @@ def cmd_list(args):
 
     tier = args.tier or "hot"
     entries = store.list_entries(tier)
+
+    if _json_out({
+        "tier": tier,
+        "entries": [
+            {
+                "id": meta.get("id", "?"),
+                "title": meta.get("title", "(untitled)"),
+                "scope": meta.get("scope", "team"),
+                "decay_score": meta.get("decay_score", 0),
+                "preview": body[:80].replace("\n", " "),
+            }
+            for meta, body in entries
+        ],
+    }, args):
+        return 0
 
     if not entries:
         print(f"No entries in {tier}.")
@@ -115,6 +242,10 @@ def cmd_status(args):
     recovered = store.recover()
     
     info = store.status()
+
+    if _json_out(info, args):
+        return 0
+
     print(f"Palaia v{__version__}")
     print(f"Root: {info['palaia_root']}")
     print(f"\nEntries:")
@@ -141,6 +272,10 @@ def cmd_gc(args):
     store.recover()
 
     result = store.gc()
+
+    if _json_out(result, args):
+        return 0
+
     total_moves = sum(v for k, v in result.items() if k != "wal_cleaned")
     print(f"GC complete.")
     if total_moves:
@@ -161,6 +296,10 @@ def cmd_export(args):
         branch=args.branch,
         output_dir=args.output,
     )
+
+    if _json_out(result, args):
+        return 0
+
     if result.get("exported", 0) == 0:
         print(result.get("message", "Nothing exported."))
         return 0
@@ -179,6 +318,10 @@ def cmd_import(args):
         source=args.source,
         dry_run=args.dry_run,
     )
+
+    if _json_out(result, args):
+        return 0
+
     if args.dry_run:
         count = result.get("would_import", 0)
         print(f"Dry run: {count} entries would be imported.")
@@ -208,6 +351,10 @@ def cmd_migrate(args):
         scope_override=args.scope,
         dry_run=args.dry_run,
     )
+
+    if _json_out(result, args):
+        return 0
+
     print(format_result(result))
     return 0
 
@@ -218,12 +365,14 @@ def main():
         description="Palaia — Local, cloud-free memory for OpenClaw agents.",
     )
     parser.add_argument("--version", action="version", version=f"palaia {__version__}")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
 
     sub = parser.add_subparsers(dest="command")
 
     # init
     p_init = sub.add_parser("init", help="Initialize .palaia directory")
     p_init.add_argument("--path", default=None, help="Target directory")
+    p_init.add_argument("--json", action="store_true", help="Output as JSON")
 
     # write
     p_write = sub.add_parser("write", help="Write a memory entry")
@@ -232,33 +381,52 @@ def main():
     p_write.add_argument("--agent", default=None, help="Agent name")
     p_write.add_argument("--tags", default=None, help="Comma-separated tags")
     p_write.add_argument("--title", default=None, help="Entry title")
+    p_write.add_argument("--json", action="store_true", help="Output as JSON")
 
     # query
     p_query = sub.add_parser("query", help="Search memories")
     p_query.add_argument("query", help="Search query")
     p_query.add_argument("--limit", type=int, default=10, help="Max results")
     p_query.add_argument("--all", action="store_true", help="Include COLD tier")
+    p_query.add_argument("--json", action="store_true", help="Output as JSON")
+
+    # get
+    p_get = sub.add_parser("get", help="Read a specific memory entry")
+    p_get.add_argument("path", help="Entry UUID or path (e.g. hot/uuid.md)")
+    p_get.add_argument("--from", type=int, default=None, dest="from_line",
+                       help="Start from line number (1-indexed)")
+    p_get.add_argument("--lines", type=int, default=None, help="Number of lines to return")
+    p_get.add_argument("--json", action="store_true", help="Output as JSON")
+
+    # recover
+    p_recover = sub.add_parser("recover", help="Run WAL recovery")
+    p_recover.add_argument("--json", action="store_true", help="Output as JSON")
 
     # list
     p_list = sub.add_parser("list", help="List entries in a tier")
     p_list.add_argument("--tier", default="hot", choices=["hot", "warm", "cold"])
+    p_list.add_argument("--json", action="store_true", help="Output as JSON")
 
     # status
-    sub.add_parser("status", help="Show system status")
+    p_status = sub.add_parser("status", help="Show system status")
+    p_status.add_argument("--json", action="store_true", help="Output as JSON")
 
     # gc
-    sub.add_parser("gc", help="Run garbage collection / tier rotation")
+    p_gc = sub.add_parser("gc", help="Run garbage collection / tier rotation")
+    p_gc.add_argument("--json", action="store_true", help="Output as JSON")
 
     # export
     p_export = sub.add_parser("export", help="Export public entries")
     p_export.add_argument("--remote", default=None, help="Git remote URL")
     p_export.add_argument("--branch", default=None, help="Branch name")
     p_export.add_argument("--output", default=None, help="Output directory")
+    p_export.add_argument("--json", action="store_true", help="Output as JSON")
 
     # import
     p_import = sub.add_parser("import", help="Import entries from export")
     p_import.add_argument("source", help="Path or git URL to import from")
     p_import.add_argument("--dry-run", action="store_true", help="Preview without writing")
+    p_import.add_argument("--json", action="store_true", help="Output as JSON")
 
     # migrate
     p_migrate = sub.add_parser("migrate", help="Import from external memory formats")
@@ -268,6 +436,7 @@ def main():
                            choices=["smart-memory", "flat-file", "json-memory", "generic-md"],
                            help="Force source format")
     p_migrate.add_argument("--scope", default=None, help="Override scope for all entries")
+    p_migrate.add_argument("--json", action="store_true", help="Output as JSON")
 
     args = parser.parse_args()
     if not args.command:
@@ -278,6 +447,8 @@ def main():
         "init": cmd_init,
         "write": cmd_write,
         "query": cmd_query,
+        "get": cmd_get,
+        "recover": cmd_recover,
         "list": cmd_list,
         "status": cmd_status,
         "gc": cmd_gc,
@@ -288,10 +459,16 @@ def main():
     try:
         return commands[args.command](args)
     except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        if getattr(args, "json", False):
+            print(json.dumps({"error": str(e)}))
+        else:
+            print(f"Error: {e}", file=sys.stderr)
         return 1
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        if getattr(args, "json", False):
+            print(json.dumps({"error": str(e)}))
+        else:
+            print(f"Error: {e}", file=sys.stderr)
         return 1
 
 

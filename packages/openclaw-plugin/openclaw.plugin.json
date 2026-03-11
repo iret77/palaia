@@ -1,0 +1,51 @@
+{
+  "id": "palaia",
+  "name": "Palaia Memory",
+  "kind": "memory",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "binaryPath": {
+        "type": "string",
+        "description": "Path to palaia binary (default: auto-detect)"
+      },
+      "workspace": {
+        "type": "string",
+        "description": "Palaia workspace path (default: agent workspace)"
+      },
+      "tier": {
+        "type": "string",
+        "enum": ["hot", "warm", "all"],
+        "default": "hot"
+      },
+      "maxResults": {
+        "type": "number",
+        "default": 10
+      },
+      "timeoutMs": {
+        "type": "number",
+        "default": 3000
+      },
+      "memoryInject": {
+        "type": "boolean",
+        "default": false,
+        "description": "Inject HOT memory into agent context on prompt build"
+      },
+      "maxInjectedChars": {
+        "type": "number",
+        "default": 4000,
+        "description": "Max characters for injected memory context"
+      }
+    }
+  },
+  "uiHints": {
+    "binaryPath": {
+      "label": "Palaia Binary Path",
+      "placeholder": "auto-detect"
+    },
+    "workspace": {
+      "label": "Workspace Path",
+      "placeholder": "agent workspace"
+    }
+  }
+}

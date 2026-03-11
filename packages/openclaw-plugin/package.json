@@ -1,0 +1,35 @@
+{
+  "name": "@palaia/openclaw",
+  "version": "0.1.0",
+  "description": "Palaia memory backend for OpenClaw",
+  "main": "index.ts",
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  },
+  "files": [
+    "index.ts",
+    "src/",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "palaia",
+    "memory",
+    "agent-memory"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iret77/palaia.git",
+    "directory": "packages/openclaw-plugin"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2025.1.0"
+  },
+  "devDependencies": {
+    "@sinclair/typebox": "^0.32.0",
+    "vitest": "^1.0.0"
+  }
+}
