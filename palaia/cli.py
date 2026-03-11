@@ -74,7 +74,13 @@ def cmd_init(args):
         print(f"Initialized Palaia at {target}")
 
     # Show chain info
-    if len(chain) > 1:
+    has_local = any(p in chain for p in ("sentence-transformers", "fastembed", "ollama"))
+    has_openai = "openai" in chain
+    if has_openai and not has_local:
+        print(f"⚠️  Embedding chain: {' → '.join(chain)} (no local fallback)")
+        print("   If OpenAI is unavailable, search quality will drop significantly.")
+        print("   Recommend: pip install sentence-transformers && palaia warmup")
+    elif len(chain) > 1:
         print(f"✅ Embedding chain configured: {' → '.join(chain)}")
     else:
         print("⚠️  No semantic search providers found. Using BM25 only.")

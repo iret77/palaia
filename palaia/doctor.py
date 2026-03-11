@@ -51,6 +51,17 @@ def _check_embedding_chain(palaia_root: Path | None) -> dict[str, Any]:
 
     if chain:
         chain_str = " → ".join(chain)
+        has_local = any(p in chain for p in ("sentence-transformers", "fastembed", "ollama"))
+        has_openai = "openai" in chain
+        if has_openai and not has_local:
+            return {
+                "name": "embedding_chain",
+                "label": "Embedding chain",
+                "status": "warn",
+                "message": f"{chain_str} (no local fallback)",
+                "fix": "pip install sentence-transformers && palaia warmup",
+                "details": {"chain": chain},
+            }
         return {
             "name": "embedding_chain",
             "label": "Embedding chain",

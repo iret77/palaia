@@ -61,15 +61,24 @@ Tell the user:
 Quick setup: 3 short questions."
 
 **Question 1 — Search quality:**
-If an OpenAI API key is present on this system:
-  Ask: "Should I use your OpenAI key for smarter memory search? It gives better results."
-  → yes: put openai first in chain
-  → no: use sentence-transformers (install if needed) or BM25
 
-If no OpenAI key:
-  Ask: "Should I install a local search model for better memory search? It's free, runs offline, takes about 300MB."
-  → yes: pip install sentence-transformers, then palaia warmup
-  → no: BM25 only (say: "Search will be keyword-based — you can improve this later")
+If an OpenAI API key is present AND a local model (sentence-transformers/fastembed/ollama) is also detected:
+  → Just confirm: "I'll use your OpenAI key with a local backup model. Good setup."
+  → No question needed.
+
+If an OpenAI API key is present BUT no local model is installed:
+  → Tell the user: "You have an OpenAI API key — great for search quality. But without a local backup, search quality drops significantly when OpenAI is unavailable. I recommend installing a small local model (300MB, free, runs offline). Should I do that?"
+  → yes: pip install sentence-transformers, then palaia warmup, chain = openai → sentence-transformers → bm25
+  → no: chain = openai → bm25 (warn: "Note: search may fail or degrade without a local fallback.")
+
+If no OpenAI key AND no local model:
+  → Tell the user: "No search provider found yet. I recommend installing a free local model (300MB). Should I do that?"
+  → yes: pip install sentence-transformers, then palaia warmup, chain = sentence-transformers → bm25
+  → no: BM25 only (warn: "Search will be keyword-based — you can improve this later with palaia detect.")
+
+If no OpenAI key BUT local model detected:
+  → Just confirm: "Using local search model — works offline, no API costs."
+  → No question needed.
 
 **Question 2 — Existing memory (only ask if legacy memory files exist OR smart-memory detected):**
   Ask: "You have existing memory. Should I bring it into Palaia?"
