@@ -103,6 +103,37 @@ palaia project delete website-redesign
 3. The global default scope from your config
 4. Falls back to `team`
 
+### Document Knowledge Base
+
+Palaia can also index external documents — PDFs, websites, text files — and search them alongside your agent memory.
+
+```bash
+# Ingest a file
+palaia ingest document.pdf --project company-docs
+
+# Ingest a URL
+palaia ingest https://example.com/docs/api.html --project api-docs
+
+# Ingest a directory
+palaia ingest ./docs/ --project my-project --tags documentation
+
+# Preview without storing
+palaia ingest document.pdf --dry-run
+
+# Adjust chunk size
+palaia ingest document.pdf --chunk-size 300 --chunk-overlap 30
+
+# Search ingested documents
+palaia query "How does X work?" --project api-docs
+
+# Get RAG-formatted output for LLM injection
+palaia query "How does X work?" --project api-docs --rag
+```
+
+Documents are chunked, embedded, and stored as regular Palaia entries. They appear in search results with source attribution (file, page, URL). Use `--rag` for a formatted context block ready for LLM injection.
+
+PDF support requires an optional dependency: `pip install 'palaia[pdf]'`
+
 ### Semantic Search
 
 Regular text search matches exact words. Semantic search understands meaning — it converts text into numerical representations (embeddings) and finds entries that are conceptually similar, even when the words differ.

@@ -12,6 +12,7 @@ from palaia.config import DEFAULT_CONFIG, find_palaia_root, get_root, load_confi
 from palaia.doctor import format_doctor_report, run_doctor
 from palaia.migrate import format_result, migrate
 from palaia.project import ProjectManager
+from palaia.ingest import DocumentIngestor, format_rag_output
 from palaia.search import SearchEngine
 from palaia.store import Store
 from palaia.sync import export_entries, import_entries
@@ -172,6 +173,22 @@ def cmd_query(args):
         print("No results found.")
         return 0
 
+    # RAG output format
+    if getattr(args, "rag", False):
+        # Enrich results with full body and source metadata for RAG
+        enriched = []
+        for r in results:
+            entry = store.read(r["id"])
+            if entry:
+                meta, body = entry
+                r["full_body"] = body
+                r["source"] = meta.get("source", "")
+                r["chunk_index"] = meta.get("chunk_index", 0) if isinstance(meta.get("chunk_index"), int) else 0
+                r["chunk_total"] = meta.get("chunk_total", 0) if isinstance(meta.get("chunk_total"), int) else 0
+            enriched.append(r)
+        print(format_rag_output(args.query, enriched))
+        return 0
+
     for r in results:
         tier_badge = {"hot": "🔥", "warm": "🌤", "cold": "❄️"}.get(r["tier"], "?")
         title = r["title"] or "(untitled)"
@@ -245,6 +262,75 @@ def cmd_get(args):
         return 0
 
     print(sliced_body)
+    return 0
+
+
+def cmd_ingest(args):
+    """Ingest documents for RAG."""
+    root = get_root()
+    store = Store(root)
+    store.recover()
+
+    ingestor = DocumentIngestor(store)
+    source = args.source
+
+    if not getattr(args, "json", False) and not args.dry_run:
+        print(f"Ingesting: {source}")
+
+    try:
+        result = ingestor.ingest(
+            source=source,
+            project=args.project,
+            scope=args.scope or "private",
+            chunk_size=args.chunk_size,
+            chunk_overlap=args.chunk_overlap,
+            tags=args.tags.split(",") if args.tags else None,
+            dry_run=args.dry_run,
+        )
+    except ImportError as e:
+        if _json_out({"error": str(e)}, args):
+            return 1
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        if _json_out({"error": str(e)}, args):
+            return 1
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if _json_out(
+        {
+            "source": result.source,
+            "total_chunks": result.total_chunks,
+            "stored_chunks": result.stored_chunks,
+            "skipped_chunks": result.skipped_chunks,
+            "project": result.project,
+            "entry_ids": result.entry_ids,
+            "duration_seconds": result.duration_seconds,
+            "dry_run": args.dry_run,
+        },
+        args,
+    ):
+        return 0
+
+    if args.dry_run:
+        print(f"  Dry run: {result.total_chunks} chunks would be created")
+        print(f"  Skipped (too short): {result.skipped_chunks}")
+        return 0
+
+    print(f"  Chunking: {args.chunk_size} words, {args.chunk_overlap} overlap → {result.total_chunks} chunks")
+    print(f"\nDone in {result.duration_seconds}s")
+    print(f"  ✅ {result.stored_chunks} chunks stored")
+    if result.skipped_chunks:
+        print(f"  ⏭  {result.skipped_chunks} chunks skipped (too short)")
+    if result.project:
+        print(f"  Project: {result.project}")
+    print(f"  Scope: {args.scope or 'private'}")
+    if result.project:
+        print(f'\nSearch with: palaia query "your question" --project {result.project}')
+    else:
+        print(f'\nSearch with: palaia query "your question"')
+
     return 0
 
 
@@ -911,7 +997,19 @@ def main():
     p_query.add_argument("--limit", type=int, default=10, help="Max results")
     p_query.add_argument("--all", action="store_true", help="Include COLD tier")
     p_query.add_argument("--project", default=None, help="Filter by project")
+    p_query.add_argument("--rag", action="store_true", help="Output as RAG context block")
     p_query.add_argument("--json", action="store_true", help="Output as JSON")
+
+    # ingest
+    p_ingest = sub.add_parser("ingest", help="Ingest documents for RAG search")
+    p_ingest.add_argument("source", help="File path, URL, or directory to ingest")
+    p_ingest.add_argument("--project", default=None, help="Assign to project")
+    p_ingest.add_argument("--scope", default=None, help="Scope (default: private)")
+    p_ingest.add_argument("--tags", default=None, help="Comma-separated extra tags")
+    p_ingest.add_argument("--chunk-size", type=int, default=500, help="Words per chunk (default: 500)")
+    p_ingest.add_argument("--chunk-overlap", type=int, default=50, help="Overlap words (default: 50)")
+    p_ingest.add_argument("--dry-run", action="store_true", help="Preview without storing")
+    p_ingest.add_argument("--json", action="store_true", help="Output as JSON")
 
     # get
     p_get = sub.add_parser("get", help="Read a specific memory entry")
@@ -1045,6 +1143,7 @@ def main():
         "init": cmd_init,
         "write": cmd_write,
         "query": cmd_query,
+        "ingest": cmd_ingest,
         "get": cmd_get,
         "recover": cmd_recover,
         "list": cmd_list,

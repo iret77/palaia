@@ -5,6 +5,21 @@ All notable changes to Palaia will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-03-11
+
+### Added
+- **Document Ingestion (RAG):** `palaia ingest <file/url/dir>` — chunk, embed, and store external documents
+- Supported formats: `.txt`, `.md`, `.html`, URLs, directories, `.pdf` (optional `pdfplumber` dep)
+- Sliding-window chunking with configurable size and overlap, respecting sentence boundaries
+- Source attribution in entry frontmatter (`source`, `source_page`, `chunk_index`, `chunk_total`, `ingested_at`)
+- `palaia query --rag` output format for LLM context injection
+- `--dry-run` flag for ingestion preview
+- ADR-009: RAG Ingestion architecture decision
+- 20+ new tests for ingestion, chunking, RAG output, and edge cases
+
+### Copyright
+© 2026 byte5 GmbH — MIT License
+
 ## [1.0.0] - 2026-03-11
 
 First stable release.
