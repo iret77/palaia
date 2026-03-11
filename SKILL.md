@@ -20,68 +20,64 @@ metadata:
 
 ## Setup Flow (follow this exactly)
 
-1. **Install:**
-   ```bash
-   pip install git+https://github.com/iret77/palaia.git
-   ```
+### Step 1: Install and initialize
+```bash
+pip install git+https://github.com/iret77/palaia.git
+palaia init
+```
 
-2. **Initialize:**
-   ```bash
-   palaia init
-   ```
+### Step 2: Check for existing memory systems (REQUIRED — do not skip)
+```bash
+palaia doctor
+```
 
-3. **Detect available providers:**
-   ```bash
-   palaia detect
-   ```
-   Show the user the results. Explain what's available in plain language.
+Review **every** warning before continuing. For each finding, ask the user explicitly:
 
-4. **Recommend a chain** based on detect output:
-   - OpenAI key + local provider → `openai <local> bm25` ("Best quality with local fallback")
-   - Only local provider → `<local> bm25` ("Fully local, no cloud")
-   - Only OpenAI key → `openai bm25` (suggest also installing sentence-transformers)
-   - Nothing detected → `bm25` (suggest `pip install "palaia[sentence-transformers]"`)
+**smart-memory skill detected:**
+Tell the user: "I found an existing smart-memory installation. Palaia replaces it. Should I migrate your existing memories and then deactivate smart-memory?"
+- If yes: run `palaia migrate <workspace-path>`, then remove the smart-memory skill folder
+- If no: continue, but both systems will run in parallel (not recommended)
 
-5. **Configure:**
-   ```bash
-   palaia config set-chain <provider1> [provider2] bm25
-   ```
+**OpenClaw memory plugin still set to memory-core:**
+Tell the user: "Should I switch OpenClaw to use Palaia as the memory system?"
+- If yes: update OpenClaw config (`plugins.slots.memory = "palaia"`), restart OpenClaw
+- If no: Palaia runs standalone (no `memory_search`/`memory_get` tool integration)
 
-6. **Warm up models:**
-   ```bash
-   palaia warmup
-   ```
-   This pre-downloads embedding models so the first search is instant. Always run after chain setup.
+**HEARTBEAT.md legacy patterns:**
+Tell the user: "Your heartbeat has old memory commands. Should I update them to use Palaia?"
+- If yes: update HEARTBEAT.md, replace `memory_search`/`memory_get`/direct file reads with `palaia query`/`palaia write` equivalents
 
-7. **Optional — migrate existing memory files:**
-   ```bash
-   palaia migrate <path> --dry-run   # Preview first
-   palaia migrate <path>             # Then import
-   ```
+**Do not proceed to Step 3 until all warnings are addressed or explicitly dismissed by the user.**
 
-8. **Clean up legacy memory systems:**
+### Step 3: Detect available providers
+```bash
+palaia detect
+```
+Show the user the results. Explain what's available in plain language.
 
-   Run:
-   ```bash
-   palaia doctor
-   ```
+### Step 4: Recommend a chain based on detect output
+- OpenAI key + local provider → `openai <local> bm25` ("Best quality with local fallback")
+- Only local provider → `<local> bm25` ("Fully local, no cloud")
+- Only OpenAI key → `openai bm25` (suggest also installing sentence-transformers)
+- Nothing detected → `bm25` (suggest `pip install "palaia[sentence-transformers]"`)
 
-   Review the report. For each warning:
+### Step 5: Configure
+```bash
+palaia config set-chain <provider1> [provider2] bm25
+```
 
-   **OpenClaw plugin still set to memory-core:**
-   - Tell the user: "I need to switch OpenClaw's memory plugin to Palaia. This replaces the built-in memory management. Should I proceed?"
-   - If yes: Update OpenClaw config (plugins.slots.memory = "palaia") and restart
+### Step 6: Warm up models
+```bash
+palaia warmup
+```
+This pre-downloads embedding models so the first search is instant. Always run after chain setup.
 
-   **Smart-Memory skill detected:**
-   - Only remove AFTER confirming Palaia has entries and is working
-   - Tell the user: "Smart-Memory skill is still installed. Palaia is now handling memory. Should I remove the old skill?"
-   - If yes: Delete ~/.openclaw/workspace/skills/smart-memory/
-
-   **HEARTBEAT.md legacy patterns:**
-   - Tell the user: "Your HEARTBEAT.md has old memory commands. Should I update them to use Palaia?"
-   - If yes: Replace memory_search/memory_get/direct file reads with palaia query/write equivalents
-
-   Always ask before making these changes.
+### Step 7: Optional — migrate additional memory files
+```bash
+palaia migrate <path> --dry-run   # Preview first
+palaia migrate <path>             # Then import
+```
+Note: If smart-memory migration was already handled in Step 2, skip this unless there are other sources to import.
 
 ## Commands Reference
 
