@@ -1,126 +1,132 @@
-# Palaia 🧠
+# 🧠 Palaia
 
 [![CI](https://github.com/iret77/palaia/actions/workflows/ci.yml/badge.svg)](https://github.com/iret77/palaia/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/palaia)](https://pypi.org/project/palaia/)
-[![Python](https://img.shields.io/pypi/pyversions/palaia)](https://pypi.org/project/palaia/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> *From Greek: "the old, the enduring"*
+**Memory for AI agents that actually sticks.**
 
-**Local, cloud-free memory for OpenClaw agents.**  
-No API key. No cloud. No lock-in.
+Palaia gives your agent a persistent, local notebook. Write something today, find it next week. No cloud, no API keys, no setup beyond `pip install`.
 
----
+## Why Palaia?
 
-## What is Palaia?
+AI agents forget everything between sessions. Palaia fixes that:
 
-Palaia is a persistent memory system for AI agents built on OpenClaw.  
-It solves the fundamental problem of agents losing context between sessions — without sending your data anywhere.
+- **Write once, remember forever** — Notes survive restarts, crashes, and updates
+- **Find by meaning, not just keywords** — Semantic search understands what you meant (optional, works with ollama, sentence-transformers, or OpenAI)
+- **Smart organization** — Palaia remembers what's important right now and quietly moves old, unused notes to the archive so they don't slow things down. They're still there when you need them.
+- **Crash-safe** — Every write goes through a write-ahead log. If your machine dies mid-write, nothing is lost.
+- **Private by default** — Everything stays on your machine. You choose what to share.
 
-### Core Principles
-
-- **Local first** — runs fully offline
-- **Zero hard dependencies** — Python stdlib is enough for the base layer
-- **Crash-safe** — Write-Ahead Log (WAL) before every write
-- **Multi-agent** — Scope tags control what each agent can see
-- **No context bloat** — Query-on-demand, not everything-in-prompt
-
----
-
-## Features
-
-### MVP
-- ✅ WAL protocol — crash recovery built-in
-- ✅ HOT/WARM/COLD tiering — automatic memory temperature management
-- ✅ Auto-deduplication — hash-based, no duplicate entries
-- ✅ Memory decay scoring — older, unused memories fade automatically
-- ✅ BM25 search — fast keyword search, zero install
-
-### Extended
-- 🔧 Scope tags — `private` / `team` / `shared:project` / `public`
-- 🔧 Tiered semantic search — ollama → API → BM25 fallback
-- 🔧 Git-based cross-team sync — share only what you choose
-
----
-
-## Semantic Search (Tiered)
-
-Palaia automatically uses the best available search:
-
-| Tier | Requires | Quality |
-|------|----------|---------|
-| BM25/TF-IDF | Nothing (default) | Good |
-| Local embeddings | `ollama` + `nomic-embed-text` | Great |
-| API embeddings | OpenAI / Voyage AI key | Best |
-
-No configuration needed — Palaia detects what's available.
-
----
-
-## Cross-Team Knowledge Transfer via Git
-
-Share knowledge between agent teams without a central server:
-
-```bash
-# Publish your public memories
-palaia export --remote git@github.com:org/knowledge-base.git
-
-# Import from another team
-palaia import git@github.com:org/knowledge-base.git
-```
-
-Only memories tagged `scope: public` are ever exported.  
-`scope: team` memories never leave your workspace.
-
----
-
-## Scope Tags
-
-Every memory entry carries a scope:
-
-```yaml
----
-scope: private      # only the writing agent
-scope: team         # all agents in this workspace
-scope: shared:proj  # agents with access to project "proj"
-scope: public       # exportable via git
----
-```
-
-**Sharing is always explicit — never implicit.**
-
----
-
-## Architecture
-
-```
-.palaia/
-  hot/        active memories (< 7 days or high score)
-  warm/       occasional access (7–30 days)
-  cold/       archive (> 30 days, still searchable)
-  wal/        write-ahead log (crash recovery)
-  index/      search index (BM25 + optional embeddings)
-```
-
----
-
-## Installation
+## Quick Start
 
 ```bash
 pip install palaia
+palaia init
+palaia write "The deploy server is at 10.0.1.5" --tags "infra,servers"
+palaia query "where is the server"
 ```
 
-## Status
+## How It Works
 
-**v0.1.0** — Core features complete. See [CHANGELOG](CHANGELOG.md) for details.  
-Architecture Decision Records: [`docs/adr/`](docs/adr/)
+Palaia organizes memories into three tiers, like a desk:
 
----
+- 🔥 **Hot** — Things you use all the time. Right in front of you.
+- 🌤 **Warm** — Things you used recently. In the drawer.
+- ❄️ **Cold** — Old stuff. In the filing cabinet. Still searchable.
+
+Memories automatically move between tiers based on how often you access them. No manual cleanup needed — just run `palaia gc` occasionally (or let your agent do it).
+
+## Search Options
+
+**Keyword search** works out of the box — zero setup, zero dependencies.
+
+For smarter search that understands meaning (finding "due date" when you stored "deadline"):
+
+```bash
+# See what's available on your machine
+palaia detect
+
+# Option A: Local AI server (recommended)
+ollama pull nomic-embed-text
+palaia config set embedding_provider ollama
+
+# Option B: Pure Python (no server needed)
+pip install "palaia[sentence-transformers]"
+palaia config set embedding_provider sentence-transformers
+
+# Option C: Cloud (needs API key)
+export OPENAI_API_KEY="sk-..."
+palaia config set embedding_provider openai
+```
+
+When semantic search is active, Palaia combines keyword matching with meaning-based search for the best results.
+
+## Sharing Between Agents
+
+Control who sees what with scope tags:
+
+```bash
+palaia write "my secret" --scope private       # Only this agent
+palaia write "team info" --scope team           # All agents in workspace
+palaia write "public docs" --scope public       # Can be exported
+palaia export --remote git@github.com:team/shared-memory.git
+```
+
+## OpenClaw Integration
+
+Palaia is a drop-in replacement for OpenClaw's built-in memory:
+
+```bash
+npm install @palaia/openclaw
+```
+
+Add `"@palaia/openclaw"` to your plugins list and you're done.
+
+## CLI Reference
+
+| Command | Description |
+|---------|-------------|
+| `palaia init` | Set up a new memory store |
+| `palaia write "text"` | Save a memory |
+| `palaia query "search"` | Find memories |
+| `palaia get <id>` | Read a specific memory |
+| `palaia list` | List memories in a tier |
+| `palaia status` | Check system health |
+| `palaia gc` | Clean up and rotate tiers |
+| `palaia detect` | Show available embedding providers |
+| `palaia config set <k> <v>` | Change a setting |
+| `palaia export` | Export public memories |
+| `palaia import <path>` | Import shared memories |
+| `palaia migrate <path>` | Import from other memory formats |
+| `palaia recover` | Replay any interrupted writes |
+
+## Migrating from smart-memory
+
+```bash
+palaia migrate . --dry-run   # Preview first
+palaia migrate .             # Import everything
+```
+
+## Configuration
+
+Settings live in `.palaia/config.json`. Change them with `palaia config set`:
+
+```bash
+palaia config set embedding_provider sentence-transformers
+palaia config set hot_threshold_days 14
+palaia config list
+```
+
+## Development
+
+```bash
+git clone https://github.com/iret77/palaia.git
+cd palaia
+pip install -e ".[dev]"
+pytest
+```
 
 ## License
 
-MIT — free to use, modify, and build on.
-
----
-
-*Built for the [OpenClaw](https://github.com/openclaw/openclaw) ecosystem.*
+MIT — do what you want with it.
