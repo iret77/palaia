@@ -258,25 +258,30 @@ def cmd_status(args):
     if recovered:
         print(f"  Recovered: {recovered} entries")
 
-    # Embedding status
-    from palaia.embeddings import auto_detect_provider, get_provider_display_info, BM25Provider
-    provider = auto_detect_provider(store.config)
-    provider_display = get_provider_display_info(provider)
-    has_embed = not isinstance(provider, BM25Provider)
+    # Embedding chain status
+    from palaia.embeddings import build_embedding_chain, BM25Provider
 
-    print(f"\nEmbedding: {provider_display} {'✓' if has_embed else '(fallback)'}")
-    print(f"  → BM25 keyword search: active")
-    if has_embed:
-        print(f"  → Semantic search: active ({provider.name})")
-    else:
-        print(f"  → Semantic search: not configured")
+    chain = build_embedding_chain(store.config)
+    statuses = chain.provider_status()
 
-    # Check API providers
-    from palaia.embeddings import _check_openai_key, _check_voyage_key
-    if _check_openai_key() or _check_voyage_key():
-        print(f"  → API search: configured")
+    chain_display = " → ".join(s["name"] for s in statuses)
+    print(f"\nEmbedding chain: {chain_display}")
+    for i, s in enumerate(statuses, 1):
+        model_str = f" ({s['model']})" if s.get("model") else ""
+        mark = "✓" if s["available"] else "✗"
+        print(f"  {i}. {s['name']}{model_str} {mark} {s['status']}")
+
+    # Determine active provider
+    has_embed = any(s["available"] and s["name"] != "bm25" for s in statuses)
+    if chain.fallback_reason:
+        active = chain.active_provider_name or "bm25"
+        print(f"Active: {active} (fallback — {chain.fallback_reason})")
+    elif has_embed:
+        # First available non-bm25
+        active = next((s["name"] for s in statuses if s["available"] and s["name"] != "bm25"), "bm25")
+        print(f"Active: {active} (primary)")
     else:
-        print(f"  → API search: not configured")
+        print(f"Active: bm25 (keyword search)")
 
     return 0
 
@@ -363,20 +368,85 @@ def cmd_detect(args):
         print("\nNo embedding providers found. Using keyword search (BM25).")
         print("Install one for semantic search: pip install 'palaia[sentence-transformers]'")
 
+    # Recommended chain
+    has_openai = "openai" in available
+    has_local = any(p in available for p in ("sentence-transformers", "fastembed", "ollama"))
+    local_name = next((p for p in ("sentence-transformers", "fastembed", "ollama") if p in available), None)
+
+    print()
+    if has_openai and has_local:
+        chain_parts = ["openai", local_name, "bm25"]
+        chain_str = " → ".join(chain_parts)
+        print(f"Recommended chain: {chain_str}")
+        print(f"  (Best quality cloud + best local fallback + always-on keyword backup)")
+    elif has_local:
+        chain_parts = [local_name, "bm25"]
+        chain_str = " → ".join(chain_parts)
+        print(f"Recommended chain: {chain_str}")
+        print(f"  (Local provider, no cloud dependency)")
+    elif has_openai:
+        chain_parts = ["openai", "bm25"]
+        chain_str = " → ".join(chain_parts)
+        print(f"Recommended chain: {chain_str}")
+        print(f"  (Cloud-based. Install sentence-transformers for offline fallback)")
+    else:
+        chain_parts = ["bm25"]
+        chain_str = "bm25"
+        print(f"Recommended chain: {chain_str}")
+        print(f"  (Keyword search. pip install 'palaia[sentence-transformers]' for better results)")
+
+    cmd_str = " ".join(chain_parts)
+    print(f"\nSet with: palaia config set-chain {cmd_str}")
+
     # Show current config
     try:
         root = get_root()
         config = load_config(root)
+        chain_cfg = config.get("embedding_chain")
         provider_cfg = config.get("embedding_provider", "auto")
-        print(f"\nCurrent config: embedding_provider = {provider_cfg}")
+        if chain_cfg:
+            print(f"\nCurrent config: embedding_chain = {' → '.join(chain_cfg)}")
+        else:
+            print(f"\nCurrent config: embedding_provider = {provider_cfg}")
     except FileNotFoundError:
         print(f"\nCurrent config: not initialized (run 'palaia init' first)")
 
     return 0
 
 
+def cmd_config_set_chain(args):
+    """Set the embedding fallback chain."""
+    root = get_root()
+    config = load_config(root)
+
+    chain = args.providers
+    valid_providers = {"openai", "sentence-transformers", "fastembed", "ollama", "bm25"}
+    for p in chain:
+        if p not in valid_providers:
+            if _json_out({"error": f"Unknown provider: {p}. Valid: {', '.join(sorted(valid_providers))}"}, args):
+                return 1
+            print(f"Unknown provider: {p}", file=sys.stderr)
+            print(f"Valid providers: {', '.join(sorted(valid_providers))}", file=sys.stderr)
+            return 1
+
+    # Ensure bm25 at the end if not present
+    if "bm25" not in chain:
+        chain = chain + ["bm25"]
+
+    config["embedding_chain"] = chain
+    save_config(root, config)
+
+    chain_str = " → ".join(chain)
+    if _json_out({"embedding_chain": chain}, args):
+        return 0
+    print(f"Embedding chain: {chain_str}")
+    return 0
+
+
 def cmd_config(args):
     """Get or set configuration values."""
+    if args.action == "set-chain":
+        return cmd_config_set_chain(args)
     if args.action == "get":
         root = get_root()
         config = load_config(root)
@@ -604,6 +674,9 @@ def main():
     p_config_set.add_argument("--json", action="store_true", help="Output as JSON")
     p_config_list = config_sub.add_parser("list", help="List all config values")
     p_config_list.add_argument("--json", action="store_true", help="Output as JSON")
+    p_config_set_chain = config_sub.add_parser("set-chain", help="Set the embedding fallback chain")
+    p_config_set_chain.add_argument("providers", nargs="+", help="Provider names in priority order")
+    p_config_set_chain.add_argument("--json", action="store_true", help="Output as JSON")
 
     # migrate
     p_migrate = sub.add_parser("migrate", help="Import from external memory formats")

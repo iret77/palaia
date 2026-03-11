@@ -6,6 +6,11 @@ Providers are detected automatically in this order:
 3. fastembed (lightweight)
 4. OpenAI API (cloud, needs key)
 5. BM25 (always available, keyword-based fallback)
+
+Embedding Chain:
+  A configurable fallback chain lets you define a priority list of providers.
+  Palaia tries the first provider; if it fails (rate-limit, timeout, import error),
+  it moves to the next. BM25 is always the last resort.
 """
 
 from __future__ import annotations
@@ -390,6 +395,195 @@ def detect_providers() -> list[dict]:
     return providers
 
 
+class EmbeddingChain:
+    """Tries providers in order. Falls back on error."""
+
+    def __init__(self, chain: list[str], models: dict[str, str] | None = None):
+        self.chain_names = chain
+        self.providers: list[EmbeddingProvider] = []
+        self.models = models or {}
+        self._last_error: str | None = None
+        self._active_provider: str | None = None
+        self._fallback_reason: str | None = None
+        for name in chain:
+            if name == "bm25":
+                continue  # BM25 is always the implicit last resort
+            try:
+                provider = _create_provider(name, self.models.get(name))
+                self.providers.append(provider)
+            except (ImportError, ValueError):
+                continue  # skip unavailable
+
+    @property
+    def name(self) -> str:
+        """Display name for the chain."""
+        return " → ".join(self.chain_names)
+
+    @property
+    def active_provider_name(self) -> str | None:
+        """Name of the currently active (last successful) provider."""
+        return self._active_provider
+
+    @property
+    def fallback_reason(self) -> str | None:
+        """Reason why we fell back from the primary provider."""
+        return self._fallback_reason
+
+    def embed_query(self, text: str) -> tuple[list[float], str]:
+        """Returns (vector, provider_name). Tries each provider in order."""
+        self._fallback_reason = None
+        primary_name = self.providers[0].name if self.providers else None
+        for provider in self.providers:
+            try:
+                vector = provider.embed_query(text)
+                self._active_provider = provider.name
+                if provider.name != primary_name:
+                    self._fallback_reason = self._last_error
+                return vector, provider.name
+            except Exception as e:
+                self._last_error = f"{provider.name}: {e}"
+                warnings.warn(f"{provider.name} failed: {e}, trying next...")
+                continue
+        # All failed → BM25 (return empty vector)
+        self._active_provider = "bm25"
+        if primary_name:
+            self._fallback_reason = self._last_error
+        return [], "bm25"
+
+    def embed(self, texts: list[str]) -> tuple[list[list[float]], str]:
+        """Batch embed. Returns (vectors, provider_name)."""
+        self._fallback_reason = None
+        primary_name = self.providers[0].name if self.providers else None
+        for provider in self.providers:
+            try:
+                vectors = provider.embed(texts)
+                self._active_provider = provider.name
+                if provider.name != primary_name:
+                    self._fallback_reason = self._last_error
+                return vectors, provider.name
+            except Exception as e:
+                self._last_error = f"{provider.name}: {e}"
+                warnings.warn(f"{provider.name} failed: {e}, trying next...")
+                continue
+        self._active_provider = "bm25"
+        if primary_name:
+            self._fallback_reason = self._last_error
+        return [], "bm25"
+
+    def provider_status(self) -> list[dict]:
+        """Get status info for each provider in the chain."""
+        detected = {p["name"]: p for p in detect_providers()}
+        statuses = []
+        for name in self.chain_names:
+            if name == "bm25":
+                statuses.append({
+                    "name": "bm25",
+                    "model": None,
+                    "available": True,
+                    "status": "always available",
+                })
+                continue
+            info = detected.get(name, {})
+            model = self.models.get(name)
+            # Get default model from provider class
+            if not model:
+                defaults = {
+                    "openai": OpenAIProvider.default_model,
+                    "sentence-transformers": SentenceTransformersProvider.default_model,
+                    "fastembed": FastEmbedProvider.default_model,
+                    "ollama": OllamaProvider.default_model,
+                }
+                model = defaults.get(name)
+            available = info.get("available", False)
+            if name == "openai":
+                status = "API key found" if available else "no key found"
+            elif name == "ollama":
+                if info.get("server_running"):
+                    status = "server running" if available else "model not pulled"
+                else:
+                    status = "server not running"
+            else:
+                status = "installed" if available else "not installed"
+            statuses.append({
+                "name": name,
+                "model": model,
+                "available": available,
+                "status": status,
+            })
+        return statuses
+
+
+def _resolve_embedding_models(config: dict) -> dict[str, str]:
+    """Extract per-provider model overrides from config.
+    
+    Supports both:
+      - embedding_model: "text-embedding-3-large"  (old format, applies to active provider)
+      - embedding_model: {"openai": "text-embedding-3-large", ...}  (new format)
+    """
+    raw = config.get("embedding_model", "")
+    if isinstance(raw, dict):
+        return raw
+    # Old format: single string → no per-provider mapping
+    return {}
+
+
+def _resolve_single_model(config: dict) -> str | None:
+    """Get single model string for backward compat."""
+    raw = config.get("embedding_model", "")
+    if isinstance(raw, str) and raw:
+        return raw
+    return None
+
+
+def build_embedding_chain(config: dict) -> EmbeddingChain:
+    """Build an EmbeddingChain from config.
+    
+    Supports:
+      - embedding_chain: ["openai", "sentence-transformers", "bm25"]
+      - embedding_provider: "auto" (legacy, auto-detect)
+      - embedding_provider: "sentence-transformers" (legacy, single provider)
+    
+    embedding_chain takes precedence over embedding_provider.
+    """
+    models = _resolve_embedding_models(config)
+    single_model = _resolve_single_model(config)
+
+    # New format: explicit chain
+    chain = config.get("embedding_chain")
+    if chain and isinstance(chain, list):
+        # Ensure bm25 is always at the end
+        if "bm25" not in chain:
+            chain = chain + ["bm25"]
+        return EmbeddingChain(chain, models)
+
+    # Legacy format: embedding_provider
+    provider_name = config.get("embedding_provider", "auto")
+
+    if provider_name == "none":
+        return EmbeddingChain(["bm25"], models)
+
+    if provider_name != "auto":
+        # Single explicit provider + bm25 fallback
+        chain_list = [provider_name, "bm25"]
+        # If single_model is set, map it to this provider
+        if single_model and provider_name not in models:
+            models[provider_name] = single_model
+        return EmbeddingChain(chain_list, models)
+
+    # Auto-detect: build chain from available providers
+    detected = detect_providers()
+    chain_list = []
+    for p in detected:
+        if p["available"] and p["name"] != "voyage":
+            chain_list.append(p["name"])
+    chain_list.append("bm25")
+    if single_model:
+        # Apply single model to first provider if no per-provider config
+        if chain_list and chain_list[0] not in models:
+            models[chain_list[0]] = single_model
+    return EmbeddingChain(chain_list, models)
+
+
 def auto_detect_provider(config: dict | None = None) -> EmbeddingProvider | BM25Provider:
     """Auto-detect the best available embedding provider.
     
@@ -400,10 +594,15 @@ def auto_detect_provider(config: dict | None = None) -> EmbeddingProvider | BM25
     
     Returns:
         An embedding provider instance.
+    
+    Note: For new code, prefer build_embedding_chain() which supports fallback chains.
     """
     config = config or {}
     provider_name = config.get("embedding_provider", "auto")
     model = config.get("embedding_model", "") or None
+    # Handle dict-style embedding_model for backward compat
+    if isinstance(model, dict):
+        model = None
 
     if provider_name == "none":
         return BM25Provider()
