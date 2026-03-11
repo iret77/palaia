@@ -12,6 +12,7 @@ from palaia.config import DEFAULT_CONFIG, find_palaia_root, get_root, save_confi
 from palaia.store import Store
 from palaia.search import SearchEngine
 from palaia.sync import export_entries, import_entries
+from palaia.migrate import migrate, format_result, detect_format
 
 
 def cmd_init(args):
@@ -194,6 +195,23 @@ def cmd_import(args):
     return 0
 
 
+def cmd_migrate(args):
+    """Migrate from external memory formats."""
+    root = get_root()
+    store = Store(root)
+    store.recover()
+
+    result = migrate(
+        source=args.source,
+        store=store,
+        format_name=args.format_name,
+        scope_override=args.scope,
+        dry_run=args.dry_run,
+    )
+    print(format_result(result))
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="palaia",
@@ -242,6 +260,15 @@ def main():
     p_import.add_argument("source", help="Path or git URL to import from")
     p_import.add_argument("--dry-run", action="store_true", help="Preview without writing")
 
+    # migrate
+    p_migrate = sub.add_parser("migrate", help="Import from external memory formats")
+    p_migrate.add_argument("source", help="Source path (directory or file)")
+    p_migrate.add_argument("--dry-run", action="store_true", help="Preview without writing")
+    p_migrate.add_argument("--format", default=None, dest="format_name",
+                           choices=["smart-memory", "flat-file", "json-memory", "generic-md"],
+                           help="Force source format")
+    p_migrate.add_argument("--scope", default=None, help="Override scope for all entries")
+
     args = parser.parse_args()
     if not args.command:
         parser.print_help()
@@ -256,6 +283,7 @@ def main():
         "gc": cmd_gc,
         "export": cmd_export,
         "import": cmd_import,
+        "migrate": cmd_migrate,
     }
     try:
         return commands[args.command](args)
