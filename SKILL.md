@@ -47,7 +47,45 @@ Tell the user: "Should I switch OpenClaw to use Palaia as the memory system?"
 Tell the user: "Your heartbeat has old memory commands. Should I update them to use Palaia?"
 - If yes: update HEARTBEAT.md, replace `memory_search`/`memory_get`/direct file reads with `palaia query`/`palaia write` equivalents
 
-**Do not proceed to Step 3 until all warnings are addressed or explicitly dismissed by the user.**
+**Do not proceed until all warnings are addressed or explicitly dismissed by the user.**
+
+### Onboarding Conversation
+
+After running `palaia doctor` and reviewing warnings, have a brief conversation with your user.
+Keep it short — 3 questions max. No technical details unless the user asks.
+
+**Script:**
+
+Tell the user:
+"I've set up Palaia for you — your memory is now crash-safe and searchable.
+Quick setup: 3 short questions."
+
+**Question 1 — Search quality:**
+If an OpenAI API key is present on this system:
+  Ask: "Should I use your OpenAI key for smarter memory search? It gives better results."
+  → yes: put openai first in chain
+  → no: use sentence-transformers (install if needed) or BM25
+
+If no OpenAI key:
+  Ask: "Should I install a local search model for better memory search? It's free, runs offline, takes about 300MB."
+  → yes: pip install sentence-transformers, then palaia warmup
+  → no: BM25 only (say: "Search will be keyword-based — you can improve this later")
+
+**Question 2 — Existing memory (only ask if legacy memory files exist OR smart-memory detected):**
+  Ask: "You have existing memory. Should I bring it into Palaia?"
+  → yes: run palaia migrate <workspace-path>
+  → no: start fresh (existing files stay untouched)
+
+**Question 3 — Projects (only ask if multiple project folders detected OR more than 1 agent present):**
+  Ask: "Do you work on multiple projects? I can keep their memories separate."
+  → yes: briefly explain: "Use 'palaia project create <name>' for each project. I'll remember which memories belong where."
+  → no: skip
+
+**Wrap up:**
+Tell the user what was configured — one sentence:
+"Done. [Search quality: OpenAI / local model / keyword-only]. [Migration: X entries imported / fresh start]. [Projects: configured / not used]."
+
+Do not explain commands, WAL, BM25, embedding models, or any technical details unless the user explicitly asks.
 
 ### Step 3: Check embedding setup (auto-configured by init)
 ```bash
