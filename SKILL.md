@@ -18,6 +18,20 @@ metadata:
 
 # Palaia — Agent Memory Skill
 
+## Communication During Setup
+
+- After each major step, send a brief status message to the user. Don't go silent.
+- If a step takes longer than ~10 seconds, say what you're doing: "Installing sentence-transformers, this takes a moment…"
+- If something unexpected happens (e.g. CUDA error, provider fails), explain what happened and what you're doing instead — immediately.
+- Don't batch all steps and report at the end. Report after each step.
+
+Example pacing:
+1. "Installing Palaia…" → [runs pip install] → "Done. Initializing…"
+2. "Checking your system for available search providers…" → [runs palaia doctor + detect] → "Found: [X]. Quick question:"
+3. [Onboarding conversation — max 3 questions]
+4. "Configuring chain… warming up model (this takes ~15 seconds)…" → "Ready."
+5. "All set. Here's your setup: [one sentence summary]"
+
 ## Setup Flow (follow this exactly)
 
 ### Step 1: Install and initialize
@@ -68,12 +82,12 @@ If an OpenAI API key is present AND a local model (sentence-transformers/fastemb
 
 If an OpenAI API key is present BUT no local model is installed:
   → Tell the user: "You have an OpenAI API key — great for search quality. But without a local backup, search quality drops significantly when OpenAI is unavailable. I recommend installing a small local model (300MB, free, runs offline). Should I do that?"
-  → yes: pip install sentence-transformers, then palaia warmup, chain = openai → sentence-transformers → bm25
+  → yes: pip install sentence-transformers (if CUDA issues: pip install fastembed instead — lighter, no GPU needed), then palaia warmup, chain = openai → sentence-transformers → bm25
   → no: chain = openai → bm25 (warn: "Note: search may fail or degrade without a local fallback.")
 
 If no OpenAI key AND no local model:
   → Tell the user: "No search provider found yet. I recommend installing a free local model (300MB). Should I do that?"
-  → yes: pip install sentence-transformers, then palaia warmup, chain = sentence-transformers → bm25
+  → yes: pip install sentence-transformers (if CUDA issues: pip install fastembed instead — lighter, no GPU needed), then palaia warmup, chain = sentence-transformers → bm25
   → no: BM25 only (warn: "Search will be keyword-based — you can improve this later with palaia detect.")
 
 If no OpenAI key BUT local model detected:
@@ -110,9 +124,10 @@ palaia config set-chain <provider1> [provider2] bm25
 
 If only BM25 is shown and you want semantic search:
 ```bash
-pip install sentence-transformers   # fast local option
+pip install sentence-transformers   # Recommended for most systems
 palaia warmup                       # pre-load model
 ```
+If sentence-transformers fails or requires CUDA: use fastembed instead (`pip install fastembed`) — lighter, no GPU needed.
 
 ### Step 4: Warm up models
 ```bash
