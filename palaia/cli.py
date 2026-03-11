@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 
 from palaia import __version__
-from palaia.config import DEFAULT_CONFIG, get_root, load_config, save_config
+from palaia.config import DEFAULT_CONFIG, find_palaia_root, get_root, load_config, save_config
+from palaia.doctor import format_doctor_report, run_doctor
 from palaia.migrate import format_result, migrate
 from palaia.project import ProjectManager
 from palaia.search import SearchEngine
@@ -570,6 +571,20 @@ def cmd_gc(args):
     return 0
 
 
+def cmd_doctor(args):
+    """Run diagnostics on the local Palaia instance."""
+    palaia_root = find_palaia_root()
+
+    results = run_doctor(palaia_root)
+
+    if _json_out({"checks": results}, args):
+        return 0
+
+    show_fix = getattr(args, "fix", False)
+    print(format_doctor_report(results, show_fix=show_fix))
+    return 0
+
+
 def cmd_export(args):
     """Export public entries."""
     result = export_entries(
@@ -896,6 +911,11 @@ def main():
     p_proj_delete.add_argument("name", help="Project name")
     p_proj_delete.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # doctor
+    p_doctor = sub.add_parser("doctor", help="Diagnose Palaia instance and detect legacy systems")
+    p_doctor.add_argument("--fix", action="store_true", help="Show guided fix instructions for each warning")
+    p_doctor.add_argument("--json", action="store_true", help="Output as JSON")
+
     # export
     p_export = sub.add_parser("export", help="Export public entries")
     p_export.add_argument("--remote", default=None, help="Git remote URL")
@@ -958,6 +978,7 @@ def main():
         "list": cmd_list,
         "status": cmd_status,
         "gc": cmd_gc,
+        "doctor": cmd_doctor,
         "export": cmd_export,
         "import": cmd_import,
         "migrate": cmd_migrate,

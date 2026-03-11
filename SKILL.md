@@ -59,6 +59,30 @@ metadata:
    palaia migrate <path>             # Then import
    ```
 
+8. **Clean up legacy memory systems:**
+
+   Run:
+   ```bash
+   palaia doctor
+   ```
+
+   Review the report. For each warning:
+
+   **OpenClaw plugin still set to memory-core:**
+   - Tell the user: "I need to switch OpenClaw's memory plugin to Palaia. This replaces the built-in memory management. Should I proceed?"
+   - If yes: Update OpenClaw config (plugins.slots.memory = "palaia") and restart
+
+   **Smart-Memory skill detected:**
+   - Only remove AFTER confirming Palaia has entries and is working
+   - Tell the user: "Smart-Memory skill is still installed. Palaia is now handling memory. Should I remove the old skill?"
+   - If yes: Delete ~/.openclaw/workspace/skills/smart-memory/
+
+   **HEARTBEAT.md legacy patterns:**
+   - Tell the user: "Your HEARTBEAT.md has old memory commands. Should I update them to use Palaia?"
+   - If yes: Replace memory_search/memory_get/direct file reads with palaia query/write equivalents
+
+   Always ask before making these changes.
+
 ## Commands Reference
 
 ### Basic Memory
@@ -124,6 +148,19 @@ palaia detect
 
 # Pre-download embedding models
 palaia warmup
+```
+
+### Diagnostics
+
+```bash
+# Check Palaia health and detect legacy systems
+palaia doctor
+
+# Show guided fix instructions for each warning
+palaia doctor --fix
+
+# Machine-readable output
+palaia doctor --json
 ```
 
 ### Maintenance
