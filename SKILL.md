@@ -49,30 +49,31 @@ Tell the user: "Your heartbeat has old memory commands. Should I update them to 
 
 **Do not proceed to Step 3 until all warnings are addressed or explicitly dismissed by the user.**
 
-### Step 3: Detect available providers
+### Step 3: Check embedding setup (auto-configured by init)
 ```bash
 palaia detect
 ```
-Show the user the results. Explain what's available in plain language.
+Review the detected providers and configured chain. `palaia init` automatically detects available providers
+and configures the best embedding chain — you usually don't need to change anything.
 
-### Step 4: Recommend a chain based on detect output
-- OpenAI key + local provider → `openai <local> bm25` ("Best quality with local fallback")
-- Only local provider → `<local> bm25` ("Fully local, no cloud")
-- Only OpenAI key → `openai bm25` (suggest also installing sentence-transformers)
-- Nothing detected → `bm25` (suggest `pip install "palaia[sentence-transformers]"`)
-
-### Step 5: Configure
+If the chain looks wrong or you want to change it:
 ```bash
 palaia config set-chain <provider1> [provider2] bm25
 ```
 
-### Step 6: Warm up models
+If only BM25 is shown and you want semantic search:
+```bash
+pip install sentence-transformers   # fast local option
+palaia warmup                       # pre-load model
+```
+
+### Step 4: Warm up models
 ```bash
 palaia warmup
 ```
 This pre-downloads embedding models so the first search is instant. Always run after chain setup.
 
-### Step 7: Optional — migrate additional memory files
+### Step 5: Optional — migrate additional memory files
 ```bash
 palaia migrate <path> --dry-run   # Preview first
 palaia migrate <path>             # Then import

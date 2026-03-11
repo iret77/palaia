@@ -28,19 +28,63 @@ def _json_out(data, args):
 def cmd_init(args):
     """Initialize .palaia directory."""
     target = Path(args.path or ".") / ".palaia"
-    if target.exists():
+    is_reinit = target.exists()
+
+    if is_reinit:
+        # Re-init: check if chain is already configured
+        existing_config = load_config(target)
+        existing_chain = existing_config.get("embedding_chain")
         if _json_out({"status": "exists", "path": str(target)}, args):
             return 0
         print(f"Already initialized: {target}")
-        return 0
+        # Only auto-configure if no chain is set yet
+        if existing_chain and len(existing_chain) > 0:
+            return 0
+        # Fall through to auto-configure chain
+        config = existing_config
+    else:
+        target.mkdir(parents=True)
+        for sub in ("hot", "warm", "cold", "wal", "index"):
+            (target / sub).mkdir()
+        config = dict(DEFAULT_CONFIG)
 
-    target.mkdir(parents=True)
-    for sub in ("hot", "warm", "cold", "wal", "index"):
-        (target / sub).mkdir()
-    save_config(target, DEFAULT_CONFIG)
-    if _json_out({"status": "created", "path": str(target)}, args):
-        return 0
-    print(f"Initialized Palaia at {target}")
+    # Auto-detect providers and configure the best chain
+    from palaia.embeddings import detect_providers
+
+    detected = detect_providers()
+    detected_map = {p["name"]: p["available"] for p in detected}
+
+    chain = []
+    if detected_map.get("openai"):
+        chain.append("openai")
+    if detected_map.get("sentence-transformers"):
+        chain.append("sentence-transformers")
+    elif detected_map.get("fastembed"):
+        chain.append("fastembed")
+    elif detected_map.get("ollama"):
+        chain.append("ollama")
+    chain.append("bm25")  # always last
+
+    config["embedding_chain"] = chain
+    save_config(target, config)
+
+    if not is_reinit:
+        if _json_out({"status": "created", "path": str(target), "embedding_chain": chain}, args):
+            return 0
+        print(f"Initialized Palaia at {target}")
+
+    # Show chain info
+    if len(chain) > 1:
+        print(f"✅ Embedding chain configured: {' → '.join(chain)}")
+    else:
+        print("⚠️  No semantic search providers found. Using BM25 only.")
+        print("   To enable semantic search, install one of:")
+        print("   • sentence-transformers: pip install sentence-transformers")
+        print("   • fastembed: pip install fastembed")
+        print("   • ollama: https://ollama.ai (then: palaia config set-chain ollama bm25)")
+        print("   • OpenAI: set OPENAI_API_KEY env var")
+        print("   Then run: palaia warmup")
+
     return 0
 
 
@@ -109,6 +153,15 @@ def cmd_query(args):
     if _json_out({"results": results}, args):
         return 0
 
+    # BM25-only note
+    if not engine.has_embeddings and not getattr(args, "json", False):
+        config = load_config(root)
+        chain_cfg = config.get("embedding_chain", [])
+        bm25_only = not chain_cfg or chain_cfg == ["bm25"]
+        if bm25_only:
+            print("Note: Keyword search only (BM25). For semantic search: pip install sentence-transformers")
+            print()
+
     if not results:
         print("No results found.")
         return 0
@@ -123,7 +176,8 @@ def cmd_query(args):
             print(f"  Tags: {', '.join(r['tags'])}")
         print(f"  {r['body']}")
 
-    print(f"\n{len(results)} result(s) found. (Search tier: BM25)")
+    search_tier = "hybrid" if engine.has_embeddings else "BM25"
+    print(f"\n{len(results)} result(s) found. (Search tier: {search_tier})")
     return 0
 
 
@@ -300,6 +354,15 @@ def cmd_status(args):
         print(f"Active: {active} (primary)")
     else:
         print("Active: bm25 (keyword search)")
+
+    # BM25-only warning
+    bm25_only = all(s["name"] == "bm25" for s in statuses) or not has_embed
+    if bm25_only:
+        print()
+        print("⚠️  Semantic search is not enabled.")
+        print("   Results are keyword-based only.")
+        print("   Run 'palaia detect' to see available providers.")
+        print("   Run 'palaia warmup' after adding a provider.")
 
     return 0
 
