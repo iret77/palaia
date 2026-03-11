@@ -18,11 +18,39 @@ AI agents forget everything between sessions. Palaia fixes that:
 - **Crash-safe** — Every write goes through a write-ahead log. If your machine dies mid-write, nothing is lost.
 - **Private by default** — Everything stays on your machine. You choose what to share.
 
-## Quick Start
+## Getting Started
+
+### Recommended: Let your agent set it up
+
+Tell your OpenClaw agent:
+
+> "Install the Palaia memory skill from ClawHub"
+
+Your agent will:
+1. Install the skill (`clawhub install palaia`)
+2. Run `palaia detect` to analyze your system
+3. Recommend the best embedding setup for your hardware
+4. Ask you which option you prefer
+5. Configure everything automatically
+
+This is the recommended path — your agent handles installation, configuration,
+and picks the right embedding provider for your system.
+
+### Manual installation
+
+If you prefer to set things up yourself:
 
 ```bash
-pip install palaia
-palaia init
+pip install palaia                 # or: pip install git+https://github.com/iret77/palaia.git
+palaia init                        # create .palaia/ directory
+palaia detect                      # see what's available on your system
+palaia config set-chain sentence-transformers bm25  # configure embedding chain
+palaia warmup                      # pre-download models for instant first search
+```
+
+That's it — write your first memory:
+
+```bash
 palaia write "The deploy server is at 10.0.1.5" --tags "infra,servers"
 palaia query "where is the server"
 ```
@@ -95,6 +123,7 @@ Add `"@palaia/openclaw"` to your plugins list and you're done.
 | `palaia status` | Check system health |
 | `palaia gc` | Clean up and rotate tiers |
 | `palaia detect` | Show available embedding providers |
+| `palaia warmup` | Pre-download embedding models for instant first search |
 | `palaia config set <k> <v>` | Change a setting |
 | `palaia export` | Export public memories |
 | `palaia import <path>` | Import shared memories |
