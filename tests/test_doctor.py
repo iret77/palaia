@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
 
 import pytest
 
@@ -28,11 +26,21 @@ def palaia_root(tmp_path):
     for sub in ("hot", "warm", "cold", "wal", "index"):
         (root / sub).mkdir()
     # Write default config
-    config = {"version": 1, "embedding_chain": ["openai", "bm25"], "default_scope": "team",
-              "decay_lambda": 0.1, "hot_threshold_days": 7, "warm_threshold_days": 30,
-              "hot_max_entries": 50, "hot_min_score": 0.5, "warm_min_score": 0.1,
-              "wal_retention_days": 7, "lock_timeout_seconds": 5,
-              "embedding_provider": "auto", "embedding_model": ""}
+    config = {
+        "version": 1,
+        "embedding_chain": ["openai", "bm25"],
+        "default_scope": "team",
+        "decay_lambda": 0.1,
+        "hot_threshold_days": 7,
+        "warm_threshold_days": 30,
+        "hot_max_entries": 50,
+        "hot_min_score": 0.5,
+        "warm_min_score": 0.1,
+        "wal_retention_days": 7,
+        "lock_timeout_seconds": 5,
+        "embedding_provider": "auto",
+        "embedding_model": "",
+    }
     (root / "config.json").write_text(json.dumps(config))
     return root
 
@@ -192,9 +200,7 @@ class TestCheckWalHealth:
             "payload_hash": "abc",
             "status": "pending",
         }
-        (palaia_root / "wal" / "2025-01-01T00-00-00p00-00-test-123.json").write_text(
-            json.dumps(wal_entry)
-        )
+        (palaia_root / "wal" / "2025-01-01T00-00-00p00-00-test-123.json").write_text(json.dumps(wal_entry))
         result = _check_wal_health(palaia_root)
         assert result["status"] == "warn"
         assert "1 unflushed" in result["message"]
@@ -212,8 +218,13 @@ class TestFormatReport:
     def test_with_warnings(self):
         results = [
             {"name": "ok_check", "label": "Good check", "status": "ok", "message": "Fine"},
-            {"name": "warn_check", "label": "Warn check", "status": "warn", "message": "Problem",
-             "fix": "Do something"},
+            {
+                "name": "warn_check",
+                "label": "Warn check",
+                "status": "warn",
+                "message": "Problem",
+                "fix": "Do something",
+            },
         ]
         report = format_doctor_report(results)
         assert "1 warning" in report
@@ -221,8 +232,13 @@ class TestFormatReport:
 
     def test_with_fix_flag(self):
         results = [
-            {"name": "warn_check", "label": "Warn check", "status": "warn", "message": "Problem",
-             "fix": "Step 1: Do this\nStep 2: Do that"},
+            {
+                "name": "warn_check",
+                "label": "Warn check",
+                "status": "warn",
+                "message": "Problem",
+                "fix": "Step 1: Do this\nStep 2: Do that",
+            },
         ]
         report = format_doctor_report(results, show_fix=True)
         assert "Fix:" in report
@@ -251,9 +267,10 @@ class TestDoctorCLI:
         monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.chdir(palaia_root.parent)
 
-        from palaia.cli import main
         import io
         import sys
+
+        from palaia.cli import main
 
         captured = io.StringIO()
         monkeypatch.setattr(sys, "stdout", captured)
@@ -276,9 +293,10 @@ class TestDoctorCLI:
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("# Smart Memory")
 
-        from palaia.cli import main
         import io
         import sys
+
+        from palaia.cli import main
 
         captured = io.StringIO()
         monkeypatch.setattr(sys, "stdout", captured)

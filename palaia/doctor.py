@@ -123,10 +123,7 @@ def _check_openclaw_plugin() -> dict[str, Any]:
                     "label": "OpenClaw plugin",
                     "status": "warn",
                     "message": f"{memory_plugin} is active (not palaia)",
-                    "fix": (
-                        'Set plugins.slots.memory = "palaia" in OpenClaw config\n'
-                        "Then restart OpenClaw."
-                    ),
+                    "fix": ('Set plugins.slots.memory = "palaia" in OpenClaw config\nThen restart OpenClaw.'),
                     "details": {"plugin": memory_plugin, "config_path": str(config_path)},
                 }
             else:
@@ -158,10 +155,7 @@ def _check_smart_memory_skill() -> dict[str, Any]:
             "label": "Smart-Memory skill",
             "status": "warn",
             "message": f"Detected: {skill_path}",
-            "fix": (
-                "Remove or archive after Palaia is verified working:\n"
-                f"  rm -rf {skill_path}"
-            ),
+            "fix": (f"Remove or archive after Palaia is verified working:\n  rm -rf {skill_path}"),
             "details": {"path": str(skill_path)},
         }
 
@@ -252,7 +246,7 @@ def _check_heartbeat_legacy(workspace: Path | None = None) -> dict[str, Any]:
             "fix": (
                 "Replace legacy memory commands with Palaia equivalents:\n"
                 '  memory_search/memory_get → palaia query "search term"\n'
-                '  memory/*.md reads → palaia query / palaia write'
+                "  memory/*.md reads → palaia query / palaia write"
             ),
             "details": {"patterns_found": found},
         }
@@ -350,7 +344,10 @@ def format_doctor_report(results: list[dict[str, Any]], show_fix: bool = False) 
     if errors:
         lines.append(f"Errors: {errors} — fix before using Palaia")
     elif warnings:
-        lines.append(f"Action required: {warnings} warning(s)" + (" — see fixes above" if show_fix else " — run with --fix for guided cleanup"))
+        lines.append(
+            f"Action required: {warnings} warning(s)"
+            + (" — see fixes above" if show_fix else " — run with --fix for guided cleanup")
+        )
     else:
         lines.append("All clear! Palaia is healthy. 🎉")
 

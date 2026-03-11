@@ -704,19 +704,22 @@ def cmd_project(args):
             print(f"Project '{args.name}' not found.", file=sys.stderr)
             return 1
         entries = pm.get_project_entries(args.name, store)
-        if _json_out({
-            "project": project.to_dict(),
-            "entries": [
-                {
-                    "id": meta.get("id", "?"),
-                    "title": meta.get("title", "(untitled)"),
-                    "scope": meta.get("scope", "team"),
-                    "tier": tier,
-                    "preview": body[:80].replace("\n", " "),
-                }
-                for meta, body, tier in entries
-            ],
-        }, args):
+        if _json_out(
+            {
+                "project": project.to_dict(),
+                "entries": [
+                    {
+                        "id": meta.get("id", "?"),
+                        "title": meta.get("title", "(untitled)"),
+                        "scope": meta.get("scope", "team"),
+                        "tier": tier,
+                        "preview": body[:80].replace("\n", " "),
+                    }
+                    for meta, body, tier in entries
+                ],
+            },
+            args,
+        ):
             return 0
         desc = f" — {project.description}" if project.description else ""
         print(f"Project: {project.name}{desc}")

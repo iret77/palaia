@@ -61,6 +61,7 @@ class Store:
         elif project:
             # Try project default scope
             from palaia.project import ProjectManager
+
             pm = ProjectManager(self.root)
             proj = pm.get(project)
             if proj:

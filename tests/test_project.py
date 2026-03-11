@@ -5,13 +5,12 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 
-from palaia.config import save_config, DEFAULT_CONFIG
+from palaia.config import DEFAULT_CONFIG, save_config
 from palaia.entry import parse_entry
-from palaia.project import Project, ProjectManager
+from palaia.project import ProjectManager
 from palaia.store import Store
 
 
@@ -118,7 +117,7 @@ class TestProjectWrite:
     def test_write_uses_project_default_scope(self, pm, store):
         pm.create("clawsy", default_scope="private")
         entry_id = store.write("secret note", project="clawsy")
-        entry = store.read(entry_id, agent=None)
+        store.read(entry_id, agent=None)
         # Private entries need agent match; read raw instead
         path = store.root / "hot" / f"{entry_id}.md"
         text = path.read_text()
