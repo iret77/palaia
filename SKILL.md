@@ -266,6 +266,16 @@ palaia gc [--aggressive]
 palaia recover
 ```
 
+### Document Ingestion (RAG)
+
+```bash
+# Index a file, URL, or directory into the knowledge base
+palaia ingest <file-or-url> [--project X] [--scope X] [--tags a,b] [--chunk-size N] [--dry-run]
+
+# Query with RAG-formatted context (ready for LLM injection)
+palaia query "question" --project X --rag
+```
+
 ### Sync
 
 ```bash
@@ -331,6 +341,33 @@ palaia project set-scope <name> <scope>
 | Check what's in archived memory | `palaia list --tier cold` |
 | See system health | `palaia status` |
 | Clean up old entries | `palaia gc` |
+| Index a document or website | `palaia ingest <file/url> --project <name>` |
+| Search indexed documents for LLM context | `palaia query "..." --project <name> --rag` |
+
+## Document Knowledge Base
+
+Use `palaia ingest` to index external documents — PDFs, websites, text files, directories.
+Indexed content is chunked, embedded, and stored as regular entries (searchable like memory).
+
+**When to use:**
+- User asks you to "remember" a document, manual, or website
+- You need to search through a large document
+- Building a project-specific knowledge base
+
+**How to use:**
+```bash
+palaia ingest document.pdf --project my-project
+palaia ingest https://docs.example.com --project api-docs --scope team
+palaia ingest ./docs/ --project my-project --tags documentation
+
+palaia query "How does X work?" --project my-project --rag
+```
+
+The `--rag` flag returns a formatted context block ready to insert into your LLM prompt.
+
+**PDF support:** requires pdfplumber — install with: `pip install pdfplumber`
+
+**Source attribution:** each chunk tracks its origin (file, page, URL) automatically.
 
 ## Error Handling
 
