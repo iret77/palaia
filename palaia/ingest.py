@@ -12,7 +12,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
-from palaia.entry import parse_entry, serialize_entry
 from palaia.store import Store
 
 # Supported text extensions
@@ -128,9 +127,7 @@ class DocumentIngestor:
 
         # Directory: recurse
         if source_path and source_path.is_dir():
-            return self._ingest_directory(
-                source_path, project, scope, chunk_size, chunk_overlap, tags, dry_run, start
-            )
+            return self._ingest_directory(source_path, project, scope, chunk_size, chunk_overlap, tags, dry_run, start)
 
         # Single source
         pages, title = self._read_source(source)
@@ -212,9 +209,7 @@ class DocumentIngestor:
                 continue
             if fpath.suffix.lower() not in SUPPORTED_EXTENSIONS:
                 continue
-            result = self.ingest(
-                str(fpath), project, scope, chunk_size, chunk_overlap, tags, dry_run
-            )
+            result = self.ingest(str(fpath), project, scope, chunk_size, chunk_overlap, tags, dry_run)
             total_chunks += result.total_chunks
             stored_chunks += result.stored_chunks
             skipped_chunks += result.skipped_chunks
@@ -349,8 +344,8 @@ class DocumentIngestor:
         """Read a PDF file. Requires pdfplumber."""
         if not PDF_SUPPORT:
             raise ImportError(
-                f"PDF support requires pdfplumber. Install it with: pip install pdfplumber\n"
-                f"Or: pip install 'palaia[pdf]'"
+                "PDF support requires pdfplumber. Install it with: pip install pdfplumber\n"
+                "Or: pip install 'palaia[pdf]'"
             )
 
         pages: list[_PageChunk] = []

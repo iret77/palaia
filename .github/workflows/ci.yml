@@ -28,7 +28,8 @@ jobs:
           pip install ruff
 
       - name: Lint with ruff
-        run: ruff check palaia/ tests/
+        run: |
+          ruff check palaia/ tests/ || (echo "❌ Ruff lint failed. Fix locally: pip install ruff && ruff check --fix palaia/ tests/ && ruff format palaia/ tests/" && exit 1)
 
       - name: Run tests
         run: pytest tests/ -v

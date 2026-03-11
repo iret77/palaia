@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import http.server
-import os
 import threading
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from palaia.config import save_config, DEFAULT_CONFIG
-from palaia.entry import parse_entry
-from palaia.ingest import DocumentIngestor, IngestResult, format_rag_output, _HTMLTextExtractor
+from palaia.config import DEFAULT_CONFIG, save_config
+from palaia.ingest import DocumentIngestor, IngestResult, _HTMLTextExtractor, format_rag_output
 from palaia.store import Store
 
 
@@ -61,8 +58,7 @@ def sample_html(tmp_path):
     f = tmp_path / "sample.html"
     f.write_text(
         "<html><head><title>Test Page</title></head>"
-        "<body><h1>Hello</h1><p>This is a test HTML document with content. " * 60
-        + "</p></body></html>"
+        "<body><h1>Hello</h1><p>This is a test HTML document with content. " * 60 + "</p></body></html>"
     )
     return f
 
@@ -139,7 +135,9 @@ class TestIngestUrl:
         serve_dir.mkdir()
         (serve_dir / "api.html").write_text(content)
 
-        handler = lambda *a, **kw: http.server.SimpleHTTPRequestHandler(*a, directory=str(serve_dir), **kw)
+        def handler(*a, **kw):
+            return http.server.SimpleHTTPRequestHandler(*a, directory=str(serve_dir), **kw)
+
         server = http.server.HTTPServer(("127.0.0.1", 0), handler)
         port = server.server_address[1]
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -319,7 +317,9 @@ class TestHtmlExtractor:
 
     def test_skips_script_and_style(self):
         ext = _HTMLTextExtractor()
-        ext.feed("<html><head><style>body{color:red}</style></head><body><script>alert(1)</script><p>visible</p></body></html>")
+        ext.feed(
+            "<html><head><style>body{color:red}</style></head><body><script>alert(1)</script><p>visible</p></body></html>"
+        )
         text = ext.get_text()
         assert "visible" in text
         assert "alert" not in text

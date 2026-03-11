@@ -10,9 +10,9 @@ from pathlib import Path
 from palaia import __version__
 from palaia.config import DEFAULT_CONFIG, find_palaia_root, get_root, load_config, save_config
 from palaia.doctor import format_doctor_report, run_doctor
+from palaia.ingest import DocumentIngestor, format_rag_output
 from palaia.migrate import format_result, migrate
 from palaia.project import ProjectManager
-from palaia.ingest import DocumentIngestor, format_rag_output
 from palaia.search import SearchEngine
 from palaia.store import Store
 from palaia.sync import export_entries, import_entries
@@ -329,7 +329,7 @@ def cmd_ingest(args):
     if result.project:
         print(f'\nSearch with: palaia query "your question" --project {result.project}')
     else:
-        print(f'\nSearch with: palaia query "your question"')
+        print('\nSearch with: palaia query "your question"')
 
     return 0
 
