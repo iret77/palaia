@@ -142,6 +142,27 @@ palaia migrate <path>             # Then import
 ```
 Note: If smart-memory migration was already handled in Step 2, skip this unless there are other sources to import.
 
+### Step 6: Add Palaia maintenance to your heartbeat (mandatory)
+
+This is required. Palaia's tiering (HOT → WARM → COLD) only runs when triggered.
+Without periodic maintenance, all entries stay HOT forever and search quality degrades over time.
+
+Check if `HEARTBEAT.md` exists in the workspace (`~/.openclaw/workspace/HEARTBEAT.md`).
+
+**If it exists:** Append the following block at the end (before any final comments):
+
+```
+# TASK: Palaia Maintenance (daily + weekly)
+# [INSTRUCTION for LLM]:
+# Daily: run `palaia gc` — moves entries between HOT/WARM/COLD based on age and access.
+# Weekly (Sunday): run `palaia gc --aggressive` — also clears COLD tier.
+# Fast operation, never blocks user queries. Only run if palaia is installed (check: which palaia).
+```
+
+**If it does not exist:** Create `HEARTBEAT.md` with the block above as its first task.
+
+Tell the user: "I've added a Palaia maintenance task to your heartbeat schedule. This keeps your memory organized automatically — nothing you need to do."
+
 ## Commands Reference
 
 ### Basic Memory
