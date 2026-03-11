@@ -5,12 +5,42 @@ Persistent, local memory for AI agents — write something today, find it next w
 [![CI](https://github.com/iret77/palaia/actions/workflows/ci.yml/badge.svg)](https://github.com/iret77/palaia/actions/workflows/ci.yml)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Released March 2026](https://img.shields.io/badge/released-March%202026-brightgreen.svg)]()
+
+## What Palaia Does
+
+AI agents forget everything between sessions. Every restart is a blank slate — context from yesterday, decisions from last week, lessons learned an hour ago — all gone. Palaia fixes that.
+
+Palaia gives your agent a local notebook. When something worth remembering comes up — a user preference, a project decision, a configuration detail — the agent writes it down. Next session, it can search for it and find it again. No cloud service, no API keys required, everything stays on your machine.
+
+Palaia is built for [OpenClaw](https://openclaw.ai) agents but works with any Python-based agent framework via CLI or Python API.
+
+Search works in two ways: plain keyword matching (always available, zero setup) and semantic search that understands meaning. With semantic search enabled, searching for "deployment address" finds an entry about "server IP" even though the words don't match. You choose which search providers to use based on what's available on your system.
+
+Palaia also manages memory over time. Frequently accessed entries stay in the "hot" tier where they're instantly available. Entries that haven't been touched in a while automatically move to "warm" and eventually "cold" storage. Nothing gets deleted — old memories are still searchable, they just don't clutter the active workspace.
+
+## Why Palaia?
+
+Most memory solutions for AI agents depend on cloud APIs, external databases, or complex infrastructure.
+Palaia is different:
+
+| | Palaia | Cloud Memory | Vector DB |
+|---|---|---|---|
+| Runs offline | ✅ | ❌ | ❌ |
+| No external API required | ✅ | ❌ | Depends |
+| Survives crashes (WAL) | ✅ | Depends | Depends |
+| Automatic forgetting (decay) | ✅ | ❌ | ❌ |
+| Built for agents | ✅ | Sometimes | ❌ |
+| Open source | ✅ | Sometimes | ✅ |
+
+Palaia works on any machine, any network, with zero infrastructure.
+Your agent's memory stays local — private by default, shareable when you choose.
 
 ## Getting Started
 
 ### Recommended: Let your agent set it up
 
-If you're using [OpenClaw](https://github.com/openclaw), tell your agent:
+If you're using [OpenClaw](https://openclaw.ai), tell your agent:
 
 > "Install the Palaia memory skill from ClawHub"
 
@@ -32,16 +62,6 @@ That's it. Write your first memory:
 palaia write "The deploy server is at 10.0.1.5" --tags "infra,servers"
 palaia query "where is the server"
 ```
-
-## What Palaia Does
-
-AI agents forget everything between sessions. Every restart is a blank slate — context from yesterday, decisions from last week, lessons learned an hour ago — all gone. Palaia fixes that.
-
-Palaia gives your agent a local notebook. When something worth remembering comes up — a user preference, a project decision, a configuration detail — the agent writes it down. Next session, it can search for it and find it again. No cloud service, no API keys required, everything stays on your machine.
-
-Search works in two ways: plain keyword matching (always available, zero setup) and semantic search that understands meaning. With semantic search enabled, searching for "deployment address" finds an entry about "server IP" even though the words don't match. You choose which search providers to use based on what's available on your system.
-
-Palaia also manages memory over time. Frequently accessed entries stay in the "hot" tier where they're instantly available. Entries that haven't been touched in a while automatically move to "warm" and eventually "cold" storage. Nothing gets deleted — old memories are still searchable, they just don't clutter the active workspace.
 
 ## Features
 
@@ -257,6 +277,8 @@ palaia import https://github.com/team/shared-memory.git
 | `palaia export` | Export entries for sharing |
 | `palaia import <path>` | Import entries from an export |
 | `palaia migrate <path>` | Import from other memory formats |
+| `palaia ingest <path>` | Ingest documents for RAG search |
+| `palaia doctor` | Check and fix legacy data issues |
 
 All commands support `--json` for machine-readable output.
 
@@ -300,6 +322,44 @@ palaia config set-chain <providers...>  # Set embedding fallback chain
 | `warm_threshold_days` | `30` | Days before an entry moves from WARM to COLD |
 | `hot_max_entries` | `50` | Maximum entries in the HOT tier |
 | `decay_lambda` | `0.1` | How fast memory scores decrease over time |
+
+## Roadmap
+
+**Released (v1.1.1)**
+- [x] WAL-backed crash-safe storage
+- [x] HOT/WARM/COLD tiering with automatic decay
+- [x] Multi-provider semantic search (OpenAI, sentence-transformers, fastembed, ollama)
+- [x] Configurable fallback chain
+- [x] Projects with per-project scope
+- [x] `palaia doctor` for legacy cleanup
+- [x] Document ingestion (RAG) — `palaia ingest`
+- [x] Native OpenClaw plugin (`@palaia/openclaw`)
+- [x] Git-based knowledge sync (`palaia export/import`)
+
+**Planned**
+- [ ] Memory compression for COLD tier
+- [ ] Embedding cache (avoid re-computing unchanged entries)
+- [ ] palaia.ai documentation site
+- [ ] ClawHub skill registry integration (auto-update)
+- [ ] Multi-agent shared memory via git sync
+
+## Get Started
+
+**Recommended:** Ask your OpenClaw agent to install Palaia:
+> "Install the Palaia memory skill from ClawHub"
+
+**Or install manually:**
+
+```bash
+pip install palaia
+```
+
+**Links:**
+- [ClawHub](https://clawhub.com/skills/palaia) — Install via agent
+- [GitHub](https://github.com/iret77/palaia) — Source + Issues
+- [OpenClaw](https://openclaw.ai) — The agent platform Palaia is built for
+
+If you find Palaia useful, a ⭐ on GitHub goes a long way.
 
 ## Development
 
