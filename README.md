@@ -282,3 +282,5 @@ pytest
 ## License
 
 MIT
+
+© 2026 [byte5 GmbH](https://byte5.de) — MIT License

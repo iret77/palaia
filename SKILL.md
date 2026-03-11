@@ -271,3 +271,7 @@ Run `palaia gc` periodically (or let cron handle it) to rotate entries between t
 | `warm_threshold_days` | `30` | Days before WARM → COLD |
 | `hot_max_entries` | `50` | Max entries in HOT tier |
 | `decay_lambda` | `0.1` | Decay rate for memory scores |
+
+---
+
+© 2026 byte5 GmbH — MIT License

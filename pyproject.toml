@@ -4,17 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "palaia"
-version = "0.1.1"
+version = "1.0.0"
 description = "Local, cloud-free memory for OpenClaw agents."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.9"
 authors = [
-    {name = "Christian Schröter"},
+    {name = "byte5 GmbH", email = "hello@byte5.de"},
 ]
 keywords = ["memory", "agent", "ai", "local", "openclaw"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
