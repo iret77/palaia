@@ -33,10 +33,10 @@ palaia doctor
 
 Review **every** warning before continuing. For each finding, ask the user explicitly:
 
-**smart-memory skill detected:**
-Tell the user: "I found an existing smart-memory installation. Palaia replaces it. Should I migrate your existing memories and then deactivate smart-memory?"
-- If yes: run `palaia migrate <workspace-path>`, then remove the smart-memory skill folder
-- If no: continue, but both systems will run in parallel (not recommended)
+**Memory skill(s) detected (e.g. smart-memory, context-store, recall-pro, …):**
+Tell the user: "I found [N] installed memory skill(s): [names]. Palaia replaces these. Should I migrate your existing memories and deactivate the old skill(s)?"
+- If yes: run `palaia migrate <workspace-path>` for each, then remove or archive the old skill folder(s)
+- If no: continue, but multiple memory systems running in parallel is not recommended
 
 **OpenClaw memory plugin still set to memory-core:**
 Tell the user: "Should I switch OpenClaw to use Palaia as the memory system?"

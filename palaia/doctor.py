@@ -145,25 +145,100 @@ def _check_openclaw_plugin() -> dict[str, Any]:
     }
 
 
-def _check_smart_memory_skill() -> dict[str, Any]:
-    """Check if smart-memory skill is still installed."""
-    skill_path = Path.home() / ".openclaw" / "workspace" / "skills" / "smart-memory"
+def _parse_skill_frontmatter(text: str) -> dict[str, str]:
+    """Parse YAML-like frontmatter from SKILL.md without requiring a yaml library.
 
-    if skill_path.exists() and skill_path.is_dir():
+    Returns dict with 'name' and 'description' keys (empty string if not found).
+    """
+    result: dict[str, str] = {"name": "", "description": ""}
+    # Match content between --- fences
+    m = re.match(r"^---\s*\n(.*?)\n---", text, re.DOTALL)
+    if not m:
+        return result
+
+    fm = m.group(1)
+    for key in ("name", "description"):
+        # Match 'key: value' or 'key: >\n  multi-line'
+        pattern = rf"^{key}:\s*(?:>\s*\n((?:[ \t]+.+\n?)+)|(.+))$"
+        km = re.search(pattern, fm, re.MULTILINE)
+        if km:
+            if km.group(1):
+                # Multi-line folded scalar — join indented lines
+                result[key] = " ".join(line.strip() for line in km.group(1).strip().splitlines())
+            else:
+                result[key] = km.group(2).strip().strip("\"'")
+    return result
+
+
+_MEMORY_KEYWORDS = re.compile(
+    r"memory|recall|remember|persist|storage|knowledge.?base|context|forget",
+    re.IGNORECASE,
+)
+
+
+def _check_memory_skills() -> dict[str, Any]:
+    """Scan installed OpenClaw skills for memory-related skills."""
+    skill_dirs = [
+        Path.home() / ".openclaw" / "workspace" / "skills",
+        Path("/home/linuxbrew/.linuxbrew/lib/node_modules/openclaw/skills"),
+        Path.home() / ".openclaw" / "skills",
+        Path.home() / ".local" / "share" / "openclaw" / "skills",
+    ]
+
+    found_skills: list[dict[str, str]] = []
+    seen_names: set[str] = set()
+
+    for base in skill_dirs:
+        if not base.is_dir():
+            continue
+        for child in sorted(base.iterdir()):
+            if not child.is_dir():
+                continue
+            skill_md = child / "SKILL.md"
+            if not skill_md.is_file():
+                continue
+            try:
+                content = skill_md.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+
+            meta = _parse_skill_frontmatter(content)
+            name = meta["name"] or child.name
+            desc = meta["description"]
+
+            # Skip Palaia itself
+            if name.lower() == "palaia":
+                continue
+
+            # Deduplicate by name
+            if name in seen_names:
+                continue
+
+            # Check for memory keywords in description
+            if desc and _MEMORY_KEYWORDS.search(desc):
+                seen_names.add(name)
+                found_skills.append({
+                    "name": name,
+                    "path": str(child),
+                    "description": desc[:120],
+                })
+
+    if found_skills:
+        names = ", ".join(s["name"] for s in found_skills)
         return {
-            "name": "smart_memory_skill",
-            "label": "Smart-Memory skill",
+            "name": "memory_skills",
+            "label": "Installed memory skills",
             "status": "warn",
-            "message": f"Detected: {skill_path}",
-            "fix": (f"Remove or archive after Palaia is verified working:\n  rm -rf {skill_path}"),
-            "details": {"path": str(skill_path)},
+            "message": f"Found {len(found_skills)} memory skill(s): {names}",
+            "fix": "Consider migrating to Palaia:\n  palaia migrate <workspace> --dry-run",
+            "details": {"skills": found_skills},
         }
 
     return {
-        "name": "smart_memory_skill",
-        "label": "Smart-Memory skill",
+        "name": "memory_skills",
+        "label": "Installed memory skills",
         "status": "ok",
-        "message": "Not installed (clean)",
+        "message": "No conflicting memory skills detected",
     }
 
 
@@ -298,7 +373,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_palaia_init(palaia_root),
         _check_embedding_chain(palaia_root),
         _check_openclaw_plugin(),
-        _check_smart_memory_skill(),
+        _check_memory_skills(),
         _check_legacy_memory_files(),
         _check_heartbeat_legacy(),
         _check_wal_health(palaia_root),
