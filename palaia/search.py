@@ -132,9 +132,15 @@ class SearchEngine:
         self.bm25.index(docs)
         return docs_with_meta
 
-    def search(self, query: str, top_k: int = 10, include_cold: bool = False) -> list[dict]:
+    def search(self, query: str, top_k: int = 10, include_cold: bool = False, project: str | None = None) -> list[dict]:
         """Search memories using hybrid ranking (BM25 + embeddings when available)."""
         docs_with_meta = self.build_index(include_cold=include_cold)
+
+        # Filter by project if specified
+        if project:
+            docs_with_meta = [(did, text, meta) for did, text, meta in docs_with_meta if meta.get("project") == project]
+            # Rebuild BM25 index with filtered docs
+            self.bm25.index([(did, text) for did, text, meta in docs_with_meta])
 
         # BM25 scores
         bm25_results = self.bm25.search(query, top_k=top_k * 2)  # get more candidates for hybrid

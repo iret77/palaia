@@ -10,6 +10,7 @@ from pathlib import Path
 from palaia import __version__
 from palaia.config import DEFAULT_CONFIG, get_root, load_config, save_config
 from palaia.migrate import format_result, migrate
+from palaia.project import ProjectManager
 from palaia.search import SearchEngine
 from palaia.store import Store
 from palaia.sync import export_entries, import_entries
@@ -58,6 +59,7 @@ def cmd_write(args):
         agent=args.agent,
         tags=args.tags.split(",") if args.tags else None,
         title=args.title,
+        project=getattr(args, "project", None),
     )
 
     # Check if this was a dedup (existing entry returned)
@@ -100,6 +102,7 @@ def cmd_query(args):
         args.query,
         top_k=args.limit,
         include_cold=args.all,
+        project=getattr(args, "project", None),
     )
 
     if _json_out({"results": results}, args):
@@ -208,6 +211,11 @@ def cmd_list(args):
 
     tier = args.tier or "hot"
     entries = store.list_entries(tier)
+
+    # Filter by project if specified
+    project_filter = getattr(args, "project", None)
+    if project_filter:
+        entries = [(meta, body) for meta, body in entries if meta.get("project") == project_filter]
 
     if _json_out(
         {
@@ -632,6 +640,159 @@ def cmd_migrate(args):
     return 0
 
 
+def cmd_project(args):
+    """Manage projects."""
+    root = get_root()
+    pm = ProjectManager(root)
+    store = Store(root)
+    store.recover()
+    action = args.project_action
+
+    if action == "create":
+        try:
+            project = pm.create(
+                name=args.name,
+                description=args.description or "",
+                default_scope=args.default_scope or "team",
+            )
+        except ValueError as e:
+            if _json_out({"error": str(e)}, args):
+                return 1
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if _json_out(project.to_dict(), args):
+            return 0
+        print(f"Created project: {project.name}")
+        if project.description:
+            print(f"  Description: {project.description}")
+        print(f"  Default scope: {project.default_scope}")
+        return 0
+
+    elif action == "list":
+        projects = pm.list()
+        if _json_out({"projects": [p.to_dict() for p in projects]}, args):
+            return 0
+        if not projects:
+            print("No projects.")
+            return 0
+        for p in projects:
+            desc = f" — {p.description}" if p.description else ""
+            print(f"  {p.name} [{p.default_scope}]{desc}")
+        print(f"\n{len(projects)} project(s).")
+        return 0
+
+    elif action == "show":
+        project = pm.get(args.name)
+        if not project:
+            if _json_out({"error": f"Project '{args.name}' not found."}, args):
+                return 1
+            print(f"Project '{args.name}' not found.", file=sys.stderr)
+            return 1
+        entries = pm.get_project_entries(args.name, store)
+        if _json_out({
+            "project": project.to_dict(),
+            "entries": [
+                {
+                    "id": meta.get("id", "?"),
+                    "title": meta.get("title", "(untitled)"),
+                    "scope": meta.get("scope", "team"),
+                    "tier": tier,
+                    "preview": body[:80].replace("\n", " "),
+                }
+                for meta, body, tier in entries
+            ],
+        }, args):
+            return 0
+        desc = f" — {project.description}" if project.description else ""
+        print(f"Project: {project.name}{desc}")
+        print(f"  Default scope: {project.default_scope}")
+        print(f"  Created: {project.created_at}")
+        if entries:
+            print(f"\n  Entries ({len(entries)}):")
+            for meta, body, tier in entries:
+                title = meta.get("title", "(untitled)")
+                entry_id = meta.get("id", "?")
+                scope = meta.get("scope", "team")
+                preview = body[:80].replace("\n", " ")
+                tier_badge = {"hot": "🔥", "warm": "🌤", "cold": "❄️"}.get(tier, "?")
+                print(f"    {tier_badge} {entry_id[:8]}  [{scope}] {title}")
+                print(f"              {preview}...")
+        else:
+            print("\n  No entries yet.")
+        return 0
+
+    elif action == "write":
+        project = pm.get(args.name)
+        if not project:
+            if _json_out({"error": f"Project '{args.name}' not found."}, args):
+                return 1
+            print(f"Project '{args.name}' not found.", file=sys.stderr)
+            return 1
+        entry_id = store.write(
+            body=args.text,
+            scope=args.scope,
+            agent=args.agent,
+            tags=args.tags.split(",") if args.tags else None,
+            title=args.title,
+            project=args.name,
+        )
+        if _json_out({"id": entry_id, "project": args.name}, args):
+            return 0
+        print(f"Written to project '{args.name}': {entry_id}")
+        return 0
+
+    elif action == "query":
+        project = pm.get(args.name)
+        if not project:
+            if _json_out({"error": f"Project '{args.name}' not found."}, args):
+                return 1
+            print(f"Project '{args.name}' not found.", file=sys.stderr)
+            return 1
+        engine = SearchEngine(store)
+        results = engine.search(args.query, top_k=args.limit or 10, project=args.name)
+        if _json_out({"results": results, "project": args.name}, args):
+            return 0
+        if not results:
+            print(f"No results in project '{args.name}'.")
+            return 0
+        for r in results:
+            tier_badge = {"hot": "🔥", "warm": "🌤", "cold": "❄️"}.get(r["tier"], "?")
+            title = r["title"] or "(untitled)"
+            print(f"\n{tier_badge} [{r['score']}] {title}")
+            print(f"  ID: {r['id']}")
+            print(f"  {r['body']}")
+        print(f"\n{len(results)} result(s) in project '{args.name}'.")
+        return 0
+
+    elif action == "set-scope":
+        try:
+            project = pm.set_scope(args.name, args.scope_value)
+        except ValueError as e:
+            if _json_out({"error": str(e)}, args):
+                return 1
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if _json_out({"project": args.name, "default_scope": project.default_scope}, args):
+            return 0
+        print(f"Project '{args.name}' default scope → {project.default_scope}")
+        return 0
+
+    elif action == "delete":
+        if not pm.delete(args.name, store):
+            if _json_out({"error": f"Project '{args.name}' not found."}, args):
+                return 1
+            print(f"Project '{args.name}' not found.", file=sys.stderr)
+            return 1
+        if _json_out({"deleted": args.name}, args):
+            return 0
+        print(f"Deleted project '{args.name}'. Entries preserved (project tag removed).")
+        return 0
+
+    else:
+        print("Unknown project action.", file=sys.stderr)
+        return 1
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="palaia",
@@ -654,6 +815,7 @@ def main():
     p_write.add_argument("--agent", default=None, help="Agent name")
     p_write.add_argument("--tags", default=None, help="Comma-separated tags")
     p_write.add_argument("--title", default=None, help="Entry title")
+    p_write.add_argument("--project", default=None, help="Assign to project (uses project default scope)")
     p_write.add_argument("--json", action="store_true", help="Output as JSON")
 
     # query
@@ -661,6 +823,7 @@ def main():
     p_query.add_argument("query", help="Search query")
     p_query.add_argument("--limit", type=int, default=10, help="Max results")
     p_query.add_argument("--all", action="store_true", help="Include COLD tier")
+    p_query.add_argument("--project", default=None, help="Filter by project")
     p_query.add_argument("--json", action="store_true", help="Output as JSON")
 
     # get
@@ -677,6 +840,7 @@ def main():
     # list
     p_list = sub.add_parser("list", help="List entries in a tier")
     p_list.add_argument("--tier", default="hot", choices=["hot", "warm", "cold"])
+    p_list.add_argument("--project", default=None, help="Filter by project")
     p_list.add_argument("--json", action="store_true", help="Output as JSON")
 
     # status
@@ -691,11 +855,53 @@ def main():
     p_gc = sub.add_parser("gc", help="Run garbage collection / tier rotation")
     p_gc.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # project
+    p_project = sub.add_parser("project", help="Manage projects")
+    project_sub = p_project.add_subparsers(dest="project_action")
+
+    p_proj_create = project_sub.add_parser("create", help="Create a project")
+    p_proj_create.add_argument("name", help="Project name")
+    p_proj_create.add_argument("--description", default=None, help="Project description")
+    p_proj_create.add_argument("--default-scope", default=None, help="Default scope for entries")
+    p_proj_create.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_proj_list = project_sub.add_parser("list", help="List projects")
+    p_proj_list.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_proj_show = project_sub.add_parser("show", help="Show project details")
+    p_proj_show.add_argument("name", help="Project name")
+    p_proj_show.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_proj_write = project_sub.add_parser("write", help="Write entry to project")
+    p_proj_write.add_argument("name", help="Project name")
+    p_proj_write.add_argument("text", help="Memory content")
+    p_proj_write.add_argument("--scope", default=None, help="Override scope")
+    p_proj_write.add_argument("--agent", default=None, help="Agent name")
+    p_proj_write.add_argument("--tags", default=None, help="Comma-separated tags")
+    p_proj_write.add_argument("--title", default=None, help="Entry title")
+    p_proj_write.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_proj_query = project_sub.add_parser("query", help="Search within project")
+    p_proj_query.add_argument("name", help="Project name")
+    p_proj_query.add_argument("query", help="Search query")
+    p_proj_query.add_argument("--limit", type=int, default=10, help="Max results")
+    p_proj_query.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_proj_scope = project_sub.add_parser("set-scope", help="Change project default scope")
+    p_proj_scope.add_argument("name", help="Project name")
+    p_proj_scope.add_argument("scope_value", help="New default scope")
+    p_proj_scope.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_proj_delete = project_sub.add_parser("delete", help="Delete project (entries preserved)")
+    p_proj_delete.add_argument("name", help="Project name")
+    p_proj_delete.add_argument("--json", action="store_true", help="Output as JSON")
+
     # export
     p_export = sub.add_parser("export", help="Export public entries")
     p_export.add_argument("--remote", default=None, help="Git remote URL")
     p_export.add_argument("--branch", default=None, help="Branch name")
     p_export.add_argument("--output", default=None, help="Output directory")
+    p_export.add_argument("--project", default=None, help="Export only project entries")
     p_export.add_argument("--json", action="store_true", help="Output as JSON")
 
     # import
@@ -758,6 +964,7 @@ def main():
         "detect": cmd_detect,
         "config": cmd_config,
         "warmup": cmd_warmup,
+        "project": cmd_project,
     }
     try:
         return commands[args.command](args)
