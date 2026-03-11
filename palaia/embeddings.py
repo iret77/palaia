@@ -637,6 +637,117 @@ def _create_provider(name: str, model: str | None = None) -> EmbeddingProvider |
         raise ValueError(f"Unknown embedding provider: {name}")
 
 
+def warmup_providers(config: dict) -> list[dict]:
+    """Pre-download and load embedding models for all providers in the chain.
+
+    Returns a list of dicts with keys: name, status, message.
+    status is one of: ready, skipped, action_needed, error.
+    """
+    import os
+
+    models = _resolve_embedding_models(config)
+
+    # Determine which providers to warm up
+    chain = config.get("embedding_chain")
+    if chain and isinstance(chain, list):
+        provider_names = [p for p in chain if p != "bm25"]
+    else:
+        provider_name = config.get("embedding_provider", "auto")
+        if provider_name in ("none", "auto"):
+            # For auto, detect what's available
+            if provider_name == "auto":
+                detected = detect_providers()
+                provider_names = [p["name"] for p in detected if p["available"] and p["name"] not in ("voyage", "openai")]
+            else:
+                provider_names = []
+        else:
+            provider_names = [provider_name]
+
+    if not provider_names:
+        return []
+
+    results = []
+    for name in provider_names:
+        model_override = models.get(name)
+        try:
+            if name == "sentence-transformers":
+                model_name = model_override or SentenceTransformersProvider.default_model
+                provider = SentenceTransformersProvider(model=model_name)
+                provider._get_model()  # triggers download + load
+                # Try to find cache path
+                cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+                results.append({
+                    "name": name,
+                    "status": "ready",
+                    "message": f"Model loaded: {model_name} (cached at {cache_dir})",
+                })
+            elif name == "ollama":
+                model_name = model_override or OllamaProvider.default_model
+                server_running, _, available_models = _check_ollama_available()
+                if not server_running:
+                    results.append({
+                        "name": name,
+                        "status": "action_needed",
+                        "message": "Ollama server not running. Start with: ollama serve",
+                    })
+                elif model_name not in available_models and model_name.split(":")[0] not in available_models:
+                    results.append({
+                        "name": name,
+                        "status": "action_needed",
+                        "message": f"Model '{model_name}' not pulled. Run: ollama pull {model_name}",
+                    })
+                else:
+                    results.append({
+                        "name": name,
+                        "status": "ready",
+                        "message": f"Model available: {model_name}",
+                    })
+            elif name == "fastembed":
+                model_name = model_override or FastEmbedProvider.default_model
+                provider = FastEmbedProvider(model=model_name)
+                provider._get_model()  # triggers download
+                results.append({
+                    "name": name,
+                    "status": "ready",
+                    "message": f"Model loaded: {model_name}",
+                })
+            elif name == "openai":
+                # Cloud provider — no model to download
+                key = _check_openai_key()
+                if key:
+                    results.append({
+                        "name": name,
+                        "status": "skipped",
+                        "message": "Cloud provider — no local model to pre-load. API key found.",
+                    })
+                else:
+                    results.append({
+                        "name": name,
+                        "status": "action_needed",
+                        "message": "No API key found. Set OPENAI_API_KEY environment variable.",
+                    })
+            else:
+                results.append({
+                    "name": name,
+                    "status": "skipped",
+                    "message": f"Unknown provider '{name}', skipping.",
+                })
+        except ImportError as e:
+            results.append({
+                "name": name,
+                "status": "error",
+                "message": f"Not installed: {e}",
+            })
+        except Exception as e:
+            results.append({
+                "name": name,
+                "status": "error",
+                "message": str(e),
+            })
+
+    return results
+
+
 def get_provider_display_info(provider: EmbeddingProvider | BM25Provider) -> str:
     """Get a human-readable display string for a provider."""
     if isinstance(provider, BM25Provider):

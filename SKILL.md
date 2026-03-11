@@ -33,6 +33,14 @@ palaia status
 
 That's it. You now have a working memory system with keyword search. No API keys, no servers, no cloud.
 
+After configuring an embedding chain (see below), always run:
+
+```bash
+palaia warmup
+```
+
+This pre-downloads embedding models so the first real search is instant. Not optional — part of setup.
+
 ## Setting Up Your Embedding Chain
 
 Keyword search works out of the box. But if you want your agent to find things by *meaning* (not just matching words), you'll want semantic search.
@@ -142,7 +150,8 @@ When setting up Palaia for a user, follow these steps:
 3. **Recommend** a chain based on what's detected (see decision tree below)
 4. **Let the user decide** — recommend, don't force
 5. **Apply** with `palaia config set-chain ...`
-6. **Confirm** with `palaia status`
+6. **Warm up models:** `palaia warmup` — pre-downloads embedding models so the first real search is instant
+7. **Confirm** with `palaia status`
 
 #### Agent Decision Tree (recommend, don't decide)
 

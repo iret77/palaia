@@ -495,6 +495,33 @@ def cmd_config(args):
     return 0
 
 
+def cmd_warmup(args):
+    """Pre-download embedding models for instant first search."""
+    root = get_root()
+    config = load_config(root)
+    from palaia.embeddings import warmup_providers
+    results = warmup_providers(config)
+
+    if _json_out({"providers": results}, args):
+        return 0
+
+    if not results:
+        print("No embedding providers configured (using BM25 keyword search).")
+        return 0
+
+    for r in results:
+        if r["status"] == "ready":
+            print(f"✓ {r['name']}: {r['message']}")
+        elif r["status"] == "skipped":
+            print(f"– {r['name']}: {r['message']}")
+        elif r["status"] == "action_needed":
+            print(f"△ {r['name']}: {r['message']}")
+        else:
+            print(f"✗ {r['name']}: {r['message']}")
+
+    return 0
+
+
 def cmd_gc(args):
     """Run garbage collection / tier rotation."""
     root = get_root()
@@ -641,6 +668,10 @@ def main():
     p_status = sub.add_parser("status", help="Show system status")
     p_status.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # warmup
+    p_warmup = sub.add_parser("warmup", help="Pre-download embedding models")
+    p_warmup.add_argument("--json", action="store_true", help="Output as JSON")
+
     # gc
     p_gc = sub.add_parser("gc", help="Run garbage collection / tier rotation")
     p_gc.add_argument("--json", action="store_true", help="Output as JSON")
@@ -707,6 +738,7 @@ def main():
         "migrate": cmd_migrate,
         "detect": cmd_detect,
         "config": cmd_config,
+        "warmup": cmd_warmup,
     }
     try:
         return commands[args.command](args)
