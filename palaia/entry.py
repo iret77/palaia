@@ -24,6 +24,7 @@ def _parse_yaml_simple(text: str) -> dict:
             continue
         if ":" not in line:
             continue
+        # Only split on the FIRST colon to preserve colons in values (URLs, timestamps, etc.)
         key, _, value = line.partition(":")
         key = key.strip()
         value = value.strip()
