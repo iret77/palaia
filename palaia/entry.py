@@ -72,6 +72,7 @@ def create_entry(
     agent: str | None = None,
     tags: list[str] | None = None,
     title: str | None = None,
+    project: str | None = None,
 ) -> str:
     """Create a full memory entry string with frontmatter."""
     now = datetime.now(timezone.utc).isoformat()
@@ -90,6 +91,8 @@ def create_entry(
         meta["tags"] = tags
     if title:
         meta["title"] = title
+    if project:
+        meta["project"] = project
 
     fm = _to_yaml_simple(meta)
     return f"---\n{fm}\n---\n\n{body}\n"

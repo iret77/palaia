@@ -41,11 +41,34 @@ class Store:
         agent: str | None = None,
         tags: list[str] | None = None,
         title: str | None = None,
+        project: str | None = None,
     ) -> str:
-        """Write a new memory entry. Returns the entry ID."""
+        """Write a new memory entry. Returns the entry ID.
+
+        Scope cascade:
+        1. Explicit --scope argument wins always
+        2. Project default_scope if entry is in a project
+        3. Global default_scope from config
+        4. Hardcoded fallback: 'team'
+        """
         if not body or not body.strip():
             raise ValueError("Cannot write empty content. Provide a non-empty text body.")
-        scope = normalize_scope(scope, self.config["default_scope"])
+
+        # Scope cascade
+        if scope is not None:
+            # Explicit scope always wins
+            scope = normalize_scope(scope)
+        elif project:
+            # Try project default scope
+            from palaia.project import ProjectManager
+            pm = ProjectManager(self.root)
+            proj = pm.get(project)
+            if proj:
+                scope = normalize_scope(proj.default_scope)
+            else:
+                scope = normalize_scope(None, self.config["default_scope"])
+        else:
+            scope = normalize_scope(None, self.config["default_scope"])
 
         # Dedup check
         h = content_hash(body)
@@ -53,7 +76,7 @@ class Store:
         if existing:
             return existing  # Already stored, return existing ID
 
-        entry_text = create_entry(body, scope, agent, tags, title)
+        entry_text = create_entry(body, scope, agent, tags, title, project)
         meta, _ = parse_entry(entry_text)
         entry_id = meta["id"]
         filename = f"{entry_id}.md"
