@@ -45,21 +45,34 @@ palaia init
 palaia doctor
 ```
 
-Review **every** warning before continuing. For each finding, ask the user explicitly:
+Review **every** warning before continuing. For each warning found by `palaia doctor`, immediately offer to fix it — do not wait for the user to ask:
 
-**smart-memory skill detected:**
-Tell the user: "I found an existing smart-memory installation. Palaia replaces it. Should I migrate your existing memories and then deactivate smart-memory?"
+**HEARTBEAT.md legacy patterns:**
+→ Tell the user: "Your heartbeat still uses old memory patterns. Should I update it to use Palaia? (Takes a moment, no data loss)"
+- If yes: update HEARTBEAT.md, replace `memory_search`/`memory_get`/direct file reads with `palaia query`/`palaia write` equivalents
+- If no: skip, move to next warning
+
+**Smart-Memory skill detected:**
+→ Tell the user: "The old smart-memory skill is still installed. Should I remove it? (Only after confirming Palaia has your memories)"
 - If yes: run `palaia migrate <workspace-path>`, then remove the smart-memory skill folder
 - If no: continue, but both systems will run in parallel (not recommended)
 
-**OpenClaw memory plugin still set to memory-core:**
-Tell the user: "Should I switch OpenClaw to use Palaia as the memory system?"
+**OpenClaw plugin still memory-core:**
+→ Tell the user: "Palaia isn't connected to OpenClaw's memory system yet. Should I switch it? (Requires a quick OpenClaw restart)"
 - If yes: update OpenClaw config (`plugins.slots.memory = "palaia"`), restart OpenClaw
 - If no: Palaia runs standalone (no `memory_search`/`memory_get` tool integration)
 
-**HEARTBEAT.md legacy patterns:**
-Tell the user: "Your heartbeat has old memory commands. Should I update them to use Palaia?"
-- If yes: update HEARTBEAT.md, replace `memory_search`/`memory_get`/direct file reads with `palaia query`/`palaia write` equivalents
+**openai-only chain (no local fallback):**
+→ Tell the user: "Your search has no local backup. Should I install fastembed as a fallback? (Small download, no GPU needed)"
+- If yes: `pip install fastembed`, then `palaia warmup`, update chain to include fastembed before bm25
+- If no: skip (warn: "Search may degrade when OpenAI is unavailable")
+
+Rules:
+- For each warning: ask immediately, one question at a time
+- Do not batch all questions — address them in order
+- Do not wait for the user to notice and ask
+- After user answers yes/no, move to next warning
+- Report when all warnings are resolved
 
 **Do not proceed until all warnings are addressed or explicitly dismissed by the user.**
 
