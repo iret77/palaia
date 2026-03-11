@@ -26,103 +26,145 @@ palaia status
 
 That's it. You now have a working memory system with keyword search. No API keys, no servers, no cloud.
 
-## Setting Up Semantic Search
+## Setting Up Your Embedding Chain
 
-Keyword search works out of the box. But if you want your agent to find things by *meaning* (not just matching words), you'll want semantic search. Run this to see what's available on your machine:
+Keyword search works out of the box. But if you want your agent to find things by *meaning* (not just matching words), you'll want semantic search.
+
+An **embedding chain** is a priority list — Palaia tries the first provider. If it doesn't work (server down, rate limit, missing API key), it automatically moves to the next one. BM25 keyword search is always the last resort, so search never breaks.
+
+### Quick Detection
 
 ```bash
 palaia detect
 ```
 
-This shows which embedding providers are installed, which are running, and what Palaia recommends.
+This shows what's available on your machine and recommends a chain. The output includes a ready-to-paste command.
 
-### The Options — What's Right for You?
-
-#### Option 1: No Setup (Keyword Search)
-
-This is what you get by default. Palaia uses BM25 — a smart keyword matching algorithm. It's fast, needs zero setup, and works well when your queries use similar words to what's stored.
-
-**When it's enough:** Most setups. If your agent writes "project deadline is Friday" and later asks "when is the deadline?", keyword search finds it.
-
-**What's missing:** It won't find "project due date" if you stored "project deadline". That's where semantic search helps.
-
-#### Option 2: ollama (Recommended for most)
-
-Ollama is a local AI server that runs on your machine. It understands meaning, not just words. Your data never leaves your computer.
-
-**Pros:** Private, fast after first load, no API costs, good quality  
-**Cons:** Uses ~1GB RAM while running, needs initial setup  
+### Setting Your Chain
 
 ```bash
-# Install ollama (if not already)
-curl -fsSL https://ollama.com/install.sh | sh
+# Best setup: cloud + local fallback + keyword backup
+palaia config set-chain openai sentence-transformers bm25
 
-# Pull the embedding model
+# Local only, no cloud
+palaia config set-chain sentence-transformers bm25
+
+# Just keyword search (always works, zero setup)
+palaia config set-chain bm25
+```
+
+Check what's active:
+
+```bash
+palaia status
+```
+
+Output looks like:
+```
+Embedding chain: openai → sentence-transformers → bm25
+  1. openai (text-embedding-3-large) ✓ API key found
+  2. sentence-transformers (all-MiniLM-L6-v2) ✓ installed
+  3. bm25 ✓ always available
+Active: openai (primary)
+```
+
+If the primary provider fails, you'll see:
+```
+Active: sentence-transformers (fallback — openai: 429 Too Many Requests)
+```
+
+### The Providers
+
+| Provider | Type | Pros | Cons |
+|----------|------|------|------|
+| **openai** | Cloud | Best quality, no local compute | Costs money, needs internet + API key |
+| **sentence-transformers** | Local | Best local quality, works offline | ~500MB RAM, ~30s first load |
+| **ollama** | Local | Private, good quality, no API costs | ~1GB RAM, needs server running |
+| **fastembed** | Local | Lightweight, fast startup | Slightly lower quality |
+| **bm25** | Built-in | Zero setup, always works | Keyword matching only (no meaning) |
+
+### Installing Providers
+
+```bash
+# sentence-transformers
+pip install "palaia[sentence-transformers]"
+
+# fastembed
+pip install "palaia[fastembed]"
+
+# ollama
+curl -fsSL https://ollama.com/install.sh | sh
 ollama pull nomic-embed-text
 
-# Tell Palaia to use it
-palaia config set embedding_provider ollama
-palaia status
-```
-
-**Choose this when:** You want smart search without sending data to the cloud.
-
-#### Option 3: sentence-transformers (Best quality, pure Python)
-
-A Python library that runs AI models directly. No separate server needed. Best quality embeddings for local use.
-
-**Pros:** Best local quality, no server to manage, works offline  
-**Cons:** Slower first load (~30s), uses more RAM (~500MB), needs pip install  
-
-```bash
-pip install "palaia[sentence-transformers]"
-palaia config set embedding_provider sentence-transformers
-palaia status
-```
-
-**Choose this when:** You want the best local search quality and don't mind the RAM usage.
-
-#### Option 4: fastembed (Lightweight option)
-
-A lighter alternative to sentence-transformers. Smaller models, faster startup, less RAM.
-
-**Pros:** Lightweight, fast startup, works offline  
-**Cons:** Slightly lower quality than sentence-transformers  
-
-```bash
-pip install "palaia[fastembed]"
-palaia config set embedding_provider fastembed
-palaia status
-```
-
-**Choose this when:** You're on a machine with limited RAM or want faster startup.
-
-#### Option 5: OpenAI or Voyage (Cloud-based)
-
-Use OpenAI's or Voyage's embedding APIs. Best quality, but requires an API key and sends data to the cloud.
-
-**Pros:** Highest quality, no local compute needed  
-**Cons:** Costs money (small amounts), data leaves your machine, needs internet  
-
-```bash
+# OpenAI (just set the key)
 export OPENAI_API_KEY="sk-..."
-palaia config set embedding_provider openai
-palaia status
 ```
 
-**Choose this when:** You already use OpenAI and don't mind cloud processing.
+### Model Overrides
+
+Each provider has a sensible default model. Override per provider if needed:
+
+```json
+{
+  "embedding_chain": ["openai", "sentence-transformers", "bm25"],
+  "embedding_model": {
+    "openai": "text-embedding-3-large",
+    "sentence-transformers": "all-MiniLM-L6-v2"
+  }
+}
+```
+
+### Backward Compatibility
+
+The old `embedding_provider` setting still works:
+
+```bash
+# These still work exactly as before
+palaia config set embedding_provider sentence-transformers
+palaia config set embedding_provider auto
+```
+
+If both `embedding_chain` and `embedding_provider` are set, `embedding_chain` takes priority.
 
 ### Guided Setup Flow (Agent Instructions)
 
 When setting up Palaia for a user, follow these steps:
 
 1. **Run detection:** `palaia detect` — parse the output
-2. **Present results** to the user in plain language: "You have ollama running with nomic-embed-text available. I can set that up for semantic search, or keyword search works fine too."
-3. **Ask the user** which option they prefer. Don't assume.
-4. **Install + configure** based on their choice:
-   - If they chose a provider: install it, run `palaia config set embedding_provider <name>`
-   - If they're fine with keyword search: do nothing, it's the default
-5. **Confirm** with `palaia status` — show them the output
+2. **Explain** what's available in plain language
+3. **Recommend** a chain based on what's detected (see decision tree below)
+4. **Let the user decide** — recommend, don't force
+5. **Apply** with `palaia config set-chain ...`
+6. **Confirm** with `palaia status`
+
+#### Agent Decision Tree (recommend, don't decide)
+
+```
+If OpenAI key + local provider installed (sentence-transformers/ollama/fastembed):
+  → Recommend: openai → <local> → bm25
+  → Say: "Best quality with local fallback. If OpenAI is unreachable,
+          <local> takes over automatically."
+
+If only local provider (no OpenAI key):
+  → Recommend: <local> → bm25
+  → Say: "Fully local, no cloud dependency."
+
+If only ollama:
+  → Recommend: ollama → bm25
+  → Say: "Runs on your local ollama server."
+
+If only OpenAI key (no local provider):
+  → Recommend: openai → bm25
+  → Say: "Cloud-based. I'd suggest also installing sentence-transformers
+          for offline fallback: pip install 'palaia[sentence-transformers]'"
+
+If nothing available:
+  → Recommend: bm25
+  → Say: "Keyword search works right away. For smarter search:
+          pip install 'palaia[sentence-transformers]'"
+```
+
+The user always makes the final call. Explain trade-offs in context of their system.
 
 ## Connecting to OpenClaw (the important bit)
 
@@ -229,15 +271,19 @@ Configuration lives in `.palaia/config.json`:
   "warm_threshold_days": 30,
   "hot_max_entries": 50,
   "default_scope": "team",
-  "embedding_provider": "auto",
-  "embedding_model": ""
+  "embedding_chain": ["openai", "sentence-transformers", "bm25"],
+  "embedding_model": {
+    "openai": "text-embedding-3-large",
+    "sentence-transformers": "all-MiniLM-L6-v2"
+  }
 }
 ```
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `embedding_provider` | `auto` | `auto`, `ollama`, `sentence-transformers`, `fastembed`, `openai`, `none` |
-| `embedding_model` | `""` | Override the default model for your provider (empty = provider's default) |
+| `embedding_chain` | (auto-detected) | Ordered list of providers to try. BM25 is always last resort. |
+| `embedding_model` | `{}` | Per-provider model overrides (dict) or single model string (legacy) |
+| `embedding_provider` | `"auto"` | Legacy: `auto`, `ollama`, `sentence-transformers`, `fastembed`, `openai`, `none`. Use `embedding_chain` instead. |
 | `decay_lambda` | `0.1` | How fast memories fade (higher = faster decay) |
 | `hot_threshold_days` | `7` | Days before a memory moves from active to warm |
 | `warm_threshold_days` | `30` | Days before a memory moves from warm to archive |

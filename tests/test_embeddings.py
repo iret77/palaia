@@ -9,7 +9,9 @@ from palaia.embeddings import (
     FastEmbedProvider,
     OpenAIProvider,
     BM25Provider,
+    EmbeddingChain,
     auto_detect_provider,
+    build_embedding_chain,
     detect_providers,
     cosine_similarity,
     _check_ollama_available,
@@ -286,3 +288,177 @@ def test_detect_providers_nothing_available(mock_voyage, mock_openai, mock_spec,
     providers = detect_providers()
     for p in providers:
         assert p["available"] is False
+
+
+# --- EmbeddingChain ---
+
+class _MockProvider:
+    """Mock provider for chain tests."""
+    def __init__(self, name, fail=False, fail_msg="mock error"):
+        self.name = name
+        self._fail = fail
+        self._fail_msg = fail_msg
+
+    def embed_query(self, text):
+        if self._fail:
+            raise RuntimeError(self._fail_msg)
+        return [0.1, 0.2, 0.3]
+
+    def embed(self, texts):
+        if self._fail:
+            raise RuntimeError(self._fail_msg)
+        return [[0.1, 0.2, 0.3]] * len(texts)
+
+
+def test_chain_first_provider_succeeds():
+    """First provider works → use it."""
+    chain = EmbeddingChain(["openai", "sentence-transformers", "bm25"])
+    p1 = _MockProvider("openai")
+    p2 = _MockProvider("sentence-transformers")
+    chain.providers = [p1, p2]
+
+    vec, name = chain.embed_query("hello")
+    assert name == "openai"
+    assert vec == [0.1, 0.2, 0.3]
+    assert chain.fallback_reason is None
+
+
+def test_chain_first_fails_second_succeeds():
+    """First provider fails → second is used."""
+    chain = EmbeddingChain(["openai", "sentence-transformers", "bm25"])
+    p1 = _MockProvider("openai", fail=True, fail_msg="429 Too Many Requests")
+    p2 = _MockProvider("sentence-transformers")
+    chain.providers = [p1, p2]
+
+    vec, name = chain.embed_query("hello")
+    assert name == "sentence-transformers"
+    assert vec == [0.1, 0.2, 0.3]
+    assert chain.fallback_reason is not None
+    assert "429" in chain.fallback_reason
+
+
+def test_chain_all_fail_bm25_fallback():
+    """All providers fail → BM25 fallback (empty vector)."""
+    chain = EmbeddingChain(["openai", "sentence-transformers", "bm25"])
+    p1 = _MockProvider("openai", fail=True)
+    p2 = _MockProvider("sentence-transformers", fail=True)
+    chain.providers = [p1, p2]
+
+    vec, name = chain.embed_query("hello")
+    assert name == "bm25"
+    assert vec == []
+    assert chain.fallback_reason is not None
+
+
+def test_chain_batch_embed_fallback():
+    """Batch embed also falls back correctly."""
+    chain = EmbeddingChain(["openai", "sentence-transformers", "bm25"])
+    p1 = _MockProvider("openai", fail=True)
+    p2 = _MockProvider("sentence-transformers")
+    chain.providers = [p1, p2]
+
+    vecs, name = chain.embed(["hello", "world"])
+    assert name == "sentence-transformers"
+    assert len(vecs) == 2
+
+
+def test_chain_batch_all_fail():
+    """Batch embed — all fail → BM25."""
+    chain = EmbeddingChain(["openai", "bm25"])
+    p1 = _MockProvider("openai", fail=True)
+    chain.providers = [p1]
+
+    vecs, name = chain.embed(["hello"])
+    assert name == "bm25"
+    assert vecs == []
+
+
+# --- build_embedding_chain ---
+
+def test_build_chain_from_explicit_config():
+    """embedding_chain in config → EmbeddingChain with those providers."""
+    config = {
+        "embedding_chain": ["openai", "sentence-transformers", "bm25"],
+        "embedding_model": {"openai": "text-embedding-3-large"},
+    }
+    chain = build_embedding_chain(config)
+    assert chain.chain_names == ["openai", "sentence-transformers", "bm25"]
+    assert chain.models.get("openai") == "text-embedding-3-large"
+
+
+def test_build_chain_adds_bm25():
+    """If bm25 not in chain, it gets appended."""
+    config = {"embedding_chain": ["openai"]}
+    chain = build_embedding_chain(config)
+    assert chain.chain_names == ["openai", "bm25"]
+
+
+def test_build_chain_legacy_single_provider():
+    """Legacy embedding_provider: "sentence-transformers" → chain of one + bm25."""
+    config = {"embedding_provider": "sentence-transformers"}
+    chain = build_embedding_chain(config)
+    assert chain.chain_names == ["sentence-transformers", "bm25"]
+
+
+def test_build_chain_legacy_none():
+    """Legacy embedding_provider: "none" → bm25 only."""
+    config = {"embedding_provider": "none"}
+    chain = build_embedding_chain(config)
+    assert chain.chain_names == ["bm25"]
+
+
+@patch("palaia.embeddings.detect_providers")
+def test_build_chain_legacy_auto(mock_detect):
+    """Legacy embedding_provider: "auto" → auto-detected chain."""
+    mock_detect.return_value = [
+        {"name": "ollama", "available": False},
+        {"name": "sentence-transformers", "available": True},
+        {"name": "fastembed", "available": False},
+        {"name": "openai", "available": True},
+        {"name": "voyage", "available": False},
+    ]
+    config = {"embedding_provider": "auto"}
+    chain = build_embedding_chain(config)
+    assert "sentence-transformers" in chain.chain_names
+    assert "openai" in chain.chain_names
+    assert chain.chain_names[-1] == "bm25"
+
+
+def test_build_chain_embedding_chain_overrides_provider():
+    """embedding_chain takes precedence over embedding_provider."""
+    config = {
+        "embedding_chain": ["openai", "bm25"],
+        "embedding_provider": "sentence-transformers",
+    }
+    chain = build_embedding_chain(config)
+    assert chain.chain_names == ["openai", "bm25"]
+    assert "sentence-transformers" not in chain.chain_names
+
+
+def test_build_chain_legacy_single_model_string():
+    """Legacy embedding_model as string maps to the provider."""
+    config = {
+        "embedding_provider": "openai",
+        "embedding_model": "text-embedding-3-large",
+    }
+    chain = build_embedding_chain(config)
+    assert chain.models.get("openai") == "text-embedding-3-large"
+
+
+def test_chain_provider_status():
+    """provider_status returns info for each chain member."""
+    chain = EmbeddingChain(["openai", "sentence-transformers", "bm25"])
+    with patch("palaia.embeddings.detect_providers") as mock_detect:
+        mock_detect.return_value = [
+            {"name": "openai", "available": True},
+            {"name": "sentence-transformers", "available": True},
+            {"name": "ollama", "available": False},
+            {"name": "fastembed", "available": False},
+            {"name": "voyage", "available": False},
+        ]
+        statuses = chain.provider_status()
+    assert len(statuses) == 3
+    assert statuses[0]["name"] == "openai"
+    assert statuses[0]["available"] is True
+    assert statuses[2]["name"] == "bm25"
+    assert statuses[2]["available"] is True
