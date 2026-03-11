@@ -12,7 +12,6 @@ from pathlib import Path
 class WALEntry:
     """A single WAL entry."""
 
-
     def __init__(
         self,
         operation: str,

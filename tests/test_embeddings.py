@@ -1,25 +1,25 @@
 """Tests for embedding providers and auto-detection."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from palaia.embeddings import (
-    OllamaProvider,
-    SentenceTransformersProvider,
-    FastEmbedProvider,
-    OpenAIProvider,
     BM25Provider,
     EmbeddingChain,
+    FastEmbedProvider,
+    OllamaProvider,
+    OpenAIProvider,
+    SentenceTransformersProvider,
+    _create_provider,
     auto_detect_provider,
     build_embedding_chain,
-    detect_providers,
     cosine_similarity,
-    _check_ollama_available,
-    _create_provider,
+    detect_providers,
 )
 
-
 # --- Cosine Similarity ---
+
 
 def test_cosine_similarity_identical():
     v = [1.0, 0.0, 0.0]
@@ -40,13 +40,16 @@ def test_cosine_similarity_zero_vector():
 
 # --- BM25Provider ---
 
+
 def test_bm25_provider_search():
     bm25 = BM25Provider()
-    bm25.index([
-        ("doc1", "the cat sat on the mat"),
-        ("doc2", "the dog played in the yard"),
-        ("doc3", "cats and dogs are friends"),
-    ])
+    bm25.index(
+        [
+            ("doc1", "the cat sat on the mat"),
+            ("doc2", "the dog played in the yard"),
+            ("doc3", "cats and dogs are friends"),
+        ]
+    )
     results = bm25.search("cat mat", top_k=2)
     assert len(results) > 0
     assert results[0][0] == "doc1"
@@ -61,6 +64,7 @@ def test_bm25_provider_embed_raises():
 
 
 # --- OllamaProvider (mocked) ---
+
 
 def test_ollama_provider_embed_mocked():
     provider = OllamaProvider(model="nomic-embed-text")
@@ -86,26 +90,30 @@ def test_ollama_provider_embed_query_mocked():
 
 # --- SentenceTransformersProvider (mocked) ---
 
+
 def test_sentence_transformers_provider_mocked():
     provider = SentenceTransformersProvider(model="all-MiniLM-L6-v2")
     # Use a mock that returns list-like objects (simulating numpy arrays with .tolist())
     mock_arr = MagicMock()
     mock_arr.__iter__ = lambda self: iter([MagicMock(tolist=lambda: [0.1, 0.2]), MagicMock(tolist=lambda: [0.3, 0.4])])
-    
+
     class FakeArray:
         def __init__(self, data):
             self._data = data
+
         def __iter__(self):
             return iter(self._data)
+
         def tolist(self):
             return self._data
-    
+
     class FakeResult:
         def __init__(self, rows):
             self._rows = [FakeArray(r) for r in rows]
+
         def __iter__(self):
             return iter(self._rows)
-    
+
     mock_model = MagicMock()
     mock_model.encode.return_value = FakeResult([[0.1, 0.2], [0.3, 0.4]])
     provider._model = mock_model
@@ -118,19 +126,21 @@ def test_sentence_transformers_provider_mocked():
 
 def test_sentence_transformers_query_mocked():
     provider = SentenceTransformersProvider()
-    
+
     class FakeArray:
         def __init__(self, data):
             self._data = data
+
         def tolist(self):
             return self._data
-    
+
     class FakeResult:
         def __init__(self, rows):
             self._rows = [FakeArray(r) for r in rows]
+
         def __iter__(self):
             return iter(self._rows)
-    
+
     mock_model = MagicMock()
     mock_model.encode.return_value = FakeResult([[0.7, 0.8]])
     provider._model = mock_model
@@ -141,17 +151,20 @@ def test_sentence_transformers_query_mocked():
 
 # --- FastEmbedProvider (mocked) ---
 
+
 def test_fastembed_provider_mocked():
     provider = FastEmbedProvider(model="BAAI/bge-small-en-v1.5")
-    
+
     class FakeArray:
         def __init__(self, data):
             self._data = data
+
         def tolist(self):
             return self._data
+
         def __iter__(self):
             return iter(self._data)
-    
+
     mock_model = MagicMock()
     mock_model.embed.return_value = [FakeArray([0.1, 0.2]), FakeArray([0.3, 0.4])]
     provider._model = mock_model
@@ -162,6 +175,7 @@ def test_fastembed_provider_mocked():
 
 
 # --- OpenAIProvider (mocked) ---
+
 
 def test_openai_provider_mocked():
     provider = OpenAIProvider(model="text-embedding-3-small", api_key="test-key")
@@ -178,6 +192,7 @@ def test_openai_provider_mocked():
 
 
 # --- Auto-Detect ---
+
 
 def test_auto_detect_none_config():
     result = auto_detect_provider({"embedding_provider": "none"})
@@ -269,6 +284,7 @@ def test_auto_detect_fastembed_over_openai(mock_detect):
 
 # --- detect_providers ---
 
+
 @patch("palaia.embeddings._check_ollama_available", return_value=(True, None, ["nomic-embed-text", "llama3"]))
 @patch("palaia.embeddings.importlib.util.find_spec", return_value=None)
 @patch("palaia.embeddings._check_openai_key", return_value=None)
@@ -292,8 +308,10 @@ def test_detect_providers_nothing_available(mock_voyage, mock_openai, mock_spec,
 
 # --- EmbeddingChain ---
 
+
 class _MockProvider:
     """Mock provider for chain tests."""
+
     def __init__(self, name, fail=False, fail_msg="mock error"):
         self.name = name
         self._fail = fail
@@ -374,6 +392,7 @@ def test_chain_batch_all_fail():
 
 
 # --- build_embedding_chain ---
+
 
 def test_build_chain_from_explicit_config():
     """embedding_chain in config → EmbeddingChain with those providers."""

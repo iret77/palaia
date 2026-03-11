@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import json
+
 import pytest
-from pathlib import Path
 
 from palaia.config import DEFAULT_CONFIG, save_config
 from palaia.migrate import (
-    SmartMemoryAdapter,
     FlatFileAdapter,
-    JsonMemoryAdapter,
     GenericMarkdownAdapter,
+    JsonMemoryAdapter,
+    SmartMemoryAdapter,
     detect_format,
     migrate,
 )
@@ -34,6 +34,7 @@ def store(palaia_root):
 
 
 # === SmartMemoryAdapter ===
+
 
 @pytest.fixture
 def smart_memory_source(tmp_path):
@@ -90,6 +91,7 @@ def test_smart_memory_format_detection(smart_memory_source):
 
 # === FlatFileAdapter ===
 
+
 @pytest.fixture
 def flat_file_source(tmp_path):
     f = tmp_path / "notes.md"
@@ -117,6 +119,7 @@ def test_flat_file_single_section(tmp_path):
 
 
 # === JsonMemoryAdapter ===
+
 
 @pytest.fixture
 def json_memory_source(tmp_path):
@@ -160,6 +163,7 @@ def test_json_memory_dir(tmp_path):
 
 # === GenericMarkdownAdapter ===
 
+
 def test_generic_md_detect(tmp_path):
     d = tmp_path / "mddir"
     d.mkdir()
@@ -198,6 +202,7 @@ def test_generic_md_scope_heuristics(tmp_path):
 
 # === Format Detection Priority ===
 
+
 def test_detect_format_smart_memory_over_generic(smart_memory_source):
     """Smart-memory should win over generic-md."""
     assert detect_format(smart_memory_source) == "smart-memory"
@@ -219,6 +224,7 @@ def test_detect_format_fallback(tmp_path):
 
 
 # === migrate() integration ===
+
 
 def test_migrate_smart_memory(store, smart_memory_source):
     result = migrate(smart_memory_source, store)

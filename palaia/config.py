@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 DEFAULT_CONFIG = {
@@ -39,9 +38,7 @@ def get_root(start: str = ".") -> Path:
     """Get .palaia root or raise."""
     root = find_palaia_root(start)
     if root is None:
-        raise FileNotFoundError(
-            "No .palaia directory found. Run 'palaia init' first."
-        )
+        raise FileNotFoundError("No .palaia directory found. Run 'palaia init' first.")
     return root
 
 

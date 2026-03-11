@@ -1,6 +1,6 @@
 """Tests for decay scoring."""
 
-from palaia.decay import decay_score, classify_tier
+from palaia.decay import classify_tier, decay_score
 
 
 def test_decay_score_fresh():

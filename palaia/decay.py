@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 from datetime import datetime, timezone
-from pathlib import Path
 
 
 def decay_score(
@@ -13,7 +12,7 @@ def decay_score(
     lambda_val: float = 0.1,
 ) -> float:
     """Calculate decay score. Higher = more relevant.
-    
+
     score = recency_factor * log(1 + access_count)
     recency_factor = exp(-lambda * days_since_access)
     """

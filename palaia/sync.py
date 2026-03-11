@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
-import shutil
 import subprocess
 import tempfile
 from datetime import datetime, timezone
@@ -16,7 +14,6 @@ from palaia.config import get_root
 from palaia.entry import content_hash, parse_entry, serialize_entry
 from palaia.scope import is_exportable
 from palaia.store import Store
-
 
 MANIFEST_NAME = "palaia-export.json"
 
@@ -120,11 +117,15 @@ def _export_to_git(
         subprocess.run(["git", "init"], cwd=tmp, capture_output=True, check=True)
         subprocess.run(
             ["git", "remote", "add", "origin", remote],
-            cwd=tmp, capture_output=True, check=True,
+            cwd=tmp,
+            capture_output=True,
+            check=True,
         )
         subprocess.run(
             ["git", "checkout", "-b", branch_name],
-            cwd=tmp, capture_output=True, check=True,
+            cwd=tmp,
+            capture_output=True,
+            check=True,
         )
 
         # Write entries
@@ -144,12 +145,16 @@ def _export_to_git(
         subprocess.run(["git", "add", "."], cwd=tmp, capture_output=True, check=True)
         subprocess.run(
             ["git", "commit", "-m", f"palaia export {timestamp}"],
-            cwd=tmp, capture_output=True, check=True,
+            cwd=tmp,
+            capture_output=True,
+            check=True,
             env={**os.environ, "GIT_AUTHOR_NAME": "palaia", "GIT_AUTHOR_EMAIL": "palaia@local"},
         )
         result = subprocess.run(
             ["git", "push", "origin", branch_name],
-            cwd=tmp, capture_output=True, text=True,
+            cwd=tmp,
+            capture_output=True,
+            text=True,
         )
         if result.returncode != 0:
             raise RuntimeError(f"Git push failed: {result.stderr}")
@@ -246,11 +251,13 @@ def _do_import(
             continue
 
         if dry_run:
-            would_import.append({
-                "id": meta.get("id"),
-                "title": meta.get("title", "(untitled)"),
-                "scope": scope,
-            })
+            would_import.append(
+                {
+                    "id": meta.get("id"),
+                    "title": meta.get("title", "(untitled)"),
+                    "scope": scope,
+                }
+            )
         else:
             store.write(body=body, scope=scope, agent=meta.get("agent"), tags=meta.get("tags"), title=meta.get("title"))
             imported += 1
@@ -278,7 +285,8 @@ def _import_from_git(store: Store, url: str, dry_run: bool) -> dict:
     with tempfile.TemporaryDirectory() as tmpdir:
         result = subprocess.run(
             ["git", "clone", "--depth", "1", url, tmpdir],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if result.returncode != 0:
             raise RuntimeError(f"Git clone failed: {result.stderr}")

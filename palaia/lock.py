@@ -5,7 +5,6 @@ from __future__ import annotations
 import fcntl
 import json
 import os
-import sys
 import time
 import warnings
 from pathlib import Path
@@ -37,8 +36,7 @@ class PalaiaLock:
             age = time.time() - lock_ts
             if age > STALE_LOCK_SECONDS:
                 warnings.warn(
-                    f"Stale lock detected (age: {age:.0f}s, pid: {lock_pid}). "
-                    f"Overriding stale lock.",
+                    f"Stale lock detected (age: {age:.0f}s, pid: {lock_pid}). Overriding stale lock.",
                     stacklevel=3,
                 )
                 try:
@@ -58,10 +56,10 @@ class PalaiaLock:
     def acquire(self) -> None:
         deadline = time.monotonic() + self.timeout
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Check for stale lock before first attempt
         self._check_stale()
-        
+
         self._fd = open(self.lock_path, "w")
         while True:
             try:
@@ -86,9 +84,7 @@ class PalaiaLock:
                             pass
                     self._fd.close()
                     self._fd = None
-                    raise LockError(
-                        f"Could not acquire lock within {self.timeout}s"
-                    )
+                    raise LockError(f"Could not acquire lock within {self.timeout}s")
                 time.sleep(0.05)
 
     def release(self) -> None:

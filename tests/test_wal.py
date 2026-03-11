@@ -1,12 +1,10 @@
 """Tests for WAL module."""
 
-import json
 import pytest
-from pathlib import Path
 
-from palaia.wal import WAL, WALEntry
-from palaia.store import Store
 from palaia.config import DEFAULT_CONFIG, save_config
+from palaia.store import Store
+from palaia.wal import WAL, WALEntry
 
 
 @pytest.fixture
@@ -24,12 +22,12 @@ def test_wal_log_and_commit(palaia_root):
     entry = WALEntry(operation="write", target="hot/test.md", payload_hash="abc123")
     path = wal.log(entry)
     assert path.exists()
-    
+
     # Should be pending
     pending = wal.get_pending()
     assert len(pending) == 1
     assert pending[0].id == entry.id
-    
+
     # Commit
     wal.commit(entry)
     pending = wal.get_pending()
@@ -69,7 +67,7 @@ def test_wal_cleanup(palaia_root):
     entry = WALEntry(operation="write", target="hot/x.md", payload_hash="h")
     wal.log(entry)
     wal.commit(entry)
-    
+
     # Cleanup with 0 days should remove it
     removed = wal.cleanup(max_age_days=0)
     assert removed == 1

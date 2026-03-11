@@ -6,7 +6,6 @@ import hashlib
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Any
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 
@@ -14,7 +13,7 @@ FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 def _parse_yaml_simple(text: str) -> dict:
     """Minimal YAML-like parser for frontmatter. No dependency needed.
 
-    
+
     Handles: key: value, key: [a, b, c], quoted strings.
     """
     result = {}
@@ -39,8 +38,7 @@ def _parse_yaml_simple(text: str) -> dict:
         elif re.match(r"^\d+\.\d+$", value):
             result[key] = float(value)
         # Quoted string
-        elif (value.startswith('"') and value.endswith('"')) or \
-             (value.startswith("'") and value.endswith("'")):
+        elif (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
             result[key] = value[1:-1]
         else:
             result[key] = value
@@ -92,7 +90,7 @@ def create_entry(
         meta["tags"] = tags
     if title:
         meta["title"] = title
-    
+
     fm = _to_yaml_simple(meta)
     return f"---\n{fm}\n---\n\n{body}\n"
 
@@ -103,17 +101,17 @@ def parse_entry(text: str) -> tuple[dict, str]:
     if not m:
         return {}, text.strip()
     meta = _parse_yaml_simple(m.group(1))
-    body = text[m.end():].strip()
+    body = text[m.end() :].strip()
     return meta, body
 
 
 def update_access(meta: dict) -> dict:
     """Update access metadata (timestamp, count, score)."""
-    from palaia.decay import decay_score, days_since
-    
+    from palaia.decay import days_since, decay_score
+
     meta["accessed"] = datetime.now(timezone.utc).isoformat()
     meta["access_count"] = meta.get("access_count", 0) + 1
-    d = days_since(meta.get("created", meta["accessed"]))
+    days_since(meta.get("created", meta["accessed"]))
     meta["decay_score"] = decay_score(0, meta["access_count"])
     return meta
 

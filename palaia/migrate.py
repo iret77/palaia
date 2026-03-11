@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 from palaia.entry import content_hash
 from palaia.store import Store
@@ -80,10 +77,15 @@ class SmartMemoryAdapter(BaseAdapter):
         if memory_md.is_file():
             body = memory_md.read_text(encoding="utf-8").strip()
             if body:
-                entries.append(MigrationEntry(
-                    body=body, scope="team", tier="hot",
-                    title="MEMORY.md", source_file="MEMORY.md",
-                ))
+                entries.append(
+                    MigrationEntry(
+                        body=body,
+                        scope="team",
+                        tier="hot",
+                        title="MEMORY.md",
+                        source_file="MEMORY.md",
+                    )
+                )
 
         # memory/active-context.md → per ## [OPEN] block
         active = source / "memory" / "active-context.md"
@@ -100,13 +102,15 @@ class SmartMemoryAdapter(BaseAdapter):
                         body = ctx.read_text(encoding="utf-8").strip()
                         if body:
                             proj_name = proj_dir.name
-                            entries.append(MigrationEntry(
-                                body=body,
-                                scope=f"shared:{proj_name}",
-                                tier="hot",
-                                title=f"Project: {proj_name}",
-                                source_file=str(ctx.relative_to(source)),
-                            ))
+                            entries.append(
+                                MigrationEntry(
+                                    body=body,
+                                    scope=f"shared:{proj_name}",
+                                    tier="hot",
+                                    title=f"Project: {proj_name}",
+                                    source_file=str(ctx.relative_to(source)),
+                                )
+                            )
 
         # memory/agents/*.md → 1 entry per file, scope=team, tier=WARM
         agents_dir = source / "memory" / "agents"
@@ -114,11 +118,15 @@ class SmartMemoryAdapter(BaseAdapter):
             for md in sorted(agents_dir.glob("*.md")):
                 body = md.read_text(encoding="utf-8").strip()
                 if body:
-                    entries.append(MigrationEntry(
-                        body=body, scope="team", tier="warm",
-                        title=f"Agent: {md.stem}",
-                        source_file=str(md.relative_to(source)),
-                    ))
+                    entries.append(
+                        MigrationEntry(
+                            body=body,
+                            scope="team",
+                            tier="warm",
+                            title=f"Agent: {md.stem}",
+                            source_file=str(md.relative_to(source)),
+                        )
+                    )
 
         # memory/YYYY-MM-DD.md → 1 entry per file, scope=team, tier=COLD
         memory_dir = source / "memory"
@@ -128,11 +136,15 @@ class SmartMemoryAdapter(BaseAdapter):
                 if date_re.match(md.name):
                     body = md.read_text(encoding="utf-8").strip()
                     if body:
-                        entries.append(MigrationEntry(
-                            body=body, scope="team", tier="cold",
-                            title=f"Daily: {md.stem}",
-                            source_file=str(md.relative_to(source)),
-                        ))
+                        entries.append(
+                            MigrationEntry(
+                                body=body,
+                                scope="team",
+                                tier="cold",
+                                title=f"Daily: {md.stem}",
+                                source_file=str(md.relative_to(source)),
+                            )
+                        )
 
         return entries
 
@@ -149,11 +161,15 @@ class SmartMemoryAdapter(BaseAdapter):
             # Extract title from first line
             first_line = block.split("\n", 1)[0]
             title = first_line.replace("## [OPEN]", "").strip()
-            entries.append(MigrationEntry(
-                body=block, scope="team", tier="hot",
-                title=title or "Active Context",
-                source_file=str(path.name),
-            ))
+            entries.append(
+                MigrationEntry(
+                    body=block,
+                    scope="team",
+                    tier="hot",
+                    title=title or "Active Context",
+                    source_file=str(path.name),
+                )
+            )
         return entries
 
 
@@ -186,12 +202,16 @@ class FlatFileAdapter(BaseAdapter):
             if m:
                 title = m.group(1).strip()
             if not title:
-                title = f"{source.stem} (part {i+1})" if len(sections) > 1 else source.stem
-            entries.append(MigrationEntry(
-                body=section, scope="team", tier="hot",
-                title=title,
-                source_file=source.name,
-            ))
+                title = f"{source.stem} (part {i + 1})" if len(sections) > 1 else source.stem
+            entries.append(
+                MigrationEntry(
+                    body=section,
+                    scope="team",
+                    tier="hot",
+                    title=title,
+                    source_file=source.name,
+                )
+            )
         return entries
 
 
@@ -233,15 +253,17 @@ class JsonMemoryAdapter(BaseAdapter):
                     if not isinstance(item, dict) or "content" not in item:
                         continue
                     meta = item.get("metadata", {})
-                    entries.append(MigrationEntry(
-                        body=item["content"],
-                        scope=meta.get("scope", "team"),
-                        tier="hot",
-                        title=item.get("title") or meta.get("title"),
-                        tags=meta.get("tags"),
-                        agent=meta.get("agent"),
-                        source_file=f.name,
-                    ))
+                    entries.append(
+                        MigrationEntry(
+                            body=item["content"],
+                            scope=meta.get("scope", "team"),
+                            tier="hot",
+                            title=item.get("title") or meta.get("title"),
+                            tags=meta.get("tags"),
+                            agent=meta.get("agent"),
+                            source_file=f.name,
+                        )
+                    )
             except (json.JSONDecodeError, OSError):
                 continue
         return entries
@@ -396,8 +418,7 @@ def migrate(
 
     if dry_run:
         result["entries"] = [
-            {"title": e.title, "scope": e.scope, "tier": e.tier, "source": e.source_file}
-            for e in entries
+            {"title": e.title, "scope": e.scope, "tier": e.tier, "source": e.source_file} for e in entries
         ]
         return result
 

@@ -1,22 +1,21 @@
 """Tests for palaia detect CLI command output format."""
 
-import pytest
-from unittest.mock import patch
-from io import StringIO
 import sys
+from io import StringIO
+from unittest.mock import patch
 
 
 def test_detect_output_format():
     """Test that palaia detect outputs the expected format."""
     from palaia.cli import cmd_detect
-    
+
     args = type("Args", (), {"json": False})()
-    
+
     # Capture stdout
     captured = StringIO()
     old_stdout = sys.stdout
     sys.stdout = captured
-    
+
     try:
         with patch("palaia.embeddings._check_ollama_available", return_value=(False, None, [])):
             with patch("palaia.embeddings.importlib.util.find_spec", return_value=None):
@@ -25,9 +24,9 @@ def test_detect_output_format():
                         cmd_detect(args)
     finally:
         sys.stdout = old_stdout
-    
+
     output = captured.getvalue()
-    
+
     # Check required sections
     assert "Palaia Environment Detection" in output
     assert "=====" in output
@@ -39,15 +38,16 @@ def test_detect_output_format():
 
 def test_detect_json_output():
     """Test JSON output mode."""
-    from palaia.cli import cmd_detect
     import json
-    
+
+    from palaia.cli import cmd_detect
+
     args = type("Args", (), {"json": True})()
-    
+
     captured = StringIO()
     old_stdout = sys.stdout
     sys.stdout = captured
-    
+
     try:
         with patch("palaia.embeddings._check_ollama_available", return_value=(False, None, [])):
             with patch("palaia.embeddings.importlib.util.find_spec", return_value=None):
@@ -56,10 +56,10 @@ def test_detect_json_output():
                         cmd_detect(args)
     finally:
         sys.stdout = old_stdout
-    
+
     output = captured.getvalue()
     data = json.loads(output)
-    
+
     assert "system" in data
     assert "python" in data
     assert "providers" in data
@@ -70,22 +70,24 @@ def test_detect_json_output():
 def test_detect_with_ollama_available():
     """Test detect when ollama is running."""
     from palaia.cli import cmd_detect
-    
+
     args = type("Args", (), {"json": False})()
-    
+
     captured = StringIO()
     old_stdout = sys.stdout
     sys.stdout = captured
-    
+
     try:
-        with patch("palaia.embeddings._check_ollama_available", return_value=(True, None, ["nomic-embed-text", "llama3"])):
+        with patch(
+            "palaia.embeddings._check_ollama_available", return_value=(True, None, ["nomic-embed-text", "llama3"])
+        ):
             with patch("palaia.embeddings.importlib.util.find_spec", return_value=None):
                 with patch("palaia.embeddings._check_openai_key", return_value=None):
                     with patch("palaia.embeddings._check_voyage_key", return_value=None):
                         cmd_detect(args)
     finally:
         sys.stdout = old_stdout
-    
+
     output = captured.getvalue()
     assert "✓ ollama" in output
     assert "nomic-embed-text: available ✓" in output

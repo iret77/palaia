@@ -21,14 +21,13 @@ def normalize_scope(scope: str | None, default: str = "team") -> str:
         return default
     scope = scope.strip().lower()
     if not validate_scope(scope):
-        raise ValueError(
-            f"Invalid scope: '{scope}'. "
-            f"Valid: private, team, shared:<name>, public"
-        )
+        raise ValueError(f"Invalid scope: '{scope}'. Valid: private, team, shared:<name>, public")
     return scope
 
 
-def can_access(entry_scope: str, agent_name: str | None, entry_agent: str | None, projects: list[str] | None = None) -> bool:
+def can_access(
+    entry_scope: str, agent_name: str | None, entry_agent: str | None, projects: list[str] | None = None
+) -> bool:
     """Check if an agent can access an entry based on scope rules."""
     if entry_scope == "team":
         return True
@@ -37,7 +36,7 @@ def can_access(entry_scope: str, agent_name: str | None, entry_agent: str | None
     if entry_scope == "private":
         return agent_name is not None and agent_name == entry_agent
     if entry_scope.startswith(SHARED_PREFIX):
-        project = entry_scope[len(SHARED_PREFIX):]
+        project = entry_scope[len(SHARED_PREFIX) :]
         return projects is not None and project in projects
     return False
 

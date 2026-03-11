@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
+
 import pytest
-from pathlib import Path
 
 from palaia.config import DEFAULT_CONFIG, save_config
 from palaia.store import Store
-from palaia.sync import export_entries, import_entries, MANIFEST_NAME
+from palaia.sync import MANIFEST_NAME, export_entries, import_entries
 
 
 @pytest.fixture

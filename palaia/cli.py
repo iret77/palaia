@@ -8,11 +8,11 @@ import sys
 from pathlib import Path
 
 from palaia import __version__
-from palaia.config import DEFAULT_CONFIG, find_palaia_root, get_root, load_config, save_config
-from palaia.store import Store
+from palaia.config import DEFAULT_CONFIG, get_root, load_config, save_config
+from palaia.migrate import format_result, migrate
 from palaia.search import SearchEngine
+from palaia.store import Store
 from palaia.sync import export_entries, import_entries
-from palaia.migrate import migrate, format_result, detect_format
 
 
 def _json_out(data, args):
@@ -46,7 +46,7 @@ def cmd_write(args):
     """Write a memory entry."""
     root = get_root()
     store = Store(root)
-    
+
     # Recovery check
     recovered = store.recover()
     if recovered and not getattr(args, "json", False):
@@ -74,12 +74,15 @@ def cmd_write(args):
                 tier = t
                 break
 
-    if _json_out({
-        "id": entry_id,
-        "tier": tier,
-        "scope": scope,
-        "deduplicated": deduplicated,
-    }, args):
+    if _json_out(
+        {
+            "id": entry_id,
+            "tier": tier,
+            "scope": scope,
+            "deduplicated": deduplicated,
+        },
+        args,
+    ):
         return 0
 
     print(f"Written: {entry_id}")
@@ -91,7 +94,7 @@ def cmd_query(args):
     root = get_root()
     store = Store(root)
     store.recover()
-    
+
     engine = SearchEngine(store)
     results = engine.search(
         args.query,
@@ -153,25 +156,28 @@ def cmd_get(args):
     from_line = getattr(args, "from_line", None)
     num_lines = getattr(args, "lines", None)
     if from_line is not None:
-        lines = lines[max(0, from_line - 1):]
+        lines = lines[max(0, from_line - 1) :]
     if num_lines is not None:
         lines = lines[:num_lines]
     sliced_body = "\n".join(lines)
 
-    if _json_out({
-        "id": entry_id,
-        "content": sliced_body,
-        "meta": {
-            "scope": meta.get("scope", "team"),
-            "tier": tier,
-            "title": meta.get("title", ""),
-            "tags": meta.get("tags", []),
-            "agent": meta.get("agent", ""),
-            "created": meta.get("created", ""),
-            "accessed": meta.get("accessed", ""),
-            "decay_score": meta.get("decay_score", 0),
+    if _json_out(
+        {
+            "id": entry_id,
+            "content": sliced_body,
+            "meta": {
+                "scope": meta.get("scope", "team"),
+                "tier": tier,
+                "title": meta.get("title", ""),
+                "tags": meta.get("tags", []),
+                "agent": meta.get("agent", ""),
+                "created": meta.get("created", ""),
+                "accessed": meta.get("accessed", ""),
+                "decay_score": meta.get("decay_score", 0),
+            },
         },
-    }, args):
+        args,
+    ):
         return 0
 
     print(sliced_body)
@@ -203,19 +209,22 @@ def cmd_list(args):
     tier = args.tier or "hot"
     entries = store.list_entries(tier)
 
-    if _json_out({
-        "tier": tier,
-        "entries": [
-            {
-                "id": meta.get("id", "?"),
-                "title": meta.get("title", "(untitled)"),
-                "scope": meta.get("scope", "team"),
-                "decay_score": meta.get("decay_score", 0),
-                "preview": body[:80].replace("\n", " "),
-            }
-            for meta, body in entries
-        ],
-    }, args):
+    if _json_out(
+        {
+            "tier": tier,
+            "entries": [
+                {
+                    "id": meta.get("id", "?"),
+                    "title": meta.get("title", "(untitled)"),
+                    "scope": meta.get("scope", "team"),
+                    "decay_score": meta.get("decay_score", 0),
+                    "preview": body[:80].replace("\n", " "),
+                }
+                for meta, body in entries
+            ],
+        },
+        args,
+    ):
         return 0
 
     if not entries:
@@ -240,7 +249,7 @@ def cmd_status(args):
     root = get_root()
     store = Store(root)
     recovered = store.recover()
-    
+
     info = store.status()
 
     if _json_out(info, args):
@@ -248,18 +257,18 @@ def cmd_status(args):
 
     print(f"Palaia v{__version__}")
     print(f"Root: {info['palaia_root']}")
-    print(f"\nEntries:")
+    print("\nEntries:")
     print(f"  🔥 HOT:  {info['entries']['hot']}")
     print(f"  🌤  WARM: {info['entries']['warm']}")
     print(f"  ❄️  COLD: {info['entries']['cold']}")
     print(f"  Total: {info['total']}")
-    if info['wal_pending']:
+    if info["wal_pending"]:
         print(f"\n⚠️  WAL pending: {info['wal_pending']}")
     if recovered:
         print(f"  Recovered: {recovered} entries")
 
     # Embedding chain status
-    from palaia.embeddings import build_embedding_chain, BM25Provider
+    from palaia.embeddings import build_embedding_chain
 
     chain = build_embedding_chain(store.config)
     statuses = chain.provider_status()
@@ -281,7 +290,7 @@ def cmd_status(args):
         active = next((s["name"] for s in statuses if s["available"] and s["name"] != "bm25"), "bm25")
         print(f"Active: {active} (primary)")
     else:
-        print(f"Active: bm25 (keyword search)")
+        print("Active: bm25 (keyword search)")
 
     return 0
 
@@ -289,6 +298,7 @@ def cmd_status(args):
 def cmd_detect(args):
     """Detect available embedding providers."""
     import platform
+
     from palaia.embeddings import detect_providers
 
     sys_info = f"{platform.system()} {platform.machine()}"
@@ -296,11 +306,14 @@ def cmd_detect(args):
 
     providers = detect_providers()
 
-    if _json_out({
-        "system": sys_info,
-        "python": py_ver,
-        "providers": providers,
-    }, args):
+    if _json_out(
+        {
+            "system": sys_info,
+            "python": py_ver,
+            "providers": providers,
+        },
+        args,
+    ):
         return 0
 
     print("Palaia Environment Detection")
@@ -316,7 +329,9 @@ def cmd_detect(args):
         if name == "ollama":
             if p["server_running"]:
                 has_nomic = p.get("has_nomic", False)
-                model_status = f"nomic-embed-text: {'available ✓' if has_nomic else 'not pulled (ollama pull nomic-embed-text)'}"
+                model_status = (
+                    f"nomic-embed-text: {'available ✓' if has_nomic else 'not pulled (ollama pull nomic-embed-text)'}"
+                )
                 mark = "✓" if p["available"] else "△"
                 print(f"  {mark} ollama        — server running at localhost:11434")
                 print(f"                    {model_status}")
@@ -338,16 +353,16 @@ def cmd_detect(args):
                 print(f"  ✗ fastembed     — not installed ({p['install_hint']})")
         elif name == "openai":
             if p["available"]:
-                print(f"  ✓ OpenAI API    — key found")
+                print("  ✓ OpenAI API    — key found")
                 available.append("openai")
             else:
-                print(f"  ✗ OpenAI API    — no key found")
+                print("  ✗ OpenAI API    — no key found")
         elif name == "voyage":
             if p["available"]:
-                print(f"  ✓ Voyage API    — key found")
+                print("  ✓ Voyage API    — key found")
                 available.append("voyage")
             else:
-                print(f"  ✗ Voyage API    — no key found")
+                print("  ✗ Voyage API    — no key found")
 
     print()
     print("BM25 keyword search: always available ✓")
@@ -378,22 +393,22 @@ def cmd_detect(args):
         chain_parts = ["openai", local_name, "bm25"]
         chain_str = " → ".join(chain_parts)
         print(f"Recommended chain: {chain_str}")
-        print(f"  (Best quality cloud + best local fallback + always-on keyword backup)")
+        print("  (Best quality cloud + best local fallback + always-on keyword backup)")
     elif has_local:
         chain_parts = [local_name, "bm25"]
         chain_str = " → ".join(chain_parts)
         print(f"Recommended chain: {chain_str}")
-        print(f"  (Local provider, no cloud dependency)")
+        print("  (Local provider, no cloud dependency)")
     elif has_openai:
         chain_parts = ["openai", "bm25"]
         chain_str = " → ".join(chain_parts)
         print(f"Recommended chain: {chain_str}")
-        print(f"  (Cloud-based. Install sentence-transformers for offline fallback)")
+        print("  (Cloud-based. Install sentence-transformers for offline fallback)")
     else:
         chain_parts = ["bm25"]
         chain_str = "bm25"
         print(f"Recommended chain: {chain_str}")
-        print(f"  (Keyword search. pip install 'palaia[sentence-transformers]' for better results)")
+        print("  (Keyword search. pip install 'palaia[sentence-transformers]' for better results)")
 
     cmd_str = " ".join(chain_parts)
     print(f"\nSet with: palaia config set-chain {cmd_str}")
@@ -409,7 +424,7 @@ def cmd_detect(args):
         else:
             print(f"\nCurrent config: embedding_provider = {provider_cfg}")
     except FileNotFoundError:
-        print(f"\nCurrent config: not initialized (run 'palaia init' first)")
+        print("\nCurrent config: not initialized (run 'palaia init' first)")
 
     return 0
 
@@ -500,6 +515,7 @@ def cmd_warmup(args):
     root = get_root()
     config = load_config(root)
     from palaia.embeddings import warmup_providers
+
     results = warmup_providers(config)
 
     if _json_out({"providers": results}, args):
@@ -534,7 +550,7 @@ def cmd_gc(args):
         return 0
 
     total_moves = sum(v for k, v in result.items() if k != "wal_cleaned")
-    print(f"GC complete.")
+    print("GC complete.")
     if total_moves:
         for k, v in result.items():
             if v and k != "wal_cleaned":
@@ -650,8 +666,7 @@ def main():
     # get
     p_get = sub.add_parser("get", help="Read a specific memory entry")
     p_get.add_argument("path", help="Entry UUID or path (e.g. hot/uuid.md)")
-    p_get.add_argument("--from", type=int, default=None, dest="from_line",
-                       help="Start from line number (1-indexed)")
+    p_get.add_argument("--from", type=int, default=None, dest="from_line", help="Start from line number (1-indexed)")
     p_get.add_argument("--lines", type=int, default=None, help="Number of lines to return")
     p_get.add_argument("--json", action="store_true", help="Output as JSON")
 
@@ -713,9 +728,13 @@ def main():
     p_migrate = sub.add_parser("migrate", help="Import from external memory formats")
     p_migrate.add_argument("source", help="Source path (directory or file)")
     p_migrate.add_argument("--dry-run", action="store_true", help="Preview without writing")
-    p_migrate.add_argument("--format", default=None, dest="format_name",
-                           choices=["smart-memory", "flat-file", "json-memory", "generic-md"],
-                           help="Force source format")
+    p_migrate.add_argument(
+        "--format",
+        default=None,
+        dest="format_name",
+        choices=["smart-memory", "flat-file", "json-memory", "generic-md"],
+        help="Force source format",
+    )
     p_migrate.add_argument("--scope", default=None, help="Override scope for all entries")
     p_migrate.add_argument("--json", action="store_true", help="Output as JSON")
 

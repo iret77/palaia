@@ -1,7 +1,6 @@
 """Tests for the memory store."""
 
 import pytest
-from pathlib import Path
 
 from palaia.config import DEFAULT_CONFIG, save_config
 from palaia.store import Store
@@ -21,7 +20,7 @@ def test_write_and_read(palaia_root):
     store = Store(palaia_root)
     entry_id = store.write("Hello memory world", scope="team", agent="test")
     assert entry_id is not None
-    
+
     result = store.read(entry_id)
     assert result is not None
     meta, body = result
@@ -55,7 +54,7 @@ def test_list_entries(palaia_root):
     store.write("Entry 1")
     store.write("Entry 2")
     store.write("Entry 3")
-    
+
     entries = store.list_entries("hot")
     assert len(entries) == 3
 
@@ -71,11 +70,11 @@ def test_status(palaia_root):
 def test_scope_enforcement_private(palaia_root):
     store = Store(palaia_root)
     entry_id = store.write("Secret stuff", scope="private", agent="agent1")
-    
+
     # Same agent can read
     result = store.read(entry_id, agent="agent1")
     assert result is not None
-    
+
     # Different agent cannot
     result = store.read(entry_id, agent="agent2")
     assert result is None

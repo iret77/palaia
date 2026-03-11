@@ -3,7 +3,6 @@
 import json
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -17,11 +16,14 @@ def palaia_dir(tmp_path):
     pd.mkdir()
     for sub in ("hot", "warm", "cold", "wal", "index"):
         (pd / sub).mkdir()
-    save_config(pd, {
-        "version": 1,
-        "embedding_provider": "auto",
-        "embedding_model": "",
-    })
+    save_config(
+        pd,
+        {
+            "version": 1,
+            "embedding_provider": "auto",
+            "embedding_model": "",
+        },
+    )
     return pd
 
 
@@ -29,7 +31,9 @@ def _run_palaia(args, cwd):
     """Run palaia CLI as subprocess."""
     result = subprocess.run(
         [sys.executable, "-m", "palaia.cli"] + args,
-        capture_output=True, text=True, cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        cwd=str(cwd),
     )
     return result
 
@@ -82,12 +86,16 @@ def test_set_chain_json_output(palaia_dir):
 
 def test_backward_compat_embedding_provider(palaia_dir):
     """Legacy embedding_provider still works when no embedding_chain."""
-    save_config(palaia_dir, {
-        "version": 1,
-        "embedding_provider": "sentence-transformers",
-        "embedding_model": "",
-    })
+    save_config(
+        palaia_dir,
+        {
+            "version": 1,
+            "embedding_provider": "sentence-transformers",
+            "embedding_model": "",
+        },
+    )
     from palaia.embeddings import build_embedding_chain
+
     config = load_config(palaia_dir)
     chain = build_embedding_chain(config)
     assert chain.chain_names == ["sentence-transformers", "bm25"]
@@ -95,12 +103,16 @@ def test_backward_compat_embedding_provider(palaia_dir):
 
 def test_embedding_chain_overrides_provider(palaia_dir):
     """When both are set, embedding_chain wins."""
-    save_config(palaia_dir, {
-        "version": 1,
-        "embedding_provider": "ollama",
-        "embedding_chain": ["openai", "bm25"],
-    })
+    save_config(
+        palaia_dir,
+        {
+            "version": 1,
+            "embedding_provider": "ollama",
+            "embedding_chain": ["openai", "bm25"],
+        },
+    )
     from palaia.embeddings import build_embedding_chain
+
     config = load_config(palaia_dir)
     chain = build_embedding_chain(config)
     assert chain.chain_names == ["openai", "bm25"]

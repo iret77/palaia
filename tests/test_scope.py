@@ -1,7 +1,8 @@
 """Tests for scope enforcement."""
 
 import pytest
-from palaia.scope import validate_scope, normalize_scope, can_access, is_exportable
+
+from palaia.scope import can_access, is_exportable, normalize_scope, validate_scope
 
 
 def test_validate_scope():

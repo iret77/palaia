@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
-import shutil
 from pathlib import Path
 
 from palaia.config import load_config
@@ -15,13 +13,11 @@ from palaia.lock import PalaiaLock
 from palaia.scope import can_access, normalize_scope
 from palaia.wal import WAL, WALEntry
 
-
 TIERS = ("hot", "warm", "cold")
 
 
 class Store:
     """Memory store with WAL, locking, and tier management."""
-
 
     def __init__(self, palaia_root: Path):
         self.root = palaia_root
@@ -29,7 +25,7 @@ class Store:
         self.wal = WAL(palaia_root)
         self.lock = PalaiaLock(palaia_root, self.config["lock_timeout_seconds"])
         self.embedding_cache = EmbeddingCache(palaia_root)
-        
+
         # Ensure tier directories
         for tier in TIERS:
             (self.root / tier).mkdir(parents=True, exist_ok=True)
@@ -50,7 +46,7 @@ class Store:
         if not body or not body.strip():
             raise ValueError("Cannot write empty content. Provide a non-empty text body.")
         scope = normalize_scope(scope, self.config["default_scope"])
-        
+
         # Dedup check
         h = content_hash(body)
         existing = self._find_by_hash(h)
@@ -101,7 +97,9 @@ class Store:
         if path.exists():
             path.unlink()
 
-    def read(self, entry_id: str, agent: str | None = None, projects: list[str] | None = None) -> tuple[dict, str] | None:
+    def read(
+        self, entry_id: str, agent: str | None = None, projects: list[str] | None = None
+    ) -> tuple[dict, str] | None:
         """Read a memory entry by ID. Updates access metadata."""
         path = self._find_entry(entry_id)
         if path is None:
@@ -123,7 +121,9 @@ class Store:
 
         return meta, body
 
-    def list_entries(self, tier: str = "hot", agent: str | None = None, projects: list[str] | None = None) -> list[tuple[dict, str]]:
+    def list_entries(
+        self, tier: str = "hot", agent: str | None = None, projects: list[str] | None = None
+    ) -> list[tuple[dict, str]]:
         """List all entries in a tier."""
         tier_dir = self.root / tier
         if not tier_dir.exists():
@@ -140,7 +140,9 @@ class Store:
                 continue
         return results
 
-    def all_entries(self, include_cold: bool = False, agent: str | None = None, projects: list[str] | None = None) -> list[tuple[dict, str, str]]:
+    def all_entries(
+        self, include_cold: bool = False, agent: str | None = None, projects: list[str] | None = None
+    ) -> list[tuple[dict, str, str]]:
         """Get all entries across tiers. Returns (meta, body, tier)."""
         tiers = ["hot", "warm"] + (["cold"] if include_cold else [])
         results = []
@@ -176,7 +178,8 @@ class Store:
                     meta["decay_score"] = score
 
                     new_tier = classify_tier(
-                        d, score,
+                        d,
+                        score,
                         config["hot_threshold_days"],
                         config["warm_threshold_days"],
                         config["hot_min_score"],
@@ -188,7 +191,6 @@ class Store:
 
                     if new_tier != tier:
                         new_target = f"{new_tier}/{p.name}"
-                        old_target = f"{tier}/{p.name}"
                         # WAL: log the move with payload for crash recovery
                         wal_entry = WALEntry(
                             operation="write",

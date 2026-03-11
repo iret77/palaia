@@ -55,6 +55,7 @@ class OllamaProvider:
         if self._client is None:
             try:
                 import ollama as ollama_lib
+
                 self._client = ollama_lib.Client(host=self.base_url)
             except ImportError:
                 # Fall back to raw HTTP
@@ -72,7 +73,7 @@ class OllamaProvider:
             if isinstance(resp, dict) and "embeddings" in resp:
                 results.append(resp["embeddings"][0])
             else:
-                results.append(resp.embeddings[0] if hasattr(resp, 'embeddings') else [])
+                results.append(resp.embeddings[0] if hasattr(resp, "embeddings") else [])
         return results
 
     def embed_query(self, text: str) -> list[float]:
@@ -81,6 +82,7 @@ class OllamaProvider:
     def _embed_http(self, text: str) -> list[float]:
         import json
         import urllib.request
+
         data = json.dumps({"model": self.model, "input": text}).encode()
         req = urllib.request.Request(
             f"{self.base_url}/api/embed",
@@ -105,6 +107,7 @@ class SentenceTransformersProvider:
     def _get_model(self):
         if self._model is None:
             from sentence_transformers import SentenceTransformer
+
             self._model = SentenceTransformer(self.model_name)
         return self._model
 
@@ -130,13 +133,14 @@ class FastEmbedProvider:
     def _get_model(self):
         if self._model is None:
             from fastembed import TextEmbedding
+
             self._model = TextEmbedding(model_name=self.model_name)
         return self._model
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         model = self._get_model()
         embeddings = list(model.embed(texts))
-        return [e.tolist() if hasattr(e, 'tolist') else list(e) for e in embeddings]
+        return [e.tolist() if hasattr(e, "tolist") else list(e) for e in embeddings]
 
     def embed_query(self, text: str) -> list[float]:
         return self.embed([text])[0]
@@ -157,6 +161,7 @@ class OpenAIProvider:
         if self._client is None:
             try:
                 from openai import OpenAI
+
                 self._client = OpenAI(api_key=self.api_key)
             except ImportError:
                 self._client = "http"
@@ -175,6 +180,7 @@ class OpenAIProvider:
     def _embed_http(self, texts: list[str]) -> list[list[float]]:
         import json
         import urllib.request
+
         data = json.dumps({"model": self.model_name, "input": texts}).encode()
         req = urllib.request.Request(
             "https://api.openai.com/v1/embeddings",
@@ -238,9 +244,7 @@ class BM25Provider:
                 tf = tf_map[qt]
                 df = self.doc_freqs.get(qt, 0)
                 idf = math.log((self.n_docs - df + 0.5) / (df + 0.5) + 1.0)
-                tf_norm = (tf * (self.k1 + 1)) / (
-                    tf + self.k1 * (1 - self.b + self.b * dl / self.avg_dl)
-                )
+                tf_norm = (tf * (self.k1 + 1)) / (tf + self.k1 * (1 - self.b + self.b * dl / self.avg_dl))
                 score += idf * tf_norm
 
             if score > 0:
@@ -276,11 +280,12 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 
 def _check_ollama_available(base_url: str = "http://localhost:11434") -> tuple[bool, str | None, list[str]]:
     """Check if ollama server is running and which models are available.
-    
+
     Returns: (server_running, version_or_none, list_of_models)
     """
     import json
     import urllib.request
+
     try:
         req = urllib.request.Request(f"{base_url}/api/tags", method="GET")
         with urllib.request.urlopen(req, timeout=3) as resp:
@@ -303,6 +308,7 @@ def _check_openai_key() -> str | None:
         if os.path.exists(path):
             try:
                 import json
+
                 with open(path) as f:
                     data = json.load(f)
                 # Look for openai key in various formats
@@ -324,7 +330,7 @@ def _check_voyage_key() -> str | None:
 
 def detect_providers() -> list[dict]:
     """Detect all available embedding providers.
-    
+
     Returns list of dicts with keys: name, available, version, models, install_hint
     """
     providers = []
@@ -332,15 +338,19 @@ def detect_providers() -> list[dict]:
     # 1. ollama
     server_running, version, models = _check_ollama_available()
     has_nomic = "nomic-embed-text" in models if models else False
-    providers.append({
-        "name": "ollama",
-        "available": server_running and has_nomic,
-        "server_running": server_running,
-        "models": models,
-        "has_nomic": has_nomic,
-        "version": version,
-        "install_hint": None if server_running else "curl -fsSL https://ollama.com/install.sh | sh && ollama pull nomic-embed-text",
-    })
+    providers.append(
+        {
+            "name": "ollama",
+            "available": server_running and has_nomic,
+            "server_running": server_running,
+            "models": models,
+            "has_nomic": has_nomic,
+            "version": version,
+            "install_hint": None
+            if server_running
+            else "curl -fsSL https://ollama.com/install.sh | sh && ollama pull nomic-embed-text",
+        }
+    )
 
     # 2. sentence-transformers
     st_spec = importlib.util.find_spec("sentence_transformers")
@@ -351,12 +361,14 @@ def detect_providers() -> list[dict]:
             st_version = _importlib_metadata.version("sentence-transformers")
         except Exception:
             st_version = "installed"
-    providers.append({
-        "name": "sentence-transformers",
-        "available": st_spec is not None,
-        "version": st_version,
-        "install_hint": 'pip install "palaia[sentence-transformers]"' if not st_spec else None,
-    })
+    providers.append(
+        {
+            "name": "sentence-transformers",
+            "available": st_spec is not None,
+            "version": st_version,
+            "install_hint": 'pip install "palaia[sentence-transformers]"' if not st_spec else None,
+        }
+    )
 
     # 3. fastembed
     fe_spec = importlib.util.find_spec("fastembed")
@@ -367,30 +379,36 @@ def detect_providers() -> list[dict]:
             fe_version = _importlib_metadata.version("fastembed")
         except Exception:
             fe_version = "installed"
-    providers.append({
-        "name": "fastembed",
-        "available": fe_spec is not None,
-        "version": fe_version,
-        "install_hint": 'pip install "palaia[fastembed]"' if not fe_spec else None,
-    })
+    providers.append(
+        {
+            "name": "fastembed",
+            "available": fe_spec is not None,
+            "version": fe_version,
+            "install_hint": 'pip install "palaia[fastembed]"' if not fe_spec else None,
+        }
+    )
 
     # 4. OpenAI
     openai_key = _check_openai_key()
-    providers.append({
-        "name": "openai",
-        "available": openai_key is not None,
-        "version": None,
-        "install_hint": None if openai_key else "Set OPENAI_API_KEY environment variable",
-    })
+    providers.append(
+        {
+            "name": "openai",
+            "available": openai_key is not None,
+            "version": None,
+            "install_hint": None if openai_key else "Set OPENAI_API_KEY environment variable",
+        }
+    )
 
     # 5. Voyage
     voyage_key = _check_voyage_key()
-    providers.append({
-        "name": "voyage",
-        "available": voyage_key is not None,
-        "version": None,
-        "install_hint": None if voyage_key else "Set VOYAGE_API_KEY environment variable",
-    })
+    providers.append(
+        {
+            "name": "voyage",
+            "available": voyage_key is not None,
+            "version": None,
+            "install_hint": None if voyage_key else "Set VOYAGE_API_KEY environment variable",
+        }
+    )
 
     return providers
 
@@ -476,12 +494,14 @@ class EmbeddingChain:
         statuses = []
         for name in self.chain_names:
             if name == "bm25":
-                statuses.append({
-                    "name": "bm25",
-                    "model": None,
-                    "available": True,
-                    "status": "always available",
-                })
+                statuses.append(
+                    {
+                        "name": "bm25",
+                        "model": None,
+                        "available": True,
+                        "status": "always available",
+                    }
+                )
                 continue
             info = detected.get(name, {})
             model = self.models.get(name)
@@ -504,18 +524,20 @@ class EmbeddingChain:
                     status = "server not running"
             else:
                 status = "installed" if available else "not installed"
-            statuses.append({
-                "name": name,
-                "model": model,
-                "available": available,
-                "status": status,
-            })
+            statuses.append(
+                {
+                    "name": name,
+                    "model": model,
+                    "available": available,
+                    "status": status,
+                }
+            )
         return statuses
 
 
 def _resolve_embedding_models(config: dict) -> dict[str, str]:
     """Extract per-provider model overrides from config.
-    
+
     Supports both:
       - embedding_model: "text-embedding-3-large"  (old format, applies to active provider)
       - embedding_model: {"openai": "text-embedding-3-large", ...}  (new format)
@@ -537,12 +559,12 @@ def _resolve_single_model(config: dict) -> str | None:
 
 def build_embedding_chain(config: dict) -> EmbeddingChain:
     """Build an EmbeddingChain from config.
-    
+
     Supports:
       - embedding_chain: ["openai", "sentence-transformers", "bm25"]
       - embedding_provider: "auto" (legacy, auto-detect)
       - embedding_provider: "sentence-transformers" (legacy, single provider)
-    
+
     embedding_chain takes precedence over embedding_provider.
     """
     models = _resolve_embedding_models(config)
@@ -586,15 +608,15 @@ def build_embedding_chain(config: dict) -> EmbeddingChain:
 
 def auto_detect_provider(config: dict | None = None) -> EmbeddingProvider | BM25Provider:
     """Auto-detect the best available embedding provider.
-    
+
     Order: ollama → sentence-transformers → fastembed → openai → bm25
-    
+
     Args:
         config: Optional config dict with embedding_provider and embedding_model keys.
-    
+
     Returns:
         An embedding provider instance.
-    
+
     Note: For new code, prefer build_embedding_chain() which supports fallback chains.
     """
     config = config or {}
@@ -657,7 +679,9 @@ def warmup_providers(config: dict) -> list[dict]:
             # For auto, detect what's available
             if provider_name == "auto":
                 detected = detect_providers()
-                provider_names = [p["name"] for p in detected if p["available"] and p["name"] not in ("voyage", "openai")]
+                provider_names = [
+                    p["name"] for p in detected if p["available"] and p["name"] not in ("voyage", "openai")
+                ]
             else:
                 provider_names = []
         else:
@@ -676,74 +700,94 @@ def warmup_providers(config: dict) -> list[dict]:
                 provider._get_model()  # triggers download + load
                 # Try to find cache path
                 cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
-                results.append({
-                    "name": name,
-                    "status": "ready",
-                    "message": f"Model loaded: {model_name} (cached at {cache_dir})",
-                })
+                results.append(
+                    {
+                        "name": name,
+                        "status": "ready",
+                        "message": f"Model loaded: {model_name} (cached at {cache_dir})",
+                    }
+                )
             elif name == "ollama":
                 model_name = model_override or OllamaProvider.default_model
                 server_running, _, available_models = _check_ollama_available()
                 if not server_running:
-                    results.append({
-                        "name": name,
-                        "status": "action_needed",
-                        "message": "Ollama server not running. Start with: ollama serve",
-                    })
+                    results.append(
+                        {
+                            "name": name,
+                            "status": "action_needed",
+                            "message": "Ollama server not running. Start with: ollama serve",
+                        }
+                    )
                 elif model_name not in available_models and model_name.split(":")[0] not in available_models:
-                    results.append({
-                        "name": name,
-                        "status": "action_needed",
-                        "message": f"Model '{model_name}' not pulled. Run: ollama pull {model_name}",
-                    })
+                    results.append(
+                        {
+                            "name": name,
+                            "status": "action_needed",
+                            "message": f"Model '{model_name}' not pulled. Run: ollama pull {model_name}",
+                        }
+                    )
                 else:
-                    results.append({
-                        "name": name,
-                        "status": "ready",
-                        "message": f"Model available: {model_name}",
-                    })
+                    results.append(
+                        {
+                            "name": name,
+                            "status": "ready",
+                            "message": f"Model available: {model_name}",
+                        }
+                    )
             elif name == "fastembed":
                 model_name = model_override or FastEmbedProvider.default_model
                 provider = FastEmbedProvider(model=model_name)
                 provider._get_model()  # triggers download
-                results.append({
-                    "name": name,
-                    "status": "ready",
-                    "message": f"Model loaded: {model_name}",
-                })
+                results.append(
+                    {
+                        "name": name,
+                        "status": "ready",
+                        "message": f"Model loaded: {model_name}",
+                    }
+                )
             elif name == "openai":
                 # Cloud provider — no model to download
                 key = _check_openai_key()
                 if key:
-                    results.append({
+                    results.append(
+                        {
+                            "name": name,
+                            "status": "skipped",
+                            "message": "Cloud provider — no local model to pre-load. API key found.",
+                        }
+                    )
+                else:
+                    results.append(
+                        {
+                            "name": name,
+                            "status": "action_needed",
+                            "message": "No API key found. Set OPENAI_API_KEY environment variable.",
+                        }
+                    )
+            else:
+                results.append(
+                    {
                         "name": name,
                         "status": "skipped",
-                        "message": "Cloud provider — no local model to pre-load. API key found.",
-                    })
-                else:
-                    results.append({
-                        "name": name,
-                        "status": "action_needed",
-                        "message": "No API key found. Set OPENAI_API_KEY environment variable.",
-                    })
-            else:
-                results.append({
-                    "name": name,
-                    "status": "skipped",
-                    "message": f"Unknown provider '{name}', skipping.",
-                })
+                        "message": f"Unknown provider '{name}', skipping.",
+                    }
+                )
         except ImportError as e:
-            results.append({
-                "name": name,
-                "status": "error",
-                "message": f"Not installed: {e}",
-            })
+            results.append(
+                {
+                    "name": name,
+                    "status": "error",
+                    "message": f"Not installed: {e}",
+                }
+            )
         except Exception as e:
-            results.append({
-                "name": name,
-                "status": "error",
-                "message": str(e),
-            })
+            results.append(
+                {
+                    "name": name,
+                    "status": "error",
+                    "message": str(e),
+                }
+            )
 
     return results
 
@@ -752,6 +796,6 @@ def get_provider_display_info(provider: EmbeddingProvider | BM25Provider) -> str
     """Get a human-readable display string for a provider."""
     if isinstance(provider, BM25Provider):
         return "BM25 (keyword search)"
-    name = getattr(provider, 'name', 'unknown')
-    model = getattr(provider, 'model_name', None) or getattr(provider, 'model', None) or 'default'
+    name = getattr(provider, "name", "unknown")
+    model = getattr(provider, "model_name", None) or getattr(provider, "model", None) or "default"
     return f"{name} ({model})"

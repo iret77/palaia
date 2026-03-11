@@ -1,6 +1,5 @@
 """Tests for BM25 search."""
 
-import pytest
 from palaia.search import BM25, tokenize
 
 
@@ -17,7 +16,7 @@ def test_bm25_basic():
         ("doc3", "the lazy cat sleeps on the couch all day"),
     ]
     bm25.index(docs)
-    
+
     results = bm25.search("lazy dog")
     assert len(results) > 0
     assert results[0][0] == "doc1"  # Best match
@@ -45,7 +44,7 @@ def test_bm25_ranking():
         ("doc3", "python programming python scripting python code"),
     ]
     bm25.index(docs)
-    
+
     results = bm25.search("python programming")
     # Both doc1 and doc3 match both terms, doc2 only matches "python"
     result_ids = [r[0] for r in results]

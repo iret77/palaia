@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
-from pathlib import Path
 
 from palaia.embeddings import (
     BM25Provider,
@@ -69,9 +68,7 @@ class BM25:
                 tf = tf_map[qt]
                 df = self.doc_freqs.get(qt, 0)
                 idf = math.log((self.n_docs - df + 0.5) / (df + 0.5) + 1.0)
-                tf_norm = (tf * (self.k1 + 1)) / (
-                    tf + self.k1 * (1 - self.b + self.b * dl / self.avg_dl)
-                )
+                tf_norm = (tf * (self.k1 + 1)) / (tf + self.k1 * (1 - self.b + self.b * dl / self.avg_dl))
                 score += idf * tf_norm
 
             if score > 0:
@@ -83,14 +80,14 @@ class BM25:
 
 def detect_search_tier() -> int:
     """Detect best available search tier.
-    
+
     Returns:
         1: BM25 only
         2: Local embeddings (ollama, sentence-transformers, fastembed)
         3: API embeddings (OpenAI)
     """
     from palaia.embeddings import detect_providers
-    
+
     providers = detect_providers()
     for p in providers:
         if p["available"]:
@@ -168,7 +165,9 @@ class SearchEngine:
 
                 if texts_to_embed:
                     vectors = self.provider.embed(texts_to_embed)
-                    model_name = getattr(self.provider, 'model_name', None) or getattr(self.provider, 'model', 'unknown')
+                    model_name = getattr(self.provider, "model_name", None) or getattr(
+                        self.provider, "model", "unknown"
+                    )
                     for doc_id, vec in zip(ids_to_embed, vectors):
                         self.store.embedding_cache.set_cached(doc_id, vec, model=model_name)
                         sim = cosine_similarity(query_vec, vec)
@@ -176,6 +175,7 @@ class SearchEngine:
             except Exception as e:
                 # If embedding fails, fall back to BM25 only
                 import warnings
+
                 warnings.warn(f"Embedding search failed, using BM25 only: {e}")
                 embed_norm = {}
 
@@ -196,21 +196,22 @@ class SearchEngine:
 
         # Build output
         output = []
-        search_method = "hybrid" if embed_norm else "BM25"
         for doc_id, score in ranked:
             entry = self.store.read(doc_id)
             if entry:
                 meta, body = entry
-                output.append({
-                    "id": doc_id,
-                    "score": round(score, 4),
-                    "scope": meta.get("scope", "team"),
-                    "title": meta.get("title", ""),
-                    "tags": meta.get("tags", []),
-                    "body": body[:200] + ("..." if len(body) > 200 else ""),
-                    "tier": self._get_tier(doc_id),
-                    "decay_score": meta.get("decay_score", 0),
-                })
+                output.append(
+                    {
+                        "id": doc_id,
+                        "score": round(score, 4),
+                        "scope": meta.get("scope", "team"),
+                        "title": meta.get("title", ""),
+                        "tags": meta.get("tags", []),
+                        "body": body[:200] + ("..." if len(body) > 200 else ""),
+                        "tier": self._get_tier(doc_id),
+                        "decay_score": meta.get("decay_score", 0),
+                    }
+                )
         return output
 
     def _get_tier(self, entry_id: str) -> str:
