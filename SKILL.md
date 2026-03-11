@@ -1,308 +1,236 @@
 ---
 name: palaia
 description: >
-  Persistent memory for OpenClaw agents. Local, crash-safe, no API key needed.
-  Agents remember things across sessions. You control what's shared between agents.
-  Drop-in replacement for OpenClaw's built-in memory via @palaia/openclaw plugin.
+  Local, crash-safe persistent memory for OpenClaw agents.
+  Replaces built-in memory-core with semantic search, projects, and scope-based access control.
 metadata:
   openclaw:
-    emoji: 🧠
+    emoji: 📦
     requires:
       bins: ["python3"]
     install:
       - id: pip
-        kind: pip
-        package: palaia
+        kind: shell
+        command: "pip install git+https://github.com/iret77/palaia.git"
         bins: ["palaia"]
         label: "Install Palaia"
 ---
 
-# Palaia — Memory That Sticks
+# Palaia — Agent Memory Skill
 
-## What Palaia Does (plain English)
+## Setup Flow (follow this exactly)
 
-Palaia gives your agent a notebook that survives restarts. When your agent learns something — a preference, a project detail, a lesson — it writes it down. Next session, it's still there. Think of it as a filing cabinet: important stuff up front, old stuff in the back, nothing gets lost.
+1. **Install:**
+   ```bash
+   pip install git+https://github.com/iret77/palaia.git
+   ```
 
-## Quick Install
+2. **Initialize:**
+   ```bash
+   palaia init
+   ```
+
+3. **Detect available providers:**
+   ```bash
+   palaia detect
+   ```
+   Show the user the results. Explain what's available in plain language.
+
+4. **Recommend a chain** based on detect output:
+   - OpenAI key + local provider → `openai <local> bm25` ("Best quality with local fallback")
+   - Only local provider → `<local> bm25` ("Fully local, no cloud")
+   - Only OpenAI key → `openai bm25` (suggest also installing sentence-transformers)
+   - Nothing detected → `bm25` (suggest `pip install "palaia[sentence-transformers]"`)
+
+5. **Configure:**
+   ```bash
+   palaia config set-chain <provider1> [provider2] bm25
+   ```
+
+6. **Warm up models:**
+   ```bash
+   palaia warmup
+   ```
+   This pre-downloads embedding models so the first search is instant. Always run after chain setup.
+
+7. **Optional — migrate existing memory files:**
+   ```bash
+   palaia migrate <path> --dry-run   # Preview first
+   palaia migrate <path>             # Then import
+   ```
+
+## Commands Reference
+
+### Basic Memory
 
 ```bash
-pip install palaia
-palaia init
+# Write a memory entry
+palaia write "text" [--scope private|team|public] [--project NAME] [--tags a,b] [--title "Title"]
+
+# Search memories (semantic + keyword)
+palaia query "search term" [--project NAME] [--limit N] [--all]
+
+# Read a specific entry by ID
+palaia get <id> [--from LINE] [--lines N]
+
+# List entries in a tier
+palaia list [--tier hot|warm|cold] [--project NAME]
+
+# System health and active providers
 palaia status
 ```
 
-That's it. You now have a working memory system with keyword search. No API keys, no servers, no cloud.
+### Projects
 
-After configuring an embedding chain (see below), always run:
+Projects group related entries. They're optional — everything works without them.
 
 ```bash
+# Create a project
+palaia project create <name> [--description "..."] [--default-scope team]
+
+# List all projects
+palaia project list
+
+# Show project details + entries
+palaia project show <name>
+
+# Write an entry directly to a project
+palaia project write <name> "text" [--scope X] [--tags a,b] [--title "Title"]
+
+# Search within a project only
+palaia project query <name> "search term" [--limit N]
+
+# Change the project's default scope
+palaia project set-scope <name> <scope>
+
+# Delete a project (entries are preserved, just untagged)
+palaia project delete <name>
+```
+
+### Configuration
+
+```bash
+# Show all settings
+palaia config list
+
+# Get/set a single value
+palaia config set <key> <value>
+
+# Set the embedding fallback chain (ordered by priority)
+palaia config set-chain <provider1> [provider2] [...] bm25
+
+# Detect available embedding providers on this system
+palaia detect
+
+# Pre-download embedding models
 palaia warmup
 ```
 
-This pre-downloads embedding models so the first real search is instant. Not optional — part of setup.
-
-## Setting Up Your Embedding Chain
-
-Keyword search works out of the box. But if you want your agent to find things by *meaning* (not just matching words), you'll want semantic search.
-
-An **embedding chain** is a priority list — Palaia tries the first provider. If it doesn't work (server down, rate limit, missing API key), it automatically moves to the next one. BM25 keyword search is always the last resort, so search never breaks.
-
-### Quick Detection
+### Maintenance
 
 ```bash
-palaia detect
+# Tier rotation — moves old entries from HOT → WARM → COLD
+palaia gc [--aggressive]
+
+# Replay any interrupted writes from the write-ahead log
+palaia recover
 ```
 
-This shows what's available on your machine and recommends a chain. The output includes a ready-to-paste command.
-
-### Setting Your Chain
+### Sync
 
 ```bash
-# Best setup: cloud + local fallback + keyword backup
-palaia config set-chain openai sentence-transformers bm25
+# Export entries for sharing
+palaia export [--project NAME] [--output DIR] [--remote GIT_URL]
 
-# Local only, no cloud
-palaia config set-chain sentence-transformers bm25
+# Import entries from an export
+palaia import <path> [--dry-run]
 
-# Just keyword search (always works, zero setup)
-palaia config set-chain bm25
+# Import from other memory formats (smart-memory, flat-file, json-memory, generic-md)
+palaia migrate <path> [--dry-run] [--format FORMAT] [--scope SCOPE]
 ```
 
-Check what's active:
+### JSON Output
 
+All commands support `--json` for machine-readable output:
 ```bash
-palaia status
+palaia status --json
+palaia query "search" --json
+palaia project list --json
 ```
 
-Output looks like:
-```
-Embedding chain: openai → sentence-transformers → bm25
-  1. openai (text-embedding-3-large) ✓ API key found
-  2. sentence-transformers (all-MiniLM-L6-v2) ✓ installed
-  3. bm25 ✓ always available
-Active: openai (primary)
-```
+## Scope System
 
-If the primary provider fails, you'll see:
-```
-Active: sentence-transformers (fallback — openai: 429 Too Many Requests)
-```
+Every entry has a visibility scope:
 
-### The Providers
-
-| Provider | Type | Pros | Cons |
-|----------|------|------|------|
-| **openai** | Cloud | Best quality, no local compute | Costs money, needs internet + API key |
-| **sentence-transformers** | Local | Best local quality, works offline | ~500MB RAM, ~30s first load |
-| **ollama** | Local | Private, good quality, no API costs | ~1GB RAM, needs server running |
-| **fastembed** | Local | Lightweight, fast startup | Slightly lower quality |
-| **bm25** | Built-in | Zero setup, always works | Keyword matching only (no meaning) |
-
-### Installing Providers
-
-```bash
-# sentence-transformers
-pip install "palaia[sentence-transformers]"
-
-# fastembed
-pip install "palaia[fastembed]"
-
-# ollama
-curl -fsSL https://ollama.com/install.sh | sh
-ollama pull nomic-embed-text
-
-# OpenAI (just set the key)
-export OPENAI_API_KEY="sk-..."
-```
-
-### Model Overrides
-
-Each provider has a sensible default model. Override per provider if needed:
-
-```json
-{
-  "embedding_chain": ["openai", "sentence-transformers", "bm25"],
-  "embedding_model": {
-    "openai": "text-embedding-3-large",
-    "sentence-transformers": "all-MiniLM-L6-v2"
-  }
-}
-```
-
-### Backward Compatibility
-
-The old `embedding_provider` setting still works:
-
-```bash
-# These still work exactly as before
-palaia config set embedding_provider sentence-transformers
-palaia config set embedding_provider auto
-```
-
-If both `embedding_chain` and `embedding_provider` are set, `embedding_chain` takes priority.
-
-### Guided Setup Flow (Agent Instructions)
-
-When setting up Palaia for a user, follow these steps:
-
-1. **Run detection:** `palaia detect` — parse the output
-2. **Explain** what's available in plain language
-3. **Recommend** a chain based on what's detected (see decision tree below)
-4. **Let the user decide** — recommend, don't force
-5. **Apply** with `palaia config set-chain ...`
-6. **Warm up models:** `palaia warmup` — pre-downloads embedding models so the first real search is instant
-7. **Confirm** with `palaia status`
-
-#### Agent Decision Tree (recommend, don't decide)
-
-```
-If OpenAI key + local provider installed (sentence-transformers/ollama/fastembed):
-  → Recommend: openai → <local> → bm25
-  → Say: "Best quality with local fallback. If OpenAI is unreachable,
-          <local> takes over automatically."
-
-If only local provider (no OpenAI key):
-  → Recommend: <local> → bm25
-  → Say: "Fully local, no cloud dependency."
-
-If only ollama:
-  → Recommend: ollama → bm25
-  → Say: "Runs on your local ollama server."
-
-If only OpenAI key (no local provider):
-  → Recommend: openai → bm25
-  → Say: "Cloud-based. I'd suggest also installing sentence-transformers
-          for offline fallback: pip install 'palaia[sentence-transformers]'"
-
-If nothing available:
-  → Recommend: bm25
-  → Say: "Keyword search works right away. For smarter search:
-          pip install 'palaia[sentence-transformers]'"
-```
-
-The user always makes the final call. Explain trade-offs in context of their system.
-
-## Connecting to OpenClaw (the important bit)
-
-Palaia integrates with OpenClaw through its plugin system:
-
-```bash
-# In your OpenClaw workspace
-npm install @palaia/openclaw
-```
-
-Then add to your OpenClaw config:
-```json
-{
-  "plugins": ["@palaia/openclaw"]
-}
-```
-
-The plugin automatically routes memory operations through Palaia instead of OpenClaw's built-in memory.
-
-## Core Commands
-
-```bash
-# Write a memory
-palaia write "Christian prefers dark mode in all apps" --tags "preferences,ui"
-
-# Search memories
-palaia query "what does Christian prefer"
-
-# List what's in active memory
-palaia list --tier hot
-
-# Check system status
-palaia status
-
-# Run garbage collection (moves old stuff to archive)
-palaia gc
-
-# Export public memories for sharing
-palaia export --output ./shared-memories
-
-# Import memories from another agent
-palaia import ./shared-memories
-
-# Detect available embedding providers
-palaia detect
-
-# Configure settings
-palaia config set embedding_provider ollama
-palaia config get embedding_provider
-palaia config list
-```
-
-## Migrating from smart-memory
-
-If you're already using OpenClaw's smart-memory system, Palaia can import everything:
-
-```bash
-# Preview what would be imported (safe, no changes)
-palaia migrate . --dry-run
-
-# Actually import
-palaia migrate .
-
-# Verify
-palaia status
-palaia list --tier hot
-```
-
-Palaia auto-detects the smart-memory format and maps layers to tiers:
-- Active context → HOT (frequently accessed)
-- Project files → WARM (referenced occasionally)
-- Daily logs → COLD (archived but searchable)
-
-## Sharing Memory Between Agents
-
-Palaia uses scope tags to control who sees what:
-
-- **`team`** (default) — All agents in the same workspace can read it
 - **`private`** — Only the agent that wrote it can read it
-- **`public`** — Can be exported and shared with other workspaces
-- **`shared:<project>`** — Only agents working on that project can read it
+- **`team`** — All agents in the same workspace can read it (default)
+- **`public`** — Can be exported and shared across workspaces
 
+**Setting defaults:**
 ```bash
-# Write a private note
-palaia write "My API key is stored in ~/.secrets" --scope private
+# Global default
+palaia config set default_scope <scope>
 
-# Write a team-visible note
-palaia write "The deploy server is at 10.0.1.5" --scope team
-
-# Share across workspaces
-palaia write "Project uses Python 3.11" --scope public
-palaia export --remote git@github.com:team/shared-memory.git
+# Per-project default
+palaia project set-scope <name> <scope>
 ```
 
-## Configuration Reference
+**Scope cascade** (how Palaia decides the scope for a new entry):
+1. Explicit `--scope` flag → always wins
+2. Project default scope → if entry belongs to a project
+3. Global `default_scope` from config
+4. Falls back to `team`
 
-Configuration lives in `.palaia/config.json`:
+## Projects
 
-```json
-{
-  "version": 1,
-  "decay_lambda": 0.1,
-  "hot_threshold_days": 7,
-  "warm_threshold_days": 30,
-  "hot_max_entries": 50,
-  "default_scope": "team",
-  "embedding_chain": ["openai", "sentence-transformers", "bm25"],
-  "embedding_model": {
-    "openai": "text-embedding-3-large",
-    "sentence-transformers": "all-MiniLM-L6-v2"
-  }
-}
-```
+- Projects are optional and purely additive — Palaia works fine without them
+- Each project has its own default scope
+- Writing with `--project NAME` or `palaia project write NAME` both assign to a project
+- Deleting a project preserves its entries (they just lose the project tag)
+- `palaia project show NAME` lists all entries with their tier and scope
+
+## When to Use What
+
+| Situation | Command |
+|-----------|---------|
+| Remember a simple fact | `palaia write "..."` |
+| Remember something for a specific project | `palaia project write <name> "..."` |
+| Find something you stored | `palaia query "..."` |
+| Find something within a project | `palaia project query <name> "..."` |
+| Check what's in active memory | `palaia list` |
+| Check what's in archived memory | `palaia list --tier cold` |
+| See system health | `palaia status` |
+| Clean up old entries | `palaia gc` |
+
+## Error Handling
+
+| Problem | What to do |
+|---------|-----------|
+| Embedding provider not available | Chain automatically falls back to next provider. Check `palaia status` to see which is active. |
+| Write-ahead log corrupted | Run `palaia recover` — replays any interrupted writes. |
+| Entries seem missing | Run `palaia recover`, then `palaia list`. Check all tiers (`--tier warm`, `--tier cold`). |
+| Search returns no results | Try `palaia query "..." --all` to include COLD tier. Check `palaia status` to confirm provider is active. |
+| `.palaia` directory missing | Run `palaia init` to create a fresh store. |
+
+## Tiering
+
+Palaia organizes entries into three tiers based on access frequency:
+
+- **HOT** (default: 7 days) — Frequently accessed, always searched
+- **WARM** (default: 30 days) — Less active, still searched by default
+- **COLD** — Archived, only searched with `--all` flag
+
+Run `palaia gc` periodically (or let cron handle it) to rotate entries between tiers. `palaia gc --aggressive` forces more entries to lower tiers.
+
+## Configuration Keys
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `embedding_chain` | (auto-detected) | Ordered list of providers to try. BM25 is always last resort. |
-| `embedding_model` | `{}` | Per-provider model overrides (dict) or single model string (legacy) |
-| `embedding_provider` | `"auto"` | Legacy: `auto`, `ollama`, `sentence-transformers`, `fastembed`, `openai`, `none`. Use `embedding_chain` instead. |
-| `decay_lambda` | `0.1` | How fast memories fade (higher = faster decay) |
-| `hot_threshold_days` | `7` | Days before a memory moves from active to warm |
-| `warm_threshold_days` | `30` | Days before a memory moves from warm to archive |
-| `default_scope` | `team` | Default scope for new memories |
-
-Use `palaia config set <key> <value>` to change any setting.
+| `default_scope` | `team` | Default visibility for new entries |
+| `embedding_chain` | *(auto)* | Ordered list of search providers |
+| `embedding_provider` | `auto` | Legacy single-provider setting |
+| `embedding_model` | — | Per-provider model overrides |
+| `hot_threshold_days` | `7` | Days before HOT → WARM |
+| `warm_threshold_days` | `30` | Days before WARM → COLD |
+| `hot_max_entries` | `50` | Max entries in HOT tier |
+| `decay_lambda` | `0.1` | Decay rate for memory scores |
