@@ -19,7 +19,7 @@ metadata:
         label: "Initialize Palaia store"
     plugin:
       slot: memory
-      package: "@palaia/openclaw"
+      package: "@byte5ai/palaia"
 ---
 
 # Palaia — Agent Memory Skill

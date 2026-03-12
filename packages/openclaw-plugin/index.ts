@@ -1,5 +1,5 @@
 /**
- * @palaia/openclaw — Palaia Memory Backend for OpenClaw
+ * @byte5ai/palaia — Palaia Memory Backend for OpenClaw
  *
  * Plugin entry point. Loaded by OpenClaw via jiti (no build step needed).
  *

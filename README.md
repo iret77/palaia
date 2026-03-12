@@ -335,14 +335,14 @@ All commands support `--json` for machine-readable output.
 Palaia can replace OpenClaw's built-in memory system:
 
 ```bash
-npm install @palaia/openclaw
+npm install @byte5ai/palaia
 ```
 
 Add it to your OpenClaw config:
 
 ```json
 {
-  "plugins": ["@palaia/openclaw"]
+  "plugins": ["@byte5ai/palaia"]
 }
 ```
 
@@ -381,7 +381,7 @@ palaia config set-chain <providers...>  # Set embedding fallback chain
 - [x] Projects with per-project scope
 - [x] `palaia doctor` for legacy cleanup
 - [x] Document ingestion (RAG) — `palaia ingest`
-- [x] Native OpenClaw plugin (`@palaia/openclaw`)
+- [x] Native OpenClaw plugin (`@byte5ai/palaia`)
 - [x] Git-based knowledge sync (`palaia export/import`)
 
 **Planned**
