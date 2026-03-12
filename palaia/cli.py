@@ -122,6 +122,21 @@ def cmd_init(args):
         print("   • OpenAI: set OPENAI_API_KEY env var")
         print("   Then run: palaia warmup")
 
+    # Post-init instructions for LLM agents
+    print()
+    print("⚠️  SETUP REQUIRED — Continue with these steps:")
+    print("1. Run: palaia doctor --fix")
+    print("   (Checks your system, fixes common issues, configures version tracking)")
+    print("2. Run: palaia detect")
+    print("   (Finds available search providers on your system)")
+    print("3. Run: palaia warmup")
+    print("   (Pre-downloads embedding models for instant search)")
+    print("4. Read the palaia SKILL.md section 'Plugin Activation' and configure the OpenClaw memory plugin")
+    print("   (npm install -g @byte5ai/palaia, then patch openclaw.json, then restart gateway)")
+    print("5. Report your setup results to the user")
+    print()
+    print("Do NOT skip these steps. The memory system is not fully operational until all steps are complete.")
+
     return 0
 
 
