@@ -12,6 +12,24 @@ from palaia.entry import content_hash
 from palaia.store import Store
 
 
+# System files that agents read at runtime — must never be deleted after migration.
+SYSTEM_FILE_PATTERNS = {
+    "CONTEXT.md",
+    "SOUL.md",
+    "MEMORY.md",
+    "AGENTS.md",
+    "TOOLS.md",
+    "USER.md",
+    "IDENTITY.md",
+}
+
+
+def is_system_file(path_str: str) -> bool:
+    """Check if a path refers to an agent system file."""
+    basename = Path(path_str).name
+    return basename in SYSTEM_FILE_PATTERNS
+
+
 class MigrationEntry:
     """A single entry extracted by an adapter."""
 
@@ -399,11 +417,14 @@ def migrate(
     tier_counts = {"hot": 0, "warm": 0, "cold": 0}
     scope_counts: dict[str, int] = {}
     files_seen: set[str] = set()
+    system_files_detected: list[str] = []
     for e in entries:
         tier_counts[e.tier] = tier_counts.get(e.tier, 0) + 1
         scope_counts[e.scope] = scope_counts.get(e.scope, 0) + 1
         if e.source_file:
             files_seen.add(e.source_file)
+            if is_system_file(e.source_file) and e.source_file not in system_files_detected:
+                system_files_detected.append(e.source_file)
 
     result = {
         "format": detected,
@@ -414,6 +435,7 @@ def migrate(
         "imported": 0,
         "skipped_dedup": 0,
         "dry_run": dry_run,
+        "system_files_detected": system_files_detected,
     }
 
     if dry_run:
@@ -466,5 +488,16 @@ def format_result(result: dict) -> str:
     else:
         lines.append("")
         lines.append(f"Done. {result['imported']} entries imported, {result['skipped_dedup']} duplicates skipped.")
+
+    # Warn about system files that were processed
+    system_files = result.get("system_files_detected", [])
+    if system_files:
+        lines.append("")
+        for sf in system_files:
+            lines.append(f"⚠️  System file detected: {sf}")
+            lines.append("    This file is used at runtime by agents. It was copied to Palaia but NOT deleted.")
+            lines.append("    Do not remove it manually.")
+        lines.append("")
+        lines.append("See: https://github.com/iret77/palaia/blob/main/docs/migration-guide.md")
 
     return "\n".join(lines)

@@ -1035,7 +1035,7 @@ def main():
     p_query.add_argument("--json", action="store_true", help="Output as JSON")
 
     # ingest
-    p_ingest = sub.add_parser("ingest", help="Ingest documents for RAG search")
+    p_ingest = sub.add_parser("ingest", help="Ingest documents for RAG search (creates a copy; source files are NOT modified or deleted)")
     p_ingest.add_argument("source", help="File path, URL, or directory to ingest")
     p_ingest.add_argument("--project", default=None, help="Assign to project")
     p_ingest.add_argument("--scope", default=None, help="Scope (default: private)")

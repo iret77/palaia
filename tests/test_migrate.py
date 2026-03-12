@@ -276,3 +276,58 @@ def test_migrate_flat_file(store, flat_file_source):
 def test_migrate_not_found(store, tmp_path):
     with pytest.raises(FileNotFoundError):
         migrate(tmp_path / "nonexistent", store)
+
+
+# === System file detection ===
+
+
+def test_migrate_detects_system_files(store, smart_memory_source):
+    """System files like MEMORY.md and CONTEXT.md should be flagged in result."""
+    result = migrate(smart_memory_source, store)
+    sys_files = result.get("system_files_detected", [])
+    assert "MEMORY.md" in sys_files
+    # CONTEXT.md is inside memory/projects/clawsy/
+    assert any("CONTEXT.md" in f for f in sys_files)
+
+
+def test_migrate_system_files_in_dry_run(store, smart_memory_source):
+    """System files should also be flagged in dry-run mode."""
+    result = migrate(smart_memory_source, store, dry_run=True)
+    sys_files = result.get("system_files_detected", [])
+    assert len(sys_files) > 0
+    assert "MEMORY.md" in sys_files
+
+
+def test_is_system_file():
+    from palaia.migrate import is_system_file
+
+    assert is_system_file("MEMORY.md") is True
+    assert is_system_file("CONTEXT.md") is True
+    assert is_system_file("memory/projects/clawsy/CONTEXT.md") is True
+    assert is_system_file("SOUL.md") is True
+    assert is_system_file("AGENTS.md") is True
+    assert is_system_file("TOOLS.md") is True
+    assert is_system_file("USER.md") is True
+    assert is_system_file("IDENTITY.md") is True
+    assert is_system_file("2026-03-10.md") is False
+    assert is_system_file("random-notes.md") is False
+
+
+def test_format_result_shows_system_file_warnings():
+    from palaia.migrate import format_result
+
+    result = {
+        "format": "smart-memory",
+        "total_entries": 6,
+        "files_scanned": 5,
+        "tiers": {"hot": 4, "warm": 1, "cold": 1},
+        "scopes": {"team": 5, "shared:clawsy": 1},
+        "imported": 6,
+        "skipped_dedup": 0,
+        "dry_run": False,
+        "system_files_detected": ["MEMORY.md", "memory/projects/clawsy/CONTEXT.md"],
+    }
+    output = format_result(result)
+    assert "⚠️  System file detected: MEMORY.md" in output
+    assert "⚠️  System file detected: memory/projects/clawsy/CONTEXT.md" in output
+    assert "Do not remove it manually" in output

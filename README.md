@@ -63,6 +63,11 @@ palaia write "The deploy server is at 10.0.1.5" --tags "infra,servers"
 palaia query "where is the server"
 ```
 
+> **⚠️ Important:** Palaia supplements your existing files — it does not replace them.
+> Files like `CONTEXT.md`, `SOUL.md`, and `MEMORY.md` are living documents read by agents
+> at runtime. `palaia ingest` and `palaia migrate` create searchable copies, but the
+> originals must stay on disk. See [Migration Guide](docs/migration-guide.md) for details.
+
 ## Features
 
 ### Memory Entries
@@ -151,6 +156,8 @@ palaia query "How does X work?" --project api-docs --rag
 ```
 
 Documents are chunked, embedded, and stored as regular Palaia entries. They appear in search results with source attribution (file, page, URL). Use `--rag` for a formatted context block ready for LLM injection.
+
+**Note:** `ingest` creates a copy in the Palaia store. Source files are NOT modified or deleted.
 
 PDF support requires an optional dependency: `pip install 'palaia[pdf]'`
 
