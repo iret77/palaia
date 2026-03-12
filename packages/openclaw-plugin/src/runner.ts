@@ -121,7 +121,10 @@ function execCommand(
         timeout,
         maxBuffer: 1024 * 1024, // 1MB
         cwd: opts.cwd,
-        env: { ...process.env },
+        env: {
+          ...process.env,
+          ...(opts.cwd ? { PALAIA_HOME: opts.cwd } : {}),
+        },
       },
       (error, stdout, stderr) => {
         if (error && (error as any).killed) {

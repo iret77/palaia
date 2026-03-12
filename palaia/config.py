@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 DEFAULT_CONFIG = {
@@ -23,8 +24,23 @@ DEFAULT_CONFIG = {
 
 
 def find_palaia_root(start: str = ".") -> Path | None:
-    """Walk up from start to find .palaia directory."""
+    """Walk up from start to find .palaia directory.
 
+    Checks PALAIA_HOME env var first, then walks up from start.
+    """
+    # Check PALAIA_HOME env var first
+    env_home = os.environ.get("PALAIA_HOME")
+    if env_home:
+        env_path = Path(env_home)
+        # PALAIA_HOME points directly to a .palaia directory
+        if env_path.is_dir() and env_path.name == ".palaia":
+            return env_path
+        # PALAIA_HOME points to parent dir containing .palaia
+        candidate = env_path / ".palaia"
+        if candidate.is_dir():
+            return candidate
+
+    # Walk up from start directory
     current = Path(start).resolve()
     while True:
         candidate = current / ".palaia"
