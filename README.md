@@ -222,6 +222,47 @@ palaia gc              # Normal rotation
 palaia gc --aggressive # Force more entries to lower tiers
 ```
 
+### Multi-Agent Setup
+
+When multiple agents share a workspace, Palaia can either use a shared store (default) or isolated stores per agent.
+
+**Shared store (default):**
+All agents read and write to the same `.palaia` directory. Entries with `team` scope are visible to every agent. This is the recommended setup for collaborative agent teams.
+
+```bash
+palaia init            # Auto-detects agents, uses shared store
+```
+
+If multiple agents are detected, `palaia init` shows:
+```
+🤖 Found 3 agents: cyberclaw, elliot, carrie
+   Using shared store at .palaia
+   All agents will see team-scoped entries.
+```
+
+**Isolated stores:**
+Each agent gets its own `.palaia` directory. Use this when agents work on unrelated tasks and shouldn't see each other's memories.
+
+```bash
+palaia init --isolated
+```
+
+**Scope tags for multi-agent setups:**
+
+| Scope | Visibility | Use case |
+|-------|-----------|----------|
+| `private` | Only the writing agent | Personal notes, drafts |
+| `team` | All agents in the workspace | Shared knowledge (default) |
+| `public` | Exportable across workspaces | Documentation, references |
+
+**Best practice:** Use the `--agent` flag when writing entries so they are attributed to the writing agent:
+
+```bash
+palaia write "deploy key rotated" --agent elliot --scope team
+```
+
+This makes it easy to trace who stored what, especially in shared stores.
+
 ### Migration
 
 If you're coming from OpenClaw's built-in smart-memory or other systems, Palaia can import your existing data:

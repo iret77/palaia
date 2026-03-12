@@ -5,15 +5,21 @@ description: >
   Replaces built-in memory-core with semantic search, projects, and scope-based access control.
 metadata:
   openclaw:
-    emoji: 📦
+    emoji: 🧠
     requires:
-      bins: ["python3"]
+      bins: ["palaia"]
     install:
       - id: pip
-        kind: shell
-        command: "pip install git+https://github.com/iret77/palaia.git"
+        kind: pip
+        package: palaia
         bins: ["palaia"]
-        label: "Install Palaia"
+        label: "Install Palaia (pip)"
+    postInstall:
+      - command: "palaia init"
+        label: "Initialize Palaia store"
+    plugin:
+      slot: memory
+      package: "@palaia/openclaw"
 ---
 
 # Palaia — Agent Memory Skill
