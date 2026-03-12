@@ -303,11 +303,151 @@ def _check_wal_health(palaia_root: Path | None) -> dict[str, Any]:
     }
 
 
+def _check_store_version(palaia_root: Path | None) -> dict[str, Any]:
+    """Check if store version matches installed version."""
+    if palaia_root is None:
+        return {
+            "name": "store_version",
+            "label": "Store version",
+            "status": "error",
+            "message": "Not initialized",
+        }
+
+    from palaia import __version__
+    from palaia.config import load_config, save_config
+
+    config = load_config(palaia_root)
+    store_ver = config.get("store_version", "")
+
+    if not store_ver:
+        # Legacy store without version tracking — stamp it now
+        config["store_version"] = __version__
+        save_config(palaia_root, config)
+        return {
+            "name": "store_version",
+            "label": "Store version",
+            "status": "info",
+            "message": f"No store_version found — stamped as v{__version__}",
+            "details": {"installed": __version__, "store": __version__},
+        }
+
+    if store_ver == __version__:
+        return {
+            "name": "store_version",
+            "label": "Store version",
+            "status": "ok",
+            "message": f"v{__version__} (up to date)",
+            "details": {"installed": __version__, "store": store_ver},
+        }
+
+    # Version mismatch — update store_version to current
+    config["store_version"] = __version__
+    save_config(palaia_root, config)
+    return {
+        "name": "store_version",
+        "label": "Store version",
+        "status": "info",
+        "message": f"Upgraded store: v{store_ver} → v{__version__}",
+        "details": {"installed": __version__, "store": store_ver},
+    }
+
+
+def _check_projects_usage(palaia_root: Path | None) -> dict[str, Any]:
+    """Check if projects feature is being used."""
+    if palaia_root is None:
+        return {
+            "name": "projects_usage",
+            "label": "Projects",
+            "status": "error",
+            "message": "Not initialized",
+        }
+
+    projects_file = palaia_root / "projects.json"
+    if not projects_file.exists():
+        return {
+            "name": "projects_usage",
+            "label": "Projects",
+            "status": "info",
+            "message": "Not used yet — organize entries with: palaia project create <name>",
+        }
+
+    try:
+        import json as _json
+
+        data = _json.loads(projects_file.read_text())
+        count = len(data) if isinstance(data, dict) else 0
+        if count == 0:
+            return {
+                "name": "projects_usage",
+                "label": "Projects",
+                "status": "info",
+                "message": "Empty — create projects with: palaia project create <name>",
+            }
+        return {
+            "name": "projects_usage",
+            "label": "Projects",
+            "status": "ok",
+            "message": f"{count} project(s) configured",
+            "details": {"count": count},
+        }
+    except Exception:
+        return {
+            "name": "projects_usage",
+            "label": "Projects",
+            "status": "warn",
+            "message": "projects.json exists but unreadable",
+        }
+
+
+def _check_deprecated_config(palaia_root: Path | None) -> dict[str, Any]:
+    """Check for deprecated or missing config keys."""
+    if palaia_root is None:
+        return {
+            "name": "deprecated_config",
+            "label": "Config keys",
+            "status": "error",
+            "message": "Not initialized",
+        }
+
+    from palaia.config import load_config
+
+    config = load_config(palaia_root)
+    issues = []
+
+    # Check for legacy embedding_provider without chain
+    if config.get("embedding_provider") and config.get("embedding_provider") != "auto":
+        if not config.get("embedding_chain"):
+            issues.append(
+                "embedding_provider is set but embedding_chain is not — "
+                "run: palaia detect && palaia config set-chain <providers> bm25"
+            )
+
+    if issues:
+        return {
+            "name": "deprecated_config",
+            "label": "Config keys",
+            "status": "warn",
+            "message": f"{len(issues)} issue(s)",
+            "fix": "\n".join(issues),
+            "details": {"issues": issues},
+        }
+
+    return {
+        "name": "deprecated_config",
+        "label": "Config keys",
+        "status": "ok",
+        "message": "All config keys current",
+    }
+
+
 def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
     """Run all doctor checks. Returns list of check results."""
     results = [
         _check_palaia_init(palaia_root),
+        _check_store_version(palaia_root),
         _check_embedding_chain(palaia_root),
+        _check_projects_usage(palaia_root),
+        _check_deprecated_config(palaia_root),
         _check_openclaw_plugin(),
         _check_smart_memory_skill(),
         _check_legacy_memory_files(),

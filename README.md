@@ -409,6 +409,24 @@ pip install palaia
 
 If you find Palaia useful, a ⭐ on GitHub goes a long way.
 
+## Multi-Agent Setup
+
+If you run multiple agents that should share the same memory store, use the setup command:
+
+```bash
+# Preview what would happen
+palaia setup --multi-agent ~/.openclaw/agents/ --dry-run
+
+# Create .palaia symlinks for all agent directories
+palaia setup --multi-agent ~/.openclaw/agents/
+```
+
+This scans the agents directory for subdirectories and creates `.palaia` symlinks pointing to your current store. All agents then share the same memory while maintaining their own identity via the `--agent` flag on writes.
+
+## Migration Guide
+
+Moving from another memory system? See [`docs/migration-guide.md`](docs/migration-guide.md) for a step-by-step guide covering inventory, bulk import, verification, and cleanup.
+
 ## Development
 
 ```bash

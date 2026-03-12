@@ -96,6 +96,7 @@ def cmd_init(args):
         print(f"🤖 Found 1 agent: {agents[0]}")
         config["store_mode"] = "shared"
 
+    config["store_version"] = __version__
     save_config(target, config)
 
     if not is_reinit:
@@ -304,6 +305,11 @@ def cmd_ingest(args):
     ingestor = DocumentIngestor(store)
     source = args.source
 
+    # Auto-create project if specified and doesn't exist (#9)
+    if args.project and not args.dry_run:
+        pm = ProjectManager(root)
+        pm.ensure(args.project)
+
     if not getattr(args, "json", False) and not args.dry_run:
         print(f"Ingesting: {source}")
 
@@ -389,10 +395,20 @@ def cmd_list(args):
     tier = args.tier or "hot"
     entries = store.list_entries(tier, agent=getattr(args, "agent", None))
 
-    # Filter by project if specified
+    # Apply filters (#12)
     project_filter = getattr(args, "project", None)
+    tag_filter = getattr(args, "tag", None)
+    scope_filter = getattr(args, "scope", None)
+    agent_filter = getattr(args, "agent", None)
+
     if project_filter:
         entries = [(meta, body) for meta, body in entries if meta.get("project") == project_filter]
+    if tag_filter:
+        entries = [(meta, body) for meta, body in entries if tag_filter in (meta.get("tags") or [])]
+    if scope_filter:
+        entries = [(meta, body) for meta, body in entries if meta.get("scope") == scope_filter]
+    if agent_filter:
+        entries = [(meta, body) for meta, body in entries if meta.get("agent") == agent_filter]
 
     if _json_out(
         {
@@ -402,6 +418,9 @@ def cmd_list(args):
                     "id": meta.get("id", "?"),
                     "title": meta.get("title", "(untitled)"),
                     "scope": meta.get("scope", "team"),
+                    "agent": meta.get("agent", ""),
+                    "tags": meta.get("tags", []),
+                    "project": meta.get("project", ""),
                     "decay_score": meta.get("decay_score", 0),
                     "preview": body[:80].replace("\n", " "),
                 }
@@ -841,6 +860,78 @@ def cmd_migrate(args):
     return 0
 
 
+def cmd_setup(args):
+    """Multi-agent setup: create .palaia symlinks for agent directories."""
+    if not args.multi_agent:
+        print("Usage: palaia setup --multi-agent <agents-dir>", file=sys.stderr)
+        return 1
+
+    agents_dir = Path(args.multi_agent)
+    if not agents_dir.is_dir():
+        msg = f"Directory not found: {agents_dir}"
+        if _json_out({"error": msg}, args):
+            return 1
+        print(f"Error: {msg}", file=sys.stderr)
+        return 1
+
+    root = get_root()
+    store_path = root  # The .palaia directory itself
+
+    # Scan for agent subdirectories
+    agent_dirs = sorted([d for d in agents_dir.iterdir() if d.is_dir() and not d.name.startswith(".")])
+
+    if not agent_dirs:
+        msg = f"No agent directories found in {agents_dir}"
+        if _json_out({"error": msg, "agents": []}, args):
+            return 1
+        print(f"No agent directories found in {agents_dir}", file=sys.stderr)
+        return 1
+
+    dry_run = getattr(args, "dry_run", False)
+    agents = []
+    symlinks_created = 0
+
+    for agent_dir in agent_dirs:
+        agent_name = agent_dir.name
+        symlink_path = agent_dir / ".palaia"
+        agents.append(agent_name)
+
+        if symlink_path.exists() or symlink_path.is_symlink():
+            if not dry_run and not getattr(args, "json", False):
+                print(f"  ⏭  {agent_name}: .palaia already exists")
+            continue
+
+        if dry_run:
+            if not getattr(args, "json", False):
+                print(f"  🔗 {agent_name}: would create .palaia → {store_path}")
+            symlinks_created += 1
+        else:
+            try:
+                symlink_path.symlink_to(store_path)
+                symlinks_created += 1
+                if not getattr(args, "json", False):
+                    print(f"  ✅ {agent_name}: .palaia → {store_path}")
+            except OSError as e:
+                if not getattr(args, "json", False):
+                    print(f"  ❌ {agent_name}: {e}")
+
+    result = {
+        "agents": agents,
+        "symlinks_created": symlinks_created,
+        "store_path": str(store_path),
+        "dry_run": dry_run,
+    }
+
+    if _json_out(result, args):
+        return 0
+
+    if not dry_run:
+        print(f"\n{symlinks_created} symlink(s) created for {len(agents)} agent(s).")
+    else:
+        print(f"\nDry run: {symlinks_created} symlink(s) would be created for {len(agents)} agent(s).")
+    return 0
+
+
 def cmd_project(args):
     """Manage projects."""
     root = get_root()
@@ -1061,7 +1152,9 @@ def main():
     p_list = sub.add_parser("list", help="List entries in a tier")
     p_list.add_argument("--tier", default="hot", choices=["hot", "warm", "cold"])
     p_list.add_argument("--project", default=None, help="Filter by project")
-    p_list.add_argument("--agent", default=None, help="Agent name (for scope filtering)")
+    p_list.add_argument("--tag", default=None, help="Filter by tag")
+    p_list.add_argument("--scope", default=None, help="Filter by scope")
+    p_list.add_argument("--agent", default=None, help="Filter by agent")
     p_list.add_argument("--json", action="store_true", help="Output as JSON")
 
     # status
@@ -1116,6 +1209,12 @@ def main():
     p_proj_delete = project_sub.add_parser("delete", help="Delete project (entries preserved)")
     p_proj_delete.add_argument("name", help="Project name")
     p_proj_delete.add_argument("--json", action="store_true", help="Output as JSON")
+
+    # setup
+    p_setup = sub.add_parser("setup", help="Multi-agent setup")
+    p_setup.add_argument("--multi-agent", default=None, help="Path to agents directory")
+    p_setup.add_argument("--dry-run", action="store_true", help="Preview without creating symlinks")
+    p_setup.add_argument("--json", action="store_true", help="Output as JSON")
 
     # doctor
     p_doctor = sub.add_parser("doctor", help="Diagnose Palaia instance and detect legacy systems")
@@ -1176,6 +1275,22 @@ def main():
         parser.print_help()
         return 1
 
+    # Version drift warning (skip for init/doctor/detect)
+    if args.command not in ("init", "doctor", "detect") and not getattr(args, "json", False):
+        try:
+            root = find_palaia_root()
+            if root:
+                cfg = load_config(root)
+                store_ver = cfg.get("store_version", "")
+                if store_ver and store_ver != __version__:
+                    print(
+                        f"⚠️  Store created with v{store_ver}, running v{__version__}. "
+                        "Run `palaia doctor` for upgrade checks.",
+                        file=sys.stderr,
+                    )
+        except Exception:
+            pass
+
     commands = {
         "init": cmd_init,
         "write": cmd_write,
@@ -1186,6 +1301,7 @@ def main():
         "list": cmd_list,
         "status": cmd_status,
         "gc": cmd_gc,
+        "setup": cmd_setup,
         "doctor": cmd_doctor,
         "export": cmd_export,
         "import": cmd_import,

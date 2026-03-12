@@ -111,6 +111,18 @@ class ProjectManager:
             return None
         return Project.from_dict(data[name])
 
+    def ensure(self, name: str, default_scope: str = "team") -> Project:
+        """Get a project by name, creating it if it doesn't exist.
+
+        This is the recommended way to reference projects from CLI commands
+        that accept --project. It avoids the user having to manually create
+        projects before using them.
+        """
+        project = self.get(name)
+        if project is not None:
+            return project
+        return self.create(name=name, default_scope=default_scope)
+
     def delete(self, name: str, store=None) -> bool:
         """Delete a project. Entries keep their content but lose the project tag."""
         data = self._load()
