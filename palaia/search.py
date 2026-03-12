@@ -117,9 +117,9 @@ class SearchEngine:
     def has_embeddings(self) -> bool:
         return not isinstance(self.provider, BM25Provider)
 
-    def build_index(self, include_cold: bool = False) -> list[tuple[str, str, dict]]:
+    def build_index(self, include_cold: bool = False, agent: str | None = None) -> list[tuple[str, str, dict]]:
         """Build search index from store entries. Returns (doc_id, full_text, meta) list."""
-        entries = self.store.all_entries(include_cold=include_cold)
+        entries = self.store.all_entries(include_cold=include_cold, agent=agent)
         docs = []
         docs_with_meta = []
         for meta, body, tier in entries:
@@ -132,9 +132,9 @@ class SearchEngine:
         self.bm25.index(docs)
         return docs_with_meta
 
-    def search(self, query: str, top_k: int = 10, include_cold: bool = False, project: str | None = None) -> list[dict]:
+    def search(self, query: str, top_k: int = 10, include_cold: bool = False, project: str | None = None, agent: str | None = None) -> list[dict]:
         """Search memories using hybrid ranking (BM25 + embeddings when available)."""
-        docs_with_meta = self.build_index(include_cold=include_cold)
+        docs_with_meta = self.build_index(include_cold=include_cold, agent=agent)
 
         # Filter by project if specified
         if project:

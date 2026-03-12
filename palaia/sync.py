@@ -33,6 +33,7 @@ def export_entries(
     remote: str | None = None,
     branch: str | None = None,
     output_dir: str | None = None,
+    agent: str | None = None,
 ) -> dict:
     """Export public entries.
 
@@ -49,7 +50,7 @@ def export_entries(
     store.recover()
 
     # Collect public entries from all tiers
-    all_entries = store.all_entries(include_cold=True)
+    all_entries = store.all_entries(include_cold=True, agent=agent)
     public_entries = []
     for meta, body, tier in all_entries:
         if is_exportable(meta.get("scope", "team")):
