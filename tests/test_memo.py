@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
 import time
-from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -96,7 +94,7 @@ def test_priority_sort_order(mm):
 def test_ttl_expiry(mm):
     """Expired memo does not appear in inbox."""
     # Send with 0 TTL (expires immediately)
-    meta = mm.send("elliot", "ephemeral", from_agent="cyberclaw", ttl_hours=0)
+    mm.send("elliot", "ephemeral", from_agent="cyberclaw", ttl_hours=0)
 
     # Need to wait a tiny bit for expiry
     time.sleep(0.01)
@@ -355,9 +353,8 @@ def test_cli_gc_json(palaia_root, capsys):
     """CLI memo gc --json returns valid JSON with stats."""
     import argparse
 
-    from palaia.cli import cmd_memo
-
     import palaia.cli
+    from palaia.cli import cmd_memo
 
     original_get_root = palaia.cli.get_root
     palaia.cli.get_root = lambda: palaia_root

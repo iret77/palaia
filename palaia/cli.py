@@ -83,15 +83,15 @@ def cmd_init(args):
         if store_mode == "isolated":
             config["store_mode"] = "isolated"
             print(f"🤖 Found {len(agents)} agents: {', '.join(agents)}")
-            print(f"   Using isolated stores — each agent gets its own .palaia directory.")
+            print("   Using isolated stores — each agent gets its own .palaia directory.")
         else:
             config["store_mode"] = "shared"
             print(f"🤖 Found {len(agents)} agents: {', '.join(agents)}")
             print(f"   Using shared store at {target}")
-            print(f"   All agents will see team-scoped entries.")
-            print(f"   Use --agent flag when writing so entries are attributed correctly.")
+            print("   All agents will see team-scoped entries.")
+            print("   Use --agent flag when writing so entries are attributed correctly.")
             if store_mode is None:
-                print(f"   (Use 'palaia init --isolated' for separate stores per agent)")
+                print("   (Use 'palaia init --isolated' for separate stores per agent)")
     elif len(agents) == 1:
         print(f"🤖 Found 1 agent: {agents[0]}")
         config["store_mode"] = "shared"
@@ -100,7 +100,16 @@ def cmd_init(args):
     save_config(target, config)
 
     if not is_reinit:
-        if _json_out({"status": "created", "path": str(target), "embedding_chain": chain, "agents": agents, "store_mode": config.get("store_mode", "shared")}, args):
+        if _json_out(
+            {
+                "status": "created",
+                "path": str(target),
+                "embedding_chain": chain,
+                "agents": agents,
+                "store_mode": config.get("store_mode", "shared"),
+            },
+            args,
+        ):
             return 0
         print(f"Initialized Palaia at {target}")
 
@@ -1421,8 +1430,13 @@ def main():
     p_init = sub.add_parser("init", help="Initialize .palaia directory")
     p_init.add_argument("--path", default=None, help="Target directory")
     p_init.add_argument("--json", action="store_true", help="Output as JSON")
-    p_init.add_argument("--isolated", action="store_const", const="isolated", dest="store_mode",
-                        help="Use isolated stores per agent (default: shared)")
+    p_init.add_argument(
+        "--isolated",
+        action="store_const",
+        const="isolated",
+        dest="store_mode",
+        help="Use isolated stores per agent (default: shared)",
+    )
 
     # write
     p_write = sub.add_parser("write", help="Write a memory entry")
@@ -1445,7 +1459,9 @@ def main():
     p_query.add_argument("--json", action="store_true", help="Output as JSON")
 
     # ingest
-    p_ingest = sub.add_parser("ingest", help="Ingest documents for RAG search (creates a copy; source files are NOT modified or deleted)")
+    p_ingest = sub.add_parser(
+        "ingest", help="Ingest documents for RAG search (creates a copy; source files are NOT modified or deleted)"
+    )
     p_ingest.add_argument("source", help="File path, URL, or directory to ingest")
     p_ingest.add_argument("--project", default=None, help="Assign to project")
     p_ingest.add_argument("--scope", default=None, help="Scope (default: private)")
@@ -1536,18 +1552,15 @@ def main():
     p_memo_send = memo_sub.add_parser("send", help="Send a memo to an agent")
     p_memo_send.add_argument("to", help="Recipient agent name")
     p_memo_send.add_argument("message", help="Message body")
-    p_memo_send.add_argument("--priority", default="normal", choices=["normal", "high"],
-                             help="Priority level")
+    p_memo_send.add_argument("--priority", default="normal", choices=["normal", "high"], help="Priority level")
     p_memo_send.add_argument("--ttl-hours", type=int, default=72, help="TTL in hours (default: 72)")
     p_memo_send.add_argument("--agent", default=None, help="Sender agent name")
     p_memo_send.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_memo_broadcast = memo_sub.add_parser("broadcast", help="Broadcast memo to all agents")
     p_memo_broadcast.add_argument("message", help="Message body")
-    p_memo_broadcast.add_argument("--priority", default="normal", choices=["normal", "high"],
-                                  help="Priority level")
-    p_memo_broadcast.add_argument("--ttl-hours", type=int, default=72,
-                                  help="TTL in hours (default: 72)")
+    p_memo_broadcast.add_argument("--priority", default="normal", choices=["normal", "high"], help="Priority level")
+    p_memo_broadcast.add_argument("--ttl-hours", type=int, default=72, help="TTL in hours (default: 72)")
     p_memo_broadcast.add_argument("--agent", default=None, help="Sender agent name")
     p_memo_broadcast.add_argument("--json", action="store_true", help="Output as JSON")
 
@@ -1567,10 +1580,13 @@ def main():
 
     # lock — first positional is action_or_project (allows "palaia lock <project>" shorthand)
     p_lock = sub.add_parser("lock", help="Manage project locks")
-    p_lock.add_argument("action_or_project", nargs="?", default=None,
-                        help="Subcommand (status|renew|break|list) or project name for acquire shorthand")
-    p_lock.add_argument("project", nargs="?", default=None,
-                        help="Project name (for status/renew/break subcommands)")
+    p_lock.add_argument(
+        "action_or_project",
+        nargs="?",
+        default=None,
+        help="Subcommand (status|renew|break|list) or project name for acquire shorthand",
+    )
+    p_lock.add_argument("project", nargs="?", default=None, help="Project name (for status/renew/break subcommands)")
     p_lock.add_argument("--agent", default=None, help="Agent name")
     p_lock.add_argument("--reason", default="", help="Reason for locking")
     p_lock.add_argument("--ttl", type=int, default=None, help="TTL in seconds")

@@ -2,8 +2,6 @@
 
 import importlib
 
-import pytest
-
 
 def test_palaia_home_env_overrides_cwd(tmp_path, monkeypatch):
     """PALAIA_HOME env var should override CWD-based search."""
@@ -14,12 +12,11 @@ def test_palaia_home_env_overrides_cwd(tmp_path, monkeypatch):
 
     monkeypatch.setenv("PALAIA_HOME", str(store))
 
-    from palaia.config import find_palaia_root
-
     # Reload to pick up env change
     import palaia.config
-    importlib.reload(palaia.config)
     from palaia.config import find_palaia_root
+
+    importlib.reload(palaia.config)
 
     result = find_palaia_root(start="/tmp/nowhere")
     assert result == store
@@ -35,6 +32,7 @@ def test_palaia_home_parent_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("PALAIA_HOME", str(parent))
 
     import palaia.config
+
     importlib.reload(palaia.config)
     from palaia.config import find_palaia_root
 
@@ -52,6 +50,7 @@ def test_palaia_home_invalid_ignored(tmp_path, monkeypatch):
     (store / "config.json").write_text("{}")
 
     import palaia.config
+
     importlib.reload(palaia.config)
     from palaia.config import find_palaia_root
 

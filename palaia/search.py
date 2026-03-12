@@ -132,7 +132,14 @@ class SearchEngine:
         self.bm25.index(docs)
         return docs_with_meta
 
-    def search(self, query: str, top_k: int = 10, include_cold: bool = False, project: str | None = None, agent: str | None = None) -> list[dict]:
+    def search(
+        self,
+        query: str,
+        top_k: int = 10,
+        include_cold: bool = False,
+        project: str | None = None,
+        agent: str | None = None,
+    ) -> list[dict]:
         """Search memories using hybrid ranking (BM25 + embeddings when available)."""
         docs_with_meta = self.build_index(include_cold=include_cold, agent=agent)
 
