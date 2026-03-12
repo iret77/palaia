@@ -1280,6 +1280,96 @@ def cmd_unlock(args):
     return 0
 
 
+def cmd_memo(args):
+    """Manage inter-agent memos."""
+    from palaia.memo import MemoManager
+
+    root = get_root()
+    mm = MemoManager(root)
+    action = args.memo_action
+
+    if action == "send":
+        meta = mm.send(
+            to=args.to,
+            message=args.message,
+            from_agent=args.agent,
+            priority=args.priority,
+            ttl_hours=args.ttl_hours,
+        )
+        if _json_out(meta, args):
+            return 0
+        prio_icon = "🔴" if meta["priority"] == "high" else "📨"
+        print(f"{prio_icon} Memo sent to '{meta['to']}' (id: {meta['id'][:8]}…)")
+        return 0
+
+    if action == "broadcast":
+        meta = mm.broadcast(
+            message=args.message,
+            from_agent=args.agent,
+            priority=args.priority,
+            ttl_hours=args.ttl_hours,
+        )
+        if _json_out(meta, args):
+            return 0
+        print(f"📢 Broadcast sent (id: {meta['id'][:8]}…)")
+        return 0
+
+    if action == "inbox":
+        memos = mm.inbox(agent=args.agent, include_read=args.all)
+        if _json_out(
+            [{"meta": m, "body": b} for m, b in memos],
+            args,
+        ):
+            return 0
+        if not memos:
+            print("📭 No memos.")
+            return 0
+        print(f"📬 {len(memos)} memo(s):\n")
+        for meta, body in memos:
+            prio = " 🔴" if meta.get("priority") == "high" else ""
+            read_mark = " ✓" if meta.get("read") else ""
+            print(f"  [{meta['id'][:8]}…] from {meta.get('from', '?')}{prio}{read_mark}")
+            print(f"    {meta.get('sent', '?')}")
+            # Show first line of body
+            first_line = body.split("\n")[0][:80] if body else ""
+            print(f"    {first_line}")
+            print()
+        return 0
+
+    if action == "ack":
+        if args.all:
+            count = mm.ack_all(agent=args.agent)
+            if _json_out({"acked": count}, args):
+                return 0
+            print(f"✅ Acknowledged {count} memo(s).")
+            return 0
+        if not args.memo_id:
+            print("Error: memo ID required (or use --all)", file=sys.stderr)
+            return 1
+        ok = mm.ack(args.memo_id)
+        if _json_out({"acked": ok, "id": args.memo_id}, args):
+            return 0
+        if ok:
+            print(f"✅ Memo {args.memo_id[:8]}… acknowledged.")
+        else:
+            print(f"Memo {args.memo_id} not found.", file=sys.stderr)
+            return 1
+        return 0
+
+    if action == "gc":
+        stats = mm.gc()
+        if _json_out(stats, args):
+            return 0
+        print(
+            f"🧹 GC: removed {stats['removed_expired']} expired, "
+            f"{stats['removed_read']} read ({stats['total_removed']} total)"
+        )
+        return 0
+
+    print("Unknown memo action. Use: send, broadcast, inbox, ack, gc", file=sys.stderr)
+    return 1
+
+
 def _detect_current_agent() -> str | None:
     """Try to detect the current agent name from env or config."""
     import os
@@ -1424,6 +1514,42 @@ def main():
     p_proj_delete.add_argument("name", help="Project name")
     p_proj_delete.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # memo
+    p_memo = sub.add_parser("memo", help="Inter-agent messaging")
+    memo_sub = p_memo.add_subparsers(dest="memo_action")
+
+    p_memo_send = memo_sub.add_parser("send", help="Send a memo to an agent")
+    p_memo_send.add_argument("to", help="Recipient agent name")
+    p_memo_send.add_argument("message", help="Message body")
+    p_memo_send.add_argument("--priority", default="normal", choices=["normal", "high"],
+                             help="Priority level")
+    p_memo_send.add_argument("--ttl-hours", type=int, default=72, help="TTL in hours (default: 72)")
+    p_memo_send.add_argument("--agent", default=None, help="Sender agent name")
+    p_memo_send.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_memo_broadcast = memo_sub.add_parser("broadcast", help="Broadcast memo to all agents")
+    p_memo_broadcast.add_argument("message", help="Message body")
+    p_memo_broadcast.add_argument("--priority", default="normal", choices=["normal", "high"],
+                                  help="Priority level")
+    p_memo_broadcast.add_argument("--ttl-hours", type=int, default=72,
+                                  help="TTL in hours (default: 72)")
+    p_memo_broadcast.add_argument("--agent", default=None, help="Sender agent name")
+    p_memo_broadcast.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_memo_inbox = memo_sub.add_parser("inbox", help="Show inbox")
+    p_memo_inbox.add_argument("--all", action="store_true", help="Include read memos")
+    p_memo_inbox.add_argument("--agent", default=None, help="Agent name")
+    p_memo_inbox.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_memo_ack = memo_sub.add_parser("ack", help="Acknowledge memo(s)")
+    p_memo_ack.add_argument("memo_id", nargs="?", default=None, help="Memo ID to acknowledge")
+    p_memo_ack.add_argument("--all", action="store_true", help="Acknowledge all unread memos")
+    p_memo_ack.add_argument("--agent", default=None, help="Agent name (for --all)")
+    p_memo_ack.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_memo_gc = memo_sub.add_parser("gc", help="Remove expired and read memos")
+    p_memo_gc.add_argument("--json", action="store_true", help="Output as JSON")
+
     # lock — first positional is action_or_project (allows "palaia lock <project>" shorthand)
     p_lock = sub.add_parser("lock", help="Manage project locks")
     p_lock.add_argument("action_or_project", nargs="?", default=None,
@@ -1540,6 +1666,7 @@ def main():
         "config": cmd_config,
         "warmup": cmd_warmup,
         "project": cmd_project,
+        "memo": cmd_memo,
         "lock": cmd_lock,
         "unlock": cmd_unlock,
     }
