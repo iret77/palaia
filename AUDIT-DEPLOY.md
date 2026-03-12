@@ -36,7 +36,7 @@ Durchgeführt von: Elliot
 ## Caveats (known limitations)
 1. **`pip install` from git URL can be slow** — pip sometimes hangs during resolution. Local clone install works instantly. PyPI publish would improve UX significantly.
 2. **`python3 -m palaia` query loads model on every call** — sentence-transformers loads ~500MB model each invocation. Expected but slow for first query (~10-30s).
-3. **OpenClaw plugin (`@palaia/openclaw`)** — exists in `packages/openclaw-plugin/` with valid `openclaw.plugin.json` and `package.json`. Not published to npm yet, so users must install from repo path. SKILL.md mentions `npm install @palaia/openclaw` but this won't work until published.
+3. **OpenClaw plugin (`@byte5ai/palaia`)** — exists in `packages/openclaw-plugin/` with valid `openclaw.plugin.json` and `package.json`. Not published to npm yet, so users must install from repo path. SKILL.md mentions `npm install @byte5ai/palaia` but this won't work until published.
 4. **No PyPI package** — `pip install palaia` won't work yet. Only git URL install. SKILL.md should clarify this.
 5. **HuggingFace warning** — sentence-transformers emits "unauthenticated requests" warning on first use. Cosmetic only.
 

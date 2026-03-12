@@ -1,5 +1,5 @@
 /**
- * Plugin configuration schema and defaults for @palaia/openclaw.
+ * Plugin configuration schema and defaults for @byte5ai/palaia.
  */
 
 export interface PalaiaPluginConfig {

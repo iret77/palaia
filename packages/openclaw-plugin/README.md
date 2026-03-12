@@ -1,4 +1,4 @@
-# @palaia/openclaw
+# @byte5ai/palaia
 
 **Palaia memory backend for OpenClaw.**
 
@@ -11,7 +11,7 @@ Replace OpenClaw's built-in `memory-core` with Palaia — local, cloud-free, WAL
 pip install palaia
 
 # Install the OpenClaw plugin
-openclaw plugins install @palaia/openclaw
+openclaw plugins install @byte5ai/palaia
 ```
 
 ## Configuration
@@ -108,7 +108,7 @@ memory_write({ content: "Important finding", scope: "team", tags: ["project-x"] 
 
 ```
 OpenClaw Agent
-  └─ @palaia/openclaw (plugin)
+  └─ @byte5ai/palaia (plugin)
        └─ palaia CLI (subprocess, --json)
             └─ .palaia/ (local storage)
                  ├─ hot/    (active memory)

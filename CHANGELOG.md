@@ -35,7 +35,7 @@ First stable release.
 - `palaia warmup` for embedding model preloading
 - `palaia migrate` with 4 adapters (smart-memory, flat-file, json, generic-md)
 - `palaia export/import` for git-based knowledge sync
-- `@palaia/openclaw` plugin for native OpenClaw memory integration
+- `@byte5ai/palaia` plugin for native OpenClaw memory integration
 - 185 tests, fully green CI
 
 ### Copyright
