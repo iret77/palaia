@@ -1088,6 +1088,220 @@ def cmd_project(args):
         return 1
 
 
+def _format_lock_human(lock_data: dict) -> str:
+    """Format lock info for human-readable output."""
+    from datetime import datetime
+
+    agent = lock_data.get("agent", "unknown")
+    acquired = lock_data.get("acquired", "?")
+    reason = lock_data.get("reason", "")
+    age = lock_data.get("age_seconds", 0)
+
+    # Format age
+    if age >= 3600:
+        age_str = f"{age // 3600}h {(age % 3600) // 60}min ago"
+    elif age >= 60:
+        age_str = f"{age // 60}min ago"
+    else:
+        age_str = f"{age}s ago"
+
+    # Format acquired time (show HH:MM)
+    try:
+        dt = datetime.fromisoformat(acquired)
+        time_str = dt.strftime("%H:%M")
+    except (ValueError, TypeError):
+        time_str = acquired
+
+    result = f"🔒 Locked by {agent} since {time_str} ({age_str})"
+    if reason:
+        result += f"\n   Reason: {reason}"
+    return result
+
+
+def cmd_lock(args):
+    """Manage project locks."""
+    from palaia.locking import ProjectLockError, ProjectLockManager
+
+    root = get_root()
+    lm = ProjectLockManager(root)
+
+    # Parse action_or_project: if it's a known subcommand, use it; otherwise treat as project name
+    known_actions = {"status", "renew", "break", "list"}
+    aop = getattr(args, "action_or_project", None)
+    project_arg = getattr(args, "project", None)
+
+    if aop in known_actions:
+        action = aop
+        project = project_arg  # may be None for status/list
+    elif aop is not None:
+        # It's a project name → acquire shorthand
+        action = "acquire"
+        project = aop
+    else:
+        action = None
+        project = None
+
+    if action == "acquire":
+        agent = getattr(args, "agent", None) or _detect_current_agent()
+        reason = getattr(args, "reason", "") or ""
+        ttl = getattr(args, "ttl", None)
+
+        if not agent:
+            if _json_out({"error": "No agent specified. Use --agent or set PALAIA_AGENT env var."}, args):
+                return 1
+            print("Error: No agent specified. Use --agent or set PALAIA_AGENT env var.", file=sys.stderr)
+            return 1
+
+        try:
+            lock_data = lm.acquire(project, agent, reason, ttl)
+        except ProjectLockError as e:
+            if _json_out({"error": str(e), "locked": True}, args):
+                return 1
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        if _json_out(lock_data, args):
+            return 0
+        print(f"🔒 Locked project '{project}' for agent '{agent}'")
+        if reason:
+            print(f"   Reason: {reason}")
+        ttl_min = lock_data.get("ttl_seconds", 1800) // 60
+        print(f"   TTL: {ttl_min} minutes (expires {lock_data['expires']})")
+        return 0
+
+    elif action == "status":
+        if project:
+            info = lm.status(project)
+            if info is None:
+                if _json_out({"project": project, "locked": False}, args):
+                    return 0
+                print(f"Project '{project}' is not locked.")
+                return 0
+            if _json_out(info, args):
+                return 0
+            print(_format_lock_human(info))
+            return 0
+        else:
+            # All projects
+            locks = lm.list_locks()
+            if _json_out({"locks": locks}, args):
+                return 0
+            if not locks:
+                print("No active locks.")
+                return 0
+            for lock in locks:
+                print(f"  {lock['project']}: {_format_lock_human(lock)}")
+            print(f"\n{len(locks)} active lock(s).")
+            return 0
+
+    elif action == "renew":
+        if not project:
+            if _json_out({"error": "Project name required"}, args):
+                return 1
+            print("Error: Project name required.", file=sys.stderr)
+            return 1
+        try:
+            lock_data = lm.renew(project)
+        except ProjectLockError as e:
+            if _json_out({"error": str(e)}, args):
+                return 1
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if _json_out(lock_data, args):
+            return 0
+        ttl_min = lock_data.get("ttl_seconds", 1800) // 60
+        print(f"🔄 Lock renewed for project '{project}' — expires {lock_data['expires']} ({ttl_min}min)")
+        return 0
+
+    elif action == "break":
+        if not project:
+            if _json_out({"error": "Project name required"}, args):
+                return 1
+            print("Error: Project name required.", file=sys.stderr)
+            return 1
+        old = lm.break_lock(project)
+        if old:
+            if _json_out({"broken": True, "previous_lock": old}, args):
+                return 0
+            print(f"⚠️  Lock for project '{project}' force-broken (was held by {old.get('agent', '?')})")
+        else:
+            if _json_out({"broken": False, "project": project}, args):
+                return 0
+            print(f"No lock found for project '{project}'.")
+        return 0
+
+    elif action == "list":
+        locks = lm.list_locks()
+        if _json_out({"locks": locks}, args):
+            return 0
+        if not locks:
+            print("No active locks.")
+            return 0
+        for lock in locks:
+            print(f"  {lock['project']}: {_format_lock_human(lock)}")
+        print(f"\n{len(locks)} active lock(s).")
+        return 0
+
+    elif action is None:
+        # palaia lock (no args) — show all lock statuses
+        locks = lm.list_locks()
+        if _json_out({"locks": locks}, args):
+            return 0
+        if not locks:
+            print("No active locks.")
+            return 0
+        for lock in locks:
+            print(f"  {lock['project']}: {_format_lock_human(lock)}")
+        print(f"\n{len(locks)} active lock(s).")
+        return 0
+
+    else:
+        print("Unknown lock action. Use: acquire, status, renew, break, list", file=sys.stderr)
+        return 1
+
+
+def cmd_unlock(args):
+    """Release a project lock."""
+    from palaia.locking import ProjectLockManager
+
+    root = get_root()
+    lm = ProjectLockManager(root)
+    project = args.project
+
+    removed = lm.release(project)
+    if removed:
+        if _json_out({"unlocked": True, "project": project}, args):
+            return 0
+        print(f"🔓 Unlocked project '{project}'")
+    else:
+        if _json_out({"unlocked": False, "project": project}, args):
+            return 0
+        print(f"Project '{project}' was not locked.")
+    return 0
+
+
+def _detect_current_agent() -> str | None:
+    """Try to detect the current agent name from env or config."""
+    import os
+
+    # Check environment variable first
+    agent = os.environ.get("PALAIA_AGENT")
+    if agent:
+        return agent
+
+    # Try to read from OpenClaw agent config
+    agent_config = Path.home() / ".openclaw" / "config.json"
+    if agent_config.exists():
+        try:
+            with open(agent_config, "r") as f:
+                cfg = json.load(f)
+            return cfg.get("agent_name")
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="palaia",
@@ -1210,6 +1424,22 @@ def main():
     p_proj_delete.add_argument("name", help="Project name")
     p_proj_delete.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # lock — first positional is action_or_project (allows "palaia lock <project>" shorthand)
+    p_lock = sub.add_parser("lock", help="Manage project locks")
+    p_lock.add_argument("action_or_project", nargs="?", default=None,
+                        help="Subcommand (status|renew|break|list) or project name for acquire shorthand")
+    p_lock.add_argument("project", nargs="?", default=None,
+                        help="Project name (for status/renew/break subcommands)")
+    p_lock.add_argument("--agent", default=None, help="Agent name")
+    p_lock.add_argument("--reason", default="", help="Reason for locking")
+    p_lock.add_argument("--ttl", type=int, default=None, help="TTL in seconds")
+    p_lock.add_argument("--json", action="store_true", help="Output as JSON")
+
+    # unlock (shorthand for lock release)
+    p_unlock = sub.add_parser("unlock", help="Release a project lock")
+    p_unlock.add_argument("project", help="Project name")
+    p_unlock.add_argument("--json", action="store_true", help="Output as JSON")
+
     # setup
     p_setup = sub.add_parser("setup", help="Multi-agent setup")
     p_setup.add_argument("--multi-agent", default=None, help="Path to agents directory")
@@ -1310,6 +1540,8 @@ def main():
         "config": cmd_config,
         "warmup": cmd_warmup,
         "project": cmd_project,
+        "lock": cmd_lock,
+        "unlock": cmd_unlock,
     }
     try:
         return commands[args.command](args)
