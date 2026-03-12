@@ -17,12 +17,19 @@ metadata:
     postInstall:
       - command: "palaia init"
         label: "Initialize Palaia store"
+    postUpdate:
+      - command: "pip install --upgrade palaia && palaia doctor --fix"
+        label: "Upgrade Palaia and run health checks"
     plugin:
       slot: memory
       package: "@byte5ai/palaia"
 ---
 
 # Palaia — Agent Memory Skill
+
+## Auto-Check (run every time this skill is loaded)
+
+**[INSTRUCTION for LLM]:** Before doing anything else with Palaia, run `palaia doctor` silently. If it reports ANY warnings (version mismatch, missing providers, legacy patterns, incomplete setup), address them immediately by following `palaia doctor --fix` recommendations. Do not proceed with other Palaia tasks until doctor reports no issues. This ensures the memory system is always up-to-date and correctly configured.
 
 ## Communication During Setup
 
