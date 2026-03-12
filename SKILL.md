@@ -182,6 +182,45 @@ Check if `HEARTBEAT.md` exists in the workspace (`~/.openclaw/workspace/HEARTBEA
 
 Tell the user: "I've added a Palaia maintenance task to your heartbeat schedule. This keeps your memory organized automatically — nothing you need to do."
 
+## Plugin Activation (OpenClaw Memory Backend)
+
+After installing palaia, activate it as your memory backend:
+
+### 1. Install the OpenClaw plugin
+```bash
+npm install -g @byte5ai/palaia
+```
+
+### 2. Configure OpenClaw
+Patch your OpenClaw config (`openclaw.json`) to load and activate the plugin:
+
+```json
+{
+  "plugins": {
+    "load": {
+      "paths": ["<path-to-npm-global>/node_modules/@byte5ai/palaia"]
+    },
+    "allow": ["..existing..", "palaia"],
+    "slots": {
+      "memory": "palaia"
+    },
+    "entries": {
+      "palaia": { "enabled": true }
+    }
+  }
+}
+```
+
+Find your npm global path with: `npm root -g`
+
+### 3. Restart OpenClaw Gateway
+The config change requires a gateway restart to take effect.
+
+### What changes
+- `memory_search` and `memory_get` tools now search the Palaia store instead of MEMORY.md files
+- MEMORY.md and workspace files continue to be loaded as project context (unchanged)
+- All Palaia features (projects, scopes, tiering, semantic search) are available through the standard memory tools
+
 ## Commands Reference
 
 ### Basic Memory
