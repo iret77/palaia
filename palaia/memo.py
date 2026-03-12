@@ -38,9 +38,7 @@ def _parse_yaml_simple(text: str) -> dict:
             result[key] = None
         elif value.isdigit():
             result[key] = int(value)
-        elif (value.startswith('"') and value.endswith('"')) or (
-            value.startswith("'") and value.endswith("'")
-        ):
+        elif (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
             result[key] = value[1:-1]
         else:
             result[key] = value
@@ -68,7 +66,7 @@ def _parse_memo(text: str) -> tuple[dict, str]:
     if not m:
         return {}, text.strip()
     meta = _parse_yaml_simple(m.group(1))
-    body = text[m.end():].strip()
+    body = text[m.end() :].strip()
     return meta, body
 
 
@@ -169,9 +167,7 @@ class MemoManager:
         """
         target = agent or _detect_agent()
         if not target:
-            raise ValueError(
-                "Agent name required. Use --agent flag or set PALAIA_AGENT env var."
-            )
+            raise ValueError("Agent name required. Use --agent flag or set PALAIA_AGENT env var.")
 
         now = datetime.now(timezone.utc)
         results = []

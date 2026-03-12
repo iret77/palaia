@@ -282,11 +282,7 @@ class TestListFilters:
         store.write("wrong tag", project="proj", tags=["weekly"], agent="bot1")
 
         entries = store.list_entries("hot")
-        filtered = [
-            (m, b)
-            for m, b in entries
-            if m.get("project") == "proj" and "daily" in (m.get("tags") or [])
-        ]
+        filtered = [(m, b) for m, b in entries if m.get("project") == "proj" and "daily" in (m.get("tags") or [])]
         assert len(filtered) == 1
 
     def test_cli_list_filters_json(self, palaia_root, pm):

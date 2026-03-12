@@ -11,7 +11,6 @@ from pathlib import Path
 from palaia.entry import content_hash
 from palaia.store import Store
 
-
 # System files that agents read at runtime — must never be deleted after migration.
 SYSTEM_FILE_PATTERNS = {
     "CONTEXT.md",
