@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.4.2] — 2026-03-12
+
+### Added
+- **Init triggers onboarding** — `palaia init` now outputs step-by-step setup instructions that guide LLM agents through the complete onboarding (doctor, detect, warmup, plugin config). (#23)
+- **`PALAIA_HOME` env variable** — Override `.palaia` store location. Plugin runner sets it automatically. (#23)
+
+### Fixed
+- OpenClaw plugin now finds `.palaia` store reliably regardless of working directory. (#23)
+
+## [1.4.1] — 2026-03-12
+
+### Added
+- **Auto-Check section in SKILL.md** — Agents run `palaia doctor` every time the skill is loaded.
+- **`postUpdate` hook in SKILL.md metadata** — `clawhub update` triggers automatic upgrade + health check.
+
 ## [1.4.0] — 2026-03-12
 
 ### Added
