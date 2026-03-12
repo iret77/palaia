@@ -155,6 +155,7 @@ def cmd_query(args):
         top_k=args.limit,
         include_cold=args.all,
         project=getattr(args, "project", None),
+        agent=getattr(args, "agent", None),
     )
 
     if _json_out({"results": results}, args):
@@ -216,7 +217,7 @@ def cmd_get(args):
         # Extract ID from path
         entry_id = entry_id.split("/")[-1].replace(".md", "")
 
-    entry = store.read(entry_id)
+    entry = store.read(entry_id, agent=getattr(args, "agent", None))
     if entry is None:
         if _json_out({"error": "not_found", "id": entry_id}, args):
             return 1
@@ -357,7 +358,7 @@ def cmd_list(args):
     store.recover()
 
     tier = args.tier or "hot"
-    entries = store.list_entries(tier)
+    entries = store.list_entries(tier, agent=getattr(args, "agent", None))
 
     # Filter by project if specified
     project_filter = getattr(args, "project", None)
@@ -746,6 +747,7 @@ def cmd_export(args):
         remote=args.remote,
         branch=args.branch,
         output_dir=args.output,
+        agent=getattr(args, "agent", None),
     )
 
     if _json_out(result, args):
@@ -997,6 +999,7 @@ def main():
     p_query.add_argument("--limit", type=int, default=10, help="Max results")
     p_query.add_argument("--all", action="store_true", help="Include COLD tier")
     p_query.add_argument("--project", default=None, help="Filter by project")
+    p_query.add_argument("--agent", default=None, help="Agent name (for scope filtering)")
     p_query.add_argument("--rag", action="store_true", help="Output as RAG context block")
     p_query.add_argument("--json", action="store_true", help="Output as JSON")
 
@@ -1016,6 +1019,7 @@ def main():
     p_get.add_argument("path", help="Entry UUID or path (e.g. hot/uuid.md)")
     p_get.add_argument("--from", type=int, default=None, dest="from_line", help="Start from line number (1-indexed)")
     p_get.add_argument("--lines", type=int, default=None, help="Number of lines to return")
+    p_get.add_argument("--agent", default=None, help="Agent name (for scope filtering)")
     p_get.add_argument("--json", action="store_true", help="Output as JSON")
 
     # recover
@@ -1026,6 +1030,7 @@ def main():
     p_list = sub.add_parser("list", help="List entries in a tier")
     p_list.add_argument("--tier", default="hot", choices=["hot", "warm", "cold"])
     p_list.add_argument("--project", default=None, help="Filter by project")
+    p_list.add_argument("--agent", default=None, help="Agent name (for scope filtering)")
     p_list.add_argument("--json", action="store_true", help="Output as JSON")
 
     # status
@@ -1092,6 +1097,7 @@ def main():
     p_export.add_argument("--branch", default=None, help="Branch name")
     p_export.add_argument("--output", default=None, help="Output directory")
     p_export.add_argument("--project", default=None, help="Export only project entries")
+    p_export.add_argument("--agent", default=None, help="Agent name (for scope filtering)")
     p_export.add_argument("--json", action="store_true", help="Output as JSON")
 
     # import
