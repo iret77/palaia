@@ -18,6 +18,7 @@ DEFAULT_CONFIG = {
     "lock_timeout_seconds": 5,
     "embedding_provider": "auto",
     "embedding_model": "",
+    "store_version": "",  # Set to palaia __version__ on init/upgrade
 }
 
 

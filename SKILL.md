@@ -395,6 +395,15 @@ Palaia organizes entries into three tiers based on access frequency:
 
 Run `palaia gc` periodically (or let cron handle it) to rotate entries between tiers. `palaia gc --aggressive` forces more entries to lower tiers.
 
+## After Updating Palaia
+
+Always run `palaia doctor` after updating. It checks your store for compatibility, suggests new features (like projects or embedding chain improvements), and handles version stamping. If the installed version differs from the store version, Palaia will warn you automatically on every CLI call until you run `palaia doctor`.
+
+```bash
+pip install --upgrade palaia
+palaia doctor --fix
+```
+
 ## Configuration Keys
 
 | Key | Default | Description |

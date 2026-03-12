@@ -1,69 +1,127 @@
 # Migration Guide
 
-This guide covers migrating from OpenClaw's built-in smart-memory (or other formats) to Palaia.
+How to move your agent's memory into Palaia — from flat files, other memory systems, or a fresh start.
 
-## Quick Migration
+## 5-Step Migration
+
+### 1. Inventory
+
+Figure out what you have. Common sources:
+
+- `memory/*.md` files (OpenClaw smart-memory)
+- JSON-based memory stores
+- Flat markdown notes in workspace directories
+- Conversation logs with embedded knowledge
 
 ```bash
-# 1. Install Palaia
-pip install git+https://github.com/iret77/palaia.git
+# Check what palaia doctor finds
+palaia doctor --fix
 
-# 2. Initialize
-palaia init
-
-# 3. Preview what would be imported
-palaia migrate . --dry-run
-
-# 4. Run the migration
-palaia migrate .
-
-# 5. Verify
-palaia status
-palaia list
+# Count your existing files
+find ~/. openclaw/workspace/memory -name "*.md" | wc -l
 ```
 
-Supported formats: `smart-memory`, `flat-file`, `json-memory`, `generic-md`.
-Palaia auto-detects the format, or you can force it with `--format`.
+### 2. Ingest
 
-## ⚠️ Important: Do NOT Delete System Files
+Bulk-import your existing files. Palaia chunks them automatically for search.
 
-After migrating to Palaia, these files MUST remain on disk — they are living documents read by agents at runtime, not historical data:
+```bash
+# Single file
+palaia ingest ~/docs/architecture.md --project myapp --scope team
 
-- `CONTEXT.md` (project context, injected into subagent prompts)
-- `SOUL.md` (agent personality/identity)
-- `MEMORY.md` (orchestrator core memory)
-- `AGENTS.md` (workspace config)
-- `TOOLS.md` (tool config)
-- `USER.md` (user preferences)
-- `IDENTITY.md` (agent identity)
+# Entire directory (recursive)
+palaia ingest ~/. openclaw/workspace/memory/ --project legacy-notes --scope private
 
-`palaia ingest` creates a **searchable copy** in the store. The original file continues to be the source of truth. Deleting it breaks agent workflows.
+# With custom chunking for large docs
+palaia ingest ~/docs/api-spec.md --project myapp --chunk-size 300 --chunk-overlap 30
 
-**Safe to archive after migration:**
-- Daily logs (`memory/YYYY-MM-DD.md`) — historical, not read at runtime
-- Old chat logs (`memory/chat-*.md`)
-- One-off notes that have been fully ingested
+# Preview first (dry run)
+palaia ingest ~/docs/ --project myapp --dry-run
+```
 
-## What Happens During Migration
+**Tip:** `--project` auto-creates the project if it doesn't exist. No need to run `palaia project create` first.
 
-`palaia migrate` reads your existing memory files, converts them to Palaia entries, and stores them in the Palaia database. **Source files are NOT modified or deleted.**
+### 3. Verify
 
-For smart-memory format, files are mapped as follows:
+Check that your data made it in:
 
-| Source File | Palaia Tier | Scope |
-|---|---|---|
-| `MEMORY.md` | HOT | team |
-| `memory/active-context.md` | HOT (per block) | team |
-| `memory/projects/*/CONTEXT.md` | HOT | shared:{project} |
-| `memory/agents/*.md` | WARM | team |
-| `memory/YYYY-MM-DD.md` | COLD | team |
+```bash
+# See what's stored
+palaia list --project myapp
+palaia list --project legacy-notes
 
-## Post-Migration
+# Test search
+palaia query "database connection" --project myapp
 
-After migration, Palaia and your existing files coexist:
+# Check overall health
+palaia status
+```
 
-- **Palaia** provides semantic search across all your memory
-- **Original files** continue to be loaded by OpenClaw at agent startup
-- Both systems work together — Palaia supplements, it does not replace
+### 4. Cleanup
 
-Do **not** "clean up" by deleting source files. See the system files list above.
+Once verified, remove or archive the old files:
+
+```bash
+# Archive (recommended — keep a backup)
+tar czf ~/memory-backup-$(date +%Y%m%d).tar.gz ~/. openclaw/workspace/memory/
+
+# Or just move them aside
+mv ~/. openclaw/workspace/memory ~/. openclaw/workspace/memory-archived
+
+# Run doctor to confirm clean state
+palaia doctor
+```
+
+### 5. Integration
+
+Point your agent to use Palaia for all memory operations:
+
+```bash
+# If using OpenClaw, the skill handles this automatically
+# For custom setups, use the CLI or Python API:
+
+# Write new memories
+palaia write "Deploy uses port 8080 on staging" --project infra --tags deploy,staging
+
+# Query in scripts
+palaia query "staging port" --project infra --json
+
+# Multi-agent? Set up shared access:
+palaia setup --multi-agent ~/.openclaw/agents/
+```
+
+## Migrating from Smart-Memory
+
+If you're coming from the OpenClaw smart-memory skill:
+
+```bash
+# 1. Palaia can auto-detect and import smart-memory format
+palaia migrate ~/.openclaw/workspace/memory/ --format smart-memory --dry-run
+
+# 2. If it looks good, run for real
+palaia migrate ~/.openclaw/workspace/memory/ --format smart-memory
+
+# 3. Verify
+palaia status
+palaia query "test search"
+
+# 4. Run doctor to check for leftover legacy patterns
+palaia doctor --fix
+```
+
+## Migrating from JSON Memory
+
+```bash
+# Generic JSON import
+palaia migrate ./memory-export.json --format json-memory
+
+# With scope override (make everything private)
+palaia migrate ./data/ --format generic-md --scope private
+```
+
+## Tips
+
+- **Start with `--dry-run`** on any bulk operation to preview what will happen.
+- **Use projects** to keep imported data organized and separate from new entries.
+- **Run `palaia doctor`** after migration to catch any leftover issues.
+- **Don't delete originals immediately** — archive them first, verify Palaia search works, then clean up.

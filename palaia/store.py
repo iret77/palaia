@@ -59,15 +59,12 @@ class Store:
             # Explicit scope always wins
             scope = normalize_scope(scope)
         elif project:
-            # Try project default scope
+            # Auto-create project if it doesn't exist, then use its default scope
             from palaia.project import ProjectManager
 
             pm = ProjectManager(self.root)
-            proj = pm.get(project)
-            if proj:
-                scope = normalize_scope(proj.default_scope)
-            else:
-                scope = normalize_scope(None, self.config["default_scope"])
+            proj = pm.ensure(project, default_scope=self.config["default_scope"])
+            scope = normalize_scope(proj.default_scope)
         else:
             scope = normalize_scope(None, self.config["default_scope"])
 
