@@ -26,6 +26,14 @@ def _json_out(data, args):
     return False
 
 
+def _detect_agents() -> list[str]:
+    """Detect OpenClaw agents by checking ~/.openclaw/agents/ directory."""
+    agents_dir = Path.home() / ".openclaw" / "agents"
+    if not agents_dir.is_dir():
+        return []
+    return [d.name for d in agents_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
+
+
 def cmd_init(args):
     """Initialize .palaia directory."""
     target = Path(args.path or ".") / ".palaia"
@@ -67,10 +75,31 @@ def cmd_init(args):
     chain.append("bm25")  # always last
 
     config["embedding_chain"] = chain
+
+    # Multi-agent detection
+    agents = _detect_agents()
+    if len(agents) > 1:
+        store_mode = getattr(args, "store_mode", None)
+        if store_mode == "isolated":
+            config["store_mode"] = "isolated"
+            print(f"🤖 Found {len(agents)} agents: {', '.join(agents)}")
+            print(f"   Using isolated stores — each agent gets its own .palaia directory.")
+        else:
+            config["store_mode"] = "shared"
+            print(f"🤖 Found {len(agents)} agents: {', '.join(agents)}")
+            print(f"   Using shared store at {target}")
+            print(f"   All agents will see team-scoped entries.")
+            print(f"   Use --agent flag when writing so entries are attributed correctly.")
+            if store_mode is None:
+                print(f"   (Use 'palaia init --isolated' for separate stores per agent)")
+    elif len(agents) == 1:
+        print(f"🤖 Found 1 agent: {agents[0]}")
+        config["store_mode"] = "shared"
+
     save_config(target, config)
 
     if not is_reinit:
-        if _json_out({"status": "created", "path": str(target), "embedding_chain": chain}, args):
+        if _json_out({"status": "created", "path": str(target), "embedding_chain": chain, "agents": agents, "store_mode": config.get("store_mode", "shared")}, args):
             return 0
         print(f"Initialized Palaia at {target}")
 
@@ -982,6 +1011,8 @@ def main():
     p_init = sub.add_parser("init", help="Initialize .palaia directory")
     p_init.add_argument("--path", default=None, help="Target directory")
     p_init.add_argument("--json", action="store_true", help="Output as JSON")
+    p_init.add_argument("--isolated", action="store_const", const="isolated", dest="store_mode",
+                        help="Use isolated stores per agent (default: shared)")
 
     # write
     p_write = sub.add_parser("write", help="Write a memory entry")
