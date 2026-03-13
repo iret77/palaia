@@ -122,21 +122,6 @@ def get_agent(palaia_root: Path | None = None) -> str | None:
     return config.get("agent") or None
 
 
-def get_agent_aliases(palaia_root: Path | None = None) -> list[str]:
-    """Get previous agent names from .palaia/config.json.
-
-    Returns a list of previous agent names that should be treated as
-    equivalent to the current agent for scope/access purposes.
-    """
-    if palaia_root is None:
-        palaia_root = find_palaia_root()
-    if palaia_root is None:
-        return []
-    config = load_config(palaia_root)
-    aliases = config.get("previous_agents", [])
-    return aliases if isinstance(aliases, list) else []
-
-
 def get_instance(palaia_root: Path | None = None) -> str | None:
     """Get the current session instance from .palaia/current-instance.
 

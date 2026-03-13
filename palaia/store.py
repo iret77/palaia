@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from palaia.config import get_agent_aliases, load_config
+from palaia.config import get_aliases, load_config, resolve_agent_with_aliases
 from palaia.decay import classify_tier, days_since, decay_score
 from palaia.entry import (
     content_hash,
@@ -36,18 +36,19 @@ class Store:
         self.wal = WAL(palaia_root)
         self.lock = PalaiaLock(palaia_root, self.config["lock_timeout_seconds"])
         self.embedding_cache = EmbeddingCache(palaia_root)
-        self._agent_aliases = get_agent_aliases(palaia_root)
-        self._config_agent = self.config.get("agent") or None
+        self._aliases = get_aliases(palaia_root)
 
         # Ensure tier directories
         for tier in TIERS:
             (self.root / tier).mkdir(parents=True, exist_ok=True)
 
-    def _aliases_for(self, agent: str | None) -> list[str] | None:
-        """Return agent aliases only if agent matches the configured agent."""
-        if agent and agent == self._config_agent and self._agent_aliases:
-            return self._agent_aliases
-        return None
+    def _resolve_names(self, agent: str | None) -> set[str] | None:
+        """Resolve agent to all matching names via aliases."""
+        if agent is None:
+            return None
+        if self._aliases:
+            return resolve_agent_with_aliases(agent, self._aliases)
+        return {agent}
 
     def recover(self) -> int:
         """Run WAL recovery on startup."""
@@ -168,7 +169,8 @@ class Store:
         entry_scope = meta.get("scope", "team")
         entry_agent = meta.get("agent")
 
-        if not can_access(entry_scope, agent, entry_agent, agent_aliases=self._aliases_for(agent)):
+        resolved = self._resolve_names(agent)
+        if not can_access(entry_scope, agent, entry_agent, agent_names=resolved):
             raise PermissionError(
                 f"Scope violation: agent '{agent}' cannot edit entry with scope '{entry_scope}' "
                 f"(owned by '{entry_agent}')"
@@ -176,7 +178,7 @@ class Store:
 
         # Private entries: only the owning agent (or alias) can edit
         if entry_scope == "private" and agent != entry_agent:
-            if not (self._aliases_for(agent) and entry_agent in self._aliases_for(agent)):
+            if not (resolved and entry_agent in resolved):
                 raise PermissionError(
                     f"Scope violation: agent '{agent}' cannot edit private entry owned by '{entry_agent}'"
                 )
@@ -270,7 +272,8 @@ class Store:
         meta, body = parse_entry(text)
 
         # Scope check
-        if not can_access(meta.get("scope", "team"), agent, meta.get("agent"), projects, self._aliases_for(agent)):
+        resolved = self._resolve_names(agent)
+        if not can_access(meta.get("scope", "team"), agent, meta.get("agent"), projects, resolved):
             return None
 
         # Update access
@@ -290,12 +293,13 @@ class Store:
         if not tier_dir.exists():
             return []
 
+        resolved = self._resolve_names(agent)
         results = []
         for p in sorted(tier_dir.glob("*.md")):
             try:
                 text = p.read_text(encoding="utf-8")
                 meta, body = parse_entry(text)
-                if can_access(meta.get("scope", "team"), agent, meta.get("agent"), projects, self._aliases_for(agent)):
+                if can_access(meta.get("scope", "team"), agent, meta.get("agent"), projects, resolved):
                     results.append((meta, body))
             except (OSError, UnicodeDecodeError):
                 continue

@@ -178,12 +178,9 @@ class MemoManager:
         # Build set of all names that should match
         target_names = {target}
         if aliases:
-            # aliases is a dict {old_name: new_name} — resolve all matching names
-            for src, tgt in aliases.items():
-                if tgt == target:
-                    target_names.add(src)
-                if src == target:
-                    target_names.add(tgt)
+            from palaia.config import resolve_agent_with_aliases
+
+            target_names = resolve_agent_with_aliases(target, aliases)
 
         now = datetime.now(timezone.utc)
         results = []

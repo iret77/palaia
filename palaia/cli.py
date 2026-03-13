@@ -439,16 +439,8 @@ def cmd_init(args):
         # Re-init: update only explicitly provided values
         existing_config = load_config(target)
 
-        # Track previous agent names when renaming
+        # Update agent if provided
         if agent_name:
-            old_agent = existing_config.get("agent")
-            if old_agent and old_agent != agent_name:
-                prev = existing_config.get("previous_agents", [])
-                if not isinstance(prev, list):
-                    prev = []
-                if old_agent not in prev:
-                    prev.append(old_agent)
-                existing_config["previous_agents"] = prev
             existing_config["agent"] = agent_name
 
         # Check if chain is already configured
