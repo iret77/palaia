@@ -1,0 +1,11 @@
+# ClawHub: only publish skill-relevant files
+palaia/
+tests/
+packages/
+docs/
+.github/
+*.py
+*.toml
+*.cfg
+requirements*.txt
+Makefile
