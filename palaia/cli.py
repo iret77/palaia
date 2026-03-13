@@ -131,6 +131,7 @@ UNGATED_COMMANDS = frozenset(
         "doctor",
         "config",
         "instance",
+        "skill",
     }
 )
 
@@ -2491,6 +2492,27 @@ def _detect_current_agent() -> str | None:
     return None
 
 
+def cmd_skill(args):
+    """Print the embedded SKILL.md documentation."""
+    skill_path = Path(__file__).parent / "SKILL.md"
+    if not skill_path.exists():
+        fallback_msg = (
+            "SKILL.md not found in this installation. "
+            "View it online: https://github.com/iret77/palaia/blob/main/SKILL.md"
+        )
+        if getattr(args, "json", False):
+            print(json.dumps({"error": fallback_msg}, ensure_ascii=False))
+            return 1
+        print(fallback_msg, file=sys.stderr)
+        return 1
+
+    content = skill_path.read_text(encoding="utf-8")
+    if _json_out({"skill": content}, args):
+        return 0
+    print(content)
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="palaia",
@@ -2804,6 +2826,10 @@ def main():
     p_config_remove_alias.add_argument("from_name", help="Alias source name to remove")
     p_config_remove_alias.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # skill
+    p_skill = sub.add_parser("skill", help="Print the SKILL.md agent documentation")
+    p_skill.add_argument("--json", action="store_true", help="Output as JSON")
+
     # migrate
     p_migrate = sub.add_parser("migrate", help="Import from external memory formats or suggest type assignments")
     p_migrate.add_argument("source", nargs="?", default=None, help="Source path (directory or file)")
@@ -2852,6 +2878,7 @@ def main():
         "lock": cmd_lock,
         "unlock": cmd_unlock,
         "instance": cmd_instance,
+        "skill": cmd_skill,
     }
     try:
         return commands[args.command](args)
