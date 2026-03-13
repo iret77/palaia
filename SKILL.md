@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "1.5.1"
+version: "1.5.2"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   Replaces built-in memory-core with semantic search, projects, and scope-based access control.
@@ -13,9 +13,9 @@ metadata:
     install:
       - id: pip
         kind: pip
-        package: palaia
+        package: "palaia[fastembed]"
         bins: ["palaia"]
-        label: "Install Palaia (pip)"
+        label: "Install Palaia with fastembed (pip)"
     postInstall:
       - command: "palaia init"
         label: "Initialize Palaia store"
@@ -51,7 +51,7 @@ Example pacing:
 
 ### Step 1: Install and initialize
 ```bash
-python3 -m pip install git+https://github.com/iret77/palaia.git
+python3 -m pip install "palaia[fastembed]"
 palaia init
 ```
 
@@ -197,17 +197,40 @@ On some hosts, `pip` is not available as a standalone command. Use these fallbac
 
 ```bash
 # Option 1: python3 -m pip (most reliable)
-python3 -m pip install --upgrade palaia
+python3 -m pip install --upgrade "palaia[fastembed]"
 
 # Option 2: pipx (if installed)
-pipx install palaia
+pipx install "palaia[fastembed]"
 
 # Option 3: Bootstrap pip first
 python3 -m ensurepip --upgrade
-python3 -m pip install --upgrade palaia
+python3 -m pip install --upgrade "palaia[fastembed]"
 
 # Option 4: Install from git directly
-python3 -m pip install git+https://github.com/iret77/palaia.git
+python3 -m pip install "palaia[fastembed] @ git+https://github.com/iret77/palaia.git"
+```
+
+## Troubleshooting: Debian/Ubuntu (PEP 668)
+
+On Debian-based systems (Debian 12+, Ubuntu 23.04+), pip may fail with "externally-managed-environment".
+This is due to PEP 668 which prevents pip from modifying system Python packages.
+
+Use one of these approaches:
+
+```bash
+# Option 1: User install (recommended)
+python3 -m pip install --user "palaia[fastembed]"
+
+# Option 2: Break system packages (use if you know what you're doing)
+python3 -m pip install --break-system-packages "palaia[fastembed]"
+
+# Option 3: pipx (cleanest isolation)
+pipx install "palaia[fastembed]"
+
+# Option 4: Virtual environment
+python3 -m venv ~/.palaia-venv
+~/.palaia-venv/bin/pip install "palaia[fastembed]"
+alias palaia=~/.palaia-venv/bin/palaia
 ```
 
 After upgrading, always run `palaia doctor --fix` to verify providers and update the store.

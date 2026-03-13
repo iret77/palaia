@@ -189,6 +189,36 @@ class TestCheckOpenClawPlugin:
         assert "fix" in result
 
 
+    def test_openclaw_config_env_var(self, tmp_path, monkeypatch):
+        """OPENCLAW_CONFIG env var should be checked for config location."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        config_path = tmp_path / "custom" / "openclaw.json"
+        config_path.parent.mkdir(parents=True)
+        config = {"plugins": {"slots": {"memory": "palaia"}}}
+        config_path.write_text(json.dumps(config))
+
+        monkeypatch.setenv("OPENCLAW_CONFIG", str(config_path))
+        result = _check_openclaw_plugin()
+        assert result["status"] == "ok"
+        assert "palaia is active" in result["message"]
+
+    def test_yaml_config(self, tmp_path, monkeypatch):
+        """YAML config should be parsed if yaml is available."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        oc_dir = tmp_path / ".openclaw"
+        oc_dir.mkdir()
+
+        try:
+            import yaml  # noqa: F401
+
+            config_content = "plugins:\n  slots:\n    memory: palaia\n"
+            (oc_dir / "config.yaml").write_text(config_content)
+            result = _check_openclaw_plugin()
+            assert result["status"] == "ok"
+        except ImportError:
+            pytest.skip("yaml not installed")
+
+
 class TestCheckSmartMemorySkill:
     def test_not_installed(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))

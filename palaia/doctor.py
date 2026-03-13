@@ -120,11 +120,20 @@ def _check_embedding_chain(palaia_root: Path | None) -> dict[str, Any]:
 
 def _check_openclaw_plugin() -> dict[str, Any]:
     """Check which OpenClaw memory plugin is active."""
-    # Try reading OpenClaw config files
+    import os as _os
+
+    # Build list of config candidates
     config_candidates = [
         Path.home() / ".openclaw" / "config.json",
         Path.home() / ".openclaw" / "config.yaml",
     ]
+
+    # Also check $OPENCLAW_CONFIG env var
+    env_config = _os.environ.get("OPENCLAW_CONFIG")
+    if env_config:
+        env_path = Path(env_config)
+        if env_path not in config_candidates:
+            config_candidates.insert(0, env_path)
 
     for config_path in config_candidates:
         if not config_path.exists():
@@ -134,7 +143,7 @@ def _check_openclaw_plugin() -> dict[str, Any]:
             if config_path.suffix == ".json":
                 with open(config_path) as f:
                     oc_config = json.load(f)
-            elif config_path.suffix == ".yaml":
+            elif config_path.suffix in (".yaml", ".yml"):
                 # Try yaml if available
                 try:
                     import yaml  # type: ignore[import-untyped]
@@ -178,6 +187,37 @@ def _check_openclaw_plugin() -> dict[str, Any]:
                 }
         except (json.JSONDecodeError, OSError, KeyError):
             continue
+
+    # Fallback: try running `openclaw status` to detect if OpenClaw is running
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["openclaw", "status"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout:
+            output = result.stdout.lower()
+            if "memory" in output and "palaia" in output:
+                return {
+                    "name": "openclaw_plugin",
+                    "label": "OpenClaw plugin",
+                    "status": "ok",
+                    "message": "palaia is active (detected via openclaw status)",
+                    "details": {"source": "openclaw status"},
+                }
+            elif "memory" in output:
+                return {
+                    "name": "openclaw_plugin",
+                    "label": "OpenClaw plugin",
+                    "status": "info",
+                    "message": "OpenClaw running (memory plugin status unclear)",
+                    "details": {"source": "openclaw status"},
+                }
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
 
     return {
         "name": "openclaw_plugin",

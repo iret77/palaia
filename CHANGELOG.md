@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.5.2] — 2026-03-13
+
+### Fixed
+- **Store discovery fallback chain** — `find_palaia_root()` now checks `~/.palaia` and `~/.openclaw/workspace/.palaia` as fallbacks when cwd walk fails. Users no longer get "No .palaia directory found" when running from outside the workspace. (#33)
+- **Doctor OpenClaw config detection** — Now checks `$OPENCLAW_CONFIG` env var, `.yml` extension, and falls back to parsing `openclaw status` output. Fixes false "standalone mode" reports when OpenClaw plugin is active. (#33)
+
+### Changed
+- **Default install recommendation** — `palaia[fastembed]` replaces bare `palaia` in all install instructions (SKILL.md, README). Users get semantic search out of the box. (#33)
+
+### Added
+- **PEP 668 troubleshooting** — SKILL.md documents workarounds for Debian/Ubuntu "externally-managed-environment" errors (`--user`, `--break-system-packages`, `pipx`, venv). (#33)
+
+## [1.5.1] — 2026-03-13
+
+### Fixed
+- **Version sync** — pyproject.toml, __init__.py, SKILL.md all at 1.5.1.
+- **Doctor --fix auto-repair** — Embedding chain auto-fix works correctly.
+- **pip fallback** — SKILL.md documents pip alternatives.
+- **Plugin config docs** — Correct config path documented.
+
 ## [1.5.0] — 2026-03-13
 
 ### Added

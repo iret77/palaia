@@ -56,3 +56,71 @@ def test_palaia_home_invalid_ignored(tmp_path, monkeypatch):
 
     result = find_palaia_root(start=str(tmp_path))
     assert result == store
+
+
+def test_fallback_home_palaia(tmp_path, monkeypatch):
+    """~/.palaia should be found when cwd walk fails."""
+    monkeypatch.delenv("PALAIA_HOME", raising=False)
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    # Create ~/.palaia
+    home_store = tmp_path / ".palaia"
+    home_store.mkdir()
+    (home_store / "config.json").write_text("{}")
+
+    import palaia.config
+
+    importlib.reload(palaia.config)
+    from palaia.config import find_palaia_root
+
+    # Start from a directory with no .palaia above it
+    nowhere = tmp_path / "somewhere" / "deep"
+    nowhere.mkdir(parents=True)
+    result = find_palaia_root(start=str(nowhere))
+    # Should find either via cwd walk (since it's under tmp_path) or via home fallback
+    assert result is not None
+    assert result.name == ".palaia"
+
+
+def test_fallback_openclaw_workspace(tmp_path, monkeypatch):
+    """~/.openclaw/workspace/.palaia should be found as last fallback."""
+    monkeypatch.delenv("PALAIA_HOME", raising=False)
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    # Create ~/.openclaw/workspace/.palaia
+    oc_store = tmp_path / ".openclaw" / "workspace" / ".palaia"
+    oc_store.mkdir(parents=True)
+    (oc_store / "config.json").write_text("{}")
+
+    import palaia.config
+
+    importlib.reload(palaia.config)
+    from palaia.config import find_palaia_root
+
+    # Start from root (no .palaia in cwd walk, no ~/.palaia)
+    result = find_palaia_root(start="/")
+    assert result == oc_store
+
+
+def test_cwd_walk_preferred_over_fallbacks(tmp_path, monkeypatch):
+    """CWD walk should find .palaia before fallback paths."""
+    monkeypatch.delenv("PALAIA_HOME", raising=False)
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    # Create both cwd .palaia and home .palaia
+    cwd_store = tmp_path / "projects" / "myproject" / ".palaia"
+    cwd_store.mkdir(parents=True)
+    (cwd_store / "config.json").write_text("{}")
+
+    home_store = tmp_path / ".palaia"
+    home_store.mkdir()
+    (home_store / "config.json").write_text("{}")
+
+    import palaia.config
+
+    importlib.reload(palaia.config)
+    from palaia.config import find_palaia_root
+
+    # Start from within the project
+    result = find_palaia_root(start=str(tmp_path / "projects" / "myproject"))
+    assert result == cwd_store

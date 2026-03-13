@@ -30,14 +30,14 @@ Your agent will handle installation, configuration, and onboarding automatically
 
 ### Manual install
 ```bash
-pip install palaia
+pip install "palaia[fastembed]"
 palaia init
 palaia doctor --fix
 ```
 
 ### After updating
 ```bash
-pip install --upgrade palaia
+pip install --upgrade "palaia[fastembed]"
 palaia doctor --fix
 ```
 Your agent can also do this — just say: **"Update Palaia"**
@@ -434,7 +434,7 @@ palaia config set-chain <providers...>  # Set embedding fallback chain
 **Or install manually:**
 
 ```bash
-pip install palaia
+pip install "palaia[fastembed]"
 ```
 
 **Links:**

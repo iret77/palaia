@@ -26,9 +26,13 @@ DEFAULT_CONFIG = {
 def find_palaia_root(start: str = ".") -> Path | None:
     """Walk up from start to find .palaia directory.
 
-    Checks PALAIA_HOME env var first, then walks up from start.
+    Search order:
+    1. PALAIA_HOME env var (explicit override)
+    2. Walk up from start directory (cwd-based)
+    3. ~/.palaia (user home fallback)
+    4. ~/.openclaw/workspace/.palaia (OpenClaw standard path)
     """
-    # Check PALAIA_HOME env var first
+    # 1. Check PALAIA_HOME env var first
     env_home = os.environ.get("PALAIA_HOME")
     if env_home:
         env_path = Path(env_home)
@@ -40,15 +44,27 @@ def find_palaia_root(start: str = ".") -> Path | None:
         if candidate.is_dir():
             return candidate
 
-    # Walk up from start directory
+    # 2. Walk up from start directory
     current = Path(start).resolve()
     while True:
         candidate = current / ".palaia"
         if candidate.is_dir():
             return candidate
         if current.parent == current:
-            return None
+            break
         current = current.parent
+
+    # 3. ~/.palaia fallback
+    home_palaia = Path.home() / ".palaia"
+    if home_palaia.is_dir():
+        return home_palaia
+
+    # 4. ~/.openclaw/workspace/.palaia fallback (OpenClaw standard path)
+    openclaw_palaia = Path.home() / ".openclaw" / "workspace" / ".palaia"
+    if openclaw_palaia.is_dir():
+        return openclaw_palaia
+
+    return None
 
 
 def get_root(start: str = ".") -> Path:
