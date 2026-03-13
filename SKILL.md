@@ -170,7 +170,7 @@ palaia migrate --suggest
 ```
 This checks for entries without type classification and suggests improvements. Better to do this early while the store is small — it gets harder as the store grows. Apply the suggestions that make sense.
 
-### Step 4: Check embedding setup (auto-configured by init)
+### Step 4a: Check embedding setup (auto-configured by init)
 ```bash
 palaia detect
 ```
@@ -189,20 +189,35 @@ palaia warmup                       # pre-load model
 ```
 If sentence-transformers fails or requires CUDA: use fastembed instead (`pip install fastembed`) — lighter, no GPU needed.
 
-### Step 4: Warm up models
+### Step 4b: Warm up models
 ```bash
 palaia warmup
 ```
 This pre-downloads embedding models so the first search is instant. Always run after chain setup.
 
-### Step 5: Optional — migrate additional memory files
+### Step 5: Verify setup (mandatory — do not skip)
+Run a test query to verify semantic search works end-to-end:
+```bash
+palaia query "important context and decisions"
+```
+**Check:**
+- Results must appear (not empty)
+- Response time should be under 5 seconds
+- If it times out or returns no results: check `palaia status` and `palaia detect`, fix any issues before proceeding
+
+Then verify `palaia status` shows indexed entries (Index: N/N, not 0/N).
+If index is 0/N after warmup, run a few queries — indexing happens lazily on first query.
+
+**Do not tell the user "setup complete" until this verification passes.** Assumption is not verification.
+
+### Step 6: Optional — migrate additional memory files (skip if done in Step 3)
 ```bash
 palaia migrate <path> --dry-run   # Preview first
 palaia migrate <path>             # Then import
 ```
 Note: If smart-memory migration was already handled in Step 2, skip this unless there are other sources to import.
 
-### Step 6: Add Palaia maintenance to your heartbeat (mandatory)
+### Step 7: Add Palaia maintenance to your heartbeat (mandatory)
 
 This is required. Palaia's tiering (HOT → WARM → COLD) only runs when triggered.
 Without periodic maintenance, all entries stay HOT forever and search quality degrades over time.
