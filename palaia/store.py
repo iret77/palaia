@@ -11,6 +11,7 @@ from palaia.decay import classify_tier, days_since, decay_score
 from palaia.entry import (
     content_hash,
     create_entry,
+    extract_title_from_content,
     parse_entry,
     serialize_entry,
     update_access,
@@ -184,6 +185,11 @@ class Store:
 
         if title is not None:
             meta["title"] = title
+        elif content_changed:
+            # Auto-update title from new content if no explicit title was set
+            auto_title = extract_title_from_content(body)
+            if auto_title:
+                meta["title"] = auto_title
 
         if entry_type is not None:
             meta["type"] = validate_entry_type(entry_type)

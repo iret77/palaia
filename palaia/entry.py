@@ -70,6 +70,28 @@ def _to_yaml_simple(data: dict) -> str:
     return "\n".join(lines)
 
 
+def extract_title_from_content(body: str, max_length: int = 80) -> str | None:
+    """Extract a title from the first non-empty line of content.
+
+    Strips markdown header prefixes (e.g. '# ', '## ').
+    Truncates at ~max_length characters.
+    Returns None if no usable title can be extracted.
+    """
+    for line in body.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Strip markdown header prefixes (e.g. '# Title', '## Section')
+        title = re.sub(r"^#{1,6}\s*", "", stripped)
+        title = title.strip()
+        if not title:
+            continue
+        if len(title) > max_length:
+            title = title[:max_length].rsplit(" ", 1)[0] + "..."
+        return title
+    return None
+
+
 def content_hash(text: str) -> str:
     """SHA-256 hash of content body."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -146,8 +168,10 @@ def create_entry(
         meta["instance"] = resolved_instance
     if tags:
         meta["tags"] = tags
-    if title:
-        meta["title"] = title
+    # Auto-extract title from content if not explicitly provided
+    effective_title = title if title else extract_title_from_content(body)
+    if effective_title:
+        meta["title"] = effective_title
     if project:
         meta["project"] = project
 
