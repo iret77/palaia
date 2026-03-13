@@ -620,10 +620,14 @@ This is the most important section for avoiding duplicated knowledge. Get this r
 
 **The test:** "Is this a static fact about the project?" → project file. "Is this knowledge that evolves, gets shared, or should be actively surfaced?" → Palaia. "Is this a bug or feature request?" → external tracker.
 
+**Best practice: persist concrete work state, not just project names.**
+When saving active context, write the exact step, blocker, and next action — not just "working on Project X". Bad: `palaia write "Working on PT 2.0"`. Good: `palaia write "PT 2.0: testing Railway MCP integration, blocked on /mcp command timeout, next step: check logs at /var/log/railway.log" --project pt --tag active-work`. This ensures continuity across sessions and context switches — the next session knows exactly where to pick up.
+
 **Common mistakes to avoid:**
 - Writing a release checklist into CONTEXT.md instead of `palaia write --type process`
 - Keeping decision logs in markdown files instead of Palaia entries
 - Duplicating task lists between files and Palaia
+- Persisting vague status ("working on X") instead of concrete state (step, blocker, next action)
 
 ## Reconciling with Existing Memory Patterns
 
