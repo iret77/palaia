@@ -238,6 +238,117 @@ def _detect_agents() -> list[str]:
     return [d.name for d in agents_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
 
 
+class _AgentDetectResult:
+    """Result of OpenClaw agent auto-detection."""
+
+    __slots__ = ("agent", "status", "count")
+
+    def __init__(self, agent: str | None, status: str, count: int = 0):
+        self.agent = agent
+        # status: "found" | "multiple" | "no_config" | "no_agents"
+        self.status = status
+        self.count = count
+
+
+def _detect_agent_from_openclaw_config() -> str | None:
+    """Try to auto-detect agent name from OpenClaw config file.
+
+    Convenience wrapper around _detect_agent_from_openclaw_config_ext().
+    Returns agent name or None.
+    """
+    result = _detect_agent_from_openclaw_config_ext()
+    return result.agent
+
+
+def _detect_agent_from_openclaw_config_ext() -> _AgentDetectResult:
+    """Try to auto-detect agent name from OpenClaw config file.
+
+    Reads ~/.openclaw/openclaw.json, config.json (or .yaml) and inspects agents.
+    Supports two formats:
+    - agents.list: [{id, name, default, ...}, ...]  (standard OpenClaw format)
+    - agents as object: {agentId: {name: ..., ...}, ...}  (legacy/alternative)
+
+    Returns _AgentDetectResult with status info for better error messages.
+    """
+    config_candidates = [
+        Path.home() / ".openclaw" / "openclaw.json",
+        Path.home() / ".openclaw" / "openclaw.yaml",
+        Path.home() / ".openclaw" / "openclaw.yml",
+        Path.home() / ".openclaw" / "config.json",
+        Path.home() / ".openclaw" / "config.yaml",
+        Path.home() / ".openclaw" / "config.yml",
+    ]
+
+    # Also check OPENCLAW_CONFIG env var
+    env_config = os.environ.get("OPENCLAW_CONFIG")
+    if env_config:
+        config_candidates.insert(0, Path(env_config))
+
+    for config_path in config_candidates:
+        if not config_path.exists():
+            continue
+        try:
+            if config_path.suffix == ".json":
+                with open(config_path) as f:
+                    data = json.load(f)
+            elif config_path.suffix in (".yaml", ".yml"):
+                try:
+                    import yaml  # type: ignore[import-untyped]
+
+                    with open(config_path) as f:
+                        data = yaml.safe_load(f)
+                except ImportError:
+                    continue
+            else:
+                continue
+
+            agents_section = data.get("agents", {})
+            if not isinstance(agents_section, dict):
+                continue
+
+            # Format 1: agents.list = [{id, name, ...}, ...]
+            agent_list = agents_section.get("list")
+            if isinstance(agent_list, list) and agent_list:
+                if len(agent_list) == 1:
+                    name = agent_list[0].get("name") or agent_list[0].get("id")
+                    return _AgentDetectResult(name, "found", 1)
+
+                # Multiple agents → look for default:true
+                for agent in agent_list:
+                    if agent.get("default") is True:
+                        name = agent.get("name") or agent.get("id")
+                        return _AgentDetectResult(name, "found", len(agent_list))
+
+                return _AgentDetectResult(None, "multiple", len(agent_list))
+
+            # Format 2: agents = {agentId: {name: ..., ...}, ...}
+            # (Object with agent-IDs as keys, excluding known meta-keys)
+            meta_keys = {"defaults", "list", "version"}
+            agent_keys = [k for k in agents_section if k not in meta_keys]
+            if agent_keys:
+                if len(agent_keys) == 1:
+                    key = agent_keys[0]
+                    val = agents_section[key]
+                    name = val.get("name", key) if isinstance(val, dict) else key
+                    return _AgentDetectResult(name, "found", 1)
+
+                # Multiple → look for default:true
+                for key in agent_keys:
+                    val = agents_section[key]
+                    if isinstance(val, dict) and val.get("default") is True:
+                        name = val.get("name", key)
+                        return _AgentDetectResult(name, "found", len(agent_keys))
+
+                return _AgentDetectResult(None, "multiple", len(agent_keys))
+
+            # Config exists but no agents found
+            return _AgentDetectResult(None, "no_agents", 0)
+        except (json.JSONDecodeError, OSError, KeyError, TypeError):
+            continue
+
+    return _AgentDetectResult(None, "no_config", 0)
+
+
 def cmd_init(args):
     """Initialize .palaia directory."""
     # Respect PALAIA_HOME if set and no explicit path given
@@ -257,20 +368,51 @@ def cmd_init(args):
     is_reinit = target.exists()
     agent_name = getattr(args, "agent", None)
 
-    # Block fresh init without --agent (Issue #46)
+    # Auto-detect agent from OpenClaw config if not provided
+    detect_result: _AgentDetectResult | None = None
+    if not agent_name:
+        # For re-init, check existing config first
+        if is_reinit:
+            try:
+                existing_config = load_config(target)
+                if existing_config.get("agent"):
+                    agent_name = None  # Will be preserved in re-init path
+                else:
+                    detect_result = _detect_agent_from_openclaw_config_ext()
+                    agent_name = detect_result.agent
+                    if agent_name and not getattr(args, "json", False):
+                        print(f"Auto-detected agent: {agent_name} (from OpenClaw config)")
+            except (json.JSONDecodeError, OSError):
+                detect_result = _detect_agent_from_openclaw_config_ext()
+                agent_name = detect_result.agent
+                if agent_name and not getattr(args, "json", False):
+                    print(f"Auto-detected agent: {agent_name} (from OpenClaw config)")
+        else:
+            detect_result = _detect_agent_from_openclaw_config_ext()
+            agent_name = detect_result.agent
+            if agent_name and not getattr(args, "json", False):
+                print(f"Auto-detected agent: {agent_name} (from OpenClaw config)")
+
+    # Block fresh init without --agent and no auto-detect (Issue #46)
     if not is_reinit and not agent_name:
-        msg = "Error: Agent name required. Run: palaia init --agent YOUR_NAME"
+        if detect_result and detect_result.status == "multiple":
+            msg = "Multiple agents found. Specify with: palaia init --agent YOUR_NAME"
+        else:
+            msg = "Error: Agent name required. Run: palaia init --agent YOUR_NAME"
         if _json_out({"error": "agent_required", "message": msg}, args):
             return 1
         print(msg, file=sys.stderr)
         return 1
 
-    # Block re-init without --agent if no agent is configured yet
+    # Block re-init without --agent if no agent is configured yet and no auto-detect
     if is_reinit and not agent_name:
         try:
             existing_config = load_config(target)
             if not existing_config.get("agent"):
-                msg = "Error: Agent name required. Run: palaia init --agent YOUR_NAME"
+                if detect_result and detect_result.status == "multiple":
+                    msg = "Multiple agents found. Specify with: palaia init --agent YOUR_NAME"
+                else:
+                    msg = "Error: Agent name required. Run: palaia init --agent YOUR_NAME"
                 if _json_out({"error": "agent_required", "message": msg}, args):
                     return 1
                 print(msg, file=sys.stderr)
