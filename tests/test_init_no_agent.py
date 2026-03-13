@@ -352,3 +352,91 @@ class TestSingleToMultiMigration:
         assert rc == 0
         result_config = json.loads((store / "config.json").read_text())
         assert result_config["agent"] == "HAL"
+
+
+class TestMultiAgentScopeAndMemo:
+    """UX-Audit: Verify scope isolation and memo routing in multi-agent shared store."""
+
+    @pytest.fixture
+    def shared_store(self, tmp_path):
+        """Shared .palaia store with two agents."""
+        store = tmp_path / ".palaia"
+        store.mkdir()
+        for sub in ("hot", "warm", "cold", "wal", "index", "memos"):
+            (store / sub).mkdir()
+        config = {
+            "version": 1,
+            "agent": "HAL",
+            "embedding_chain": ["bm25"],
+            "store_version": "1.7.0",
+            "store_mode": "shared",
+            "decay_lambda": 0.1,
+            "hot_threshold_days": 7,
+            "warm_threshold_days": 30,
+            "hot_max_entries": 50,
+            "hot_min_score": 0.5,
+            "warm_min_score": 0.1,
+            "default_scope": "team",
+            "wal_retention_days": 7,
+            "lock_timeout_seconds": 5,
+            "embedding_provider": "auto",
+            "embedding_model": "",
+        }
+        (store / "config.json").write_text(json.dumps(config))
+        return store
+
+    def test_private_scope_isolation(self, shared_store):
+        """Agent HAL's private entries should not be visible to JARVIS."""
+        from palaia.store import Store
+
+        store = Store(shared_store)
+
+        # HAL writes a private entry
+        eid = store.write(body="HAL's secret", scope="private", agent="HAL", title="Secret")
+
+        # HAL can read it
+        entry = store.read(eid, agent="HAL")
+        assert entry is not None
+
+        # JARVIS cannot
+        entry = store.read(eid, agent="JARVIS")
+        assert entry is None
+
+    def test_team_scope_shared(self, shared_store):
+        """Team-scoped entries are visible to all agents."""
+        from palaia.store import Store
+
+        store = Store(shared_store)
+
+        eid = store.write(body="Team knowledge", scope="team", agent="HAL", title="Shared")
+
+        # Both can read
+        assert store.read(eid, agent="HAL") is not None
+        assert store.read(eid, agent="JARVIS") is not None
+
+    def test_memo_routing_correct(self, shared_store):
+        """Memos to HAL should not appear in JARVIS's inbox."""
+        from palaia.memo import MemoManager
+
+        mm = MemoManager(shared_store)
+
+        mm.send(to="HAL", message="For HAL only", from_agent="JARVIS")
+        mm.send(to="JARVIS", message="For JARVIS only", from_agent="HAL")
+
+        hal_inbox = mm.inbox(agent="HAL")
+        jarvis_inbox = mm.inbox(agent="JARVIS")
+
+        assert len(hal_inbox) == 1
+        assert hal_inbox[0][1] == "For HAL only"
+        assert len(jarvis_inbox) == 1
+        assert jarvis_inbox[0][1] == "For JARVIS only"
+
+    def test_memo_broadcast_reaches_all(self, shared_store):
+        """Broadcast memos should reach all agents."""
+        from palaia.memo import MemoManager
+
+        mm = MemoManager(shared_store)
+        mm.broadcast(message="Attention everyone", from_agent="SYSTEM")
+
+        assert len(mm.inbox(agent="HAL")) == 1
+        assert len(mm.inbox(agent="JARVIS")) == 1
