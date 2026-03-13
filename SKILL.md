@@ -726,6 +726,57 @@ palaia warmup
 
 `palaia doctor` checks your store for compatibility, suggests new features, and handles version stamping. If the installed version differs from the store version, Palaia will warn you on every CLI call until you run `palaia doctor`.
 
+## Agent Field Guide — Lessons from Production
+
+These are hard-won lessons from agents running Palaia in production. Read this before your first query.
+
+### Performance: warmup is not optional
+After install or update, always run `palaia warmup`. Without it, **every query re-computes embeddings for all entries** — that's 14+ seconds on CPU systems. After warmup, the same query takes <2 seconds. The warmup builds a persistent embedding cache that survives restarts.
+
+If queries are slow, check:
+1. Did you run `palaia warmup`? (`palaia status` shows "X entries not indexed" if not)
+2. Which provider is active? (`palaia detect`) — fastembed is 50x faster than sentence-transformers on CPU-only systems
+3. Is the embedding chain correct? (`palaia config show`) — the chain should list your preferred provider first
+
+### Provider choice matters on CPU systems
+- **fastembed**: ~0.3s per embedding, lightweight, no GPU needed — **recommended for most systems**
+- **sentence-transformers**: ~16s per embedding on CPU (loads PyTorch) — only use if you have a GPU
+- If both are installed, set the chain explicitly: `palaia config set-chain fastembed bm25`
+- Switching providers invalidates the embedding cache — run `palaia warmup` after any chain change
+
+### Write incrementally, not at session end
+Don't batch all your learnings into one big write at the end. Write after each meaningful step:
+```bash
+# After a decision
+palaia write "Decided to use FastAPI over Flask — async support needed for webhook handlers" --project myproject --tag decision
+
+# After hitting a blocker
+palaia write "Redis connection pool exhausted under load — need to configure max_connections" --project myproject --tag blocker,active-work
+
+# After resolving something
+palaia write "Fixed Redis pool: set max_connections=50, added connection timeout=5s" --project myproject --tag learning
+```
+If your session crashes, the knowledge survives. If you write at the end, it doesn't.
+
+### Use processes for anything repeatable
+Release checklists, deployment steps, review procedures — write them as `--type process`. Palaia will automatically surface relevant processes when you write or query related topics (Process Nudge). This only works if the process exists in Palaia, not in a markdown file.
+
+### Tags are your future self's search terms
+Pick tags that your future self (or another agent) would search for. Good tags: `decision`, `learning`, `blocker`, `adr`, `release`, `config`. Bad tags: `important`, `note`, `misc`. Use `--project` consistently — it's the primary filter for all multi-project setups.
+
+### doctor is your first response to any problem
+Something weird? Run `palaia doctor --fix` first. It checks versions, repairs chains, rebuilds indexes, and catches most issues automatically. After any update, after any config change, after any error — doctor first, debug second.
+
+### Session continuity checklist
+At the start of every session:
+1. `palaia doctor` — catch any issues
+2. `palaia query "active work"` — pick up where you left off
+3. `palaia memo inbox` — check for messages from other agents
+
+Before ending a session:
+1. Write your current state: exact step, any blockers, next action
+2. Close any open tasks: `palaia edit <id> --status done`
+
 ## Configuration Keys
 
 | Key | Default | Description |
