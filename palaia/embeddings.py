@@ -106,9 +106,35 @@ class SentenceTransformersProvider:
 
     def _get_model(self):
         if self._model is None:
-            from sentence_transformers import SentenceTransformer
+            import io
+            import logging
+            import os
+            import sys
 
-            self._model = SentenceTransformer(self.model_name)
+            # Suppress noisy HuggingFace / tokenizers / safetensors warnings
+            os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+            os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+            os.environ.setdefault("HF_HUB_DISABLE_IMPLICIT_TOKEN", "1")
+            os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+            for _logger_name in (
+                "sentence_transformers",
+                "transformers",
+                "huggingface_hub",
+                "torch",
+                "safetensors",
+            ):
+                logging.getLogger(_logger_name).setLevel(logging.ERROR)
+
+            # Redirect stderr during import + model load to suppress safetensors
+            # LOAD REPORT and HF Hub auth warnings that bypass the logging framework
+            _old_stderr = sys.stderr
+            sys.stderr = io.StringIO()
+            try:
+                from sentence_transformers import SentenceTransformer
+
+                self._model = SentenceTransformer(self.model_name)
+            finally:
+                sys.stderr = _old_stderr
         return self._model
 
     def embed(self, texts: list[str]) -> list[list[float]]:

@@ -45,7 +45,7 @@ def test_set_chain_writes_config(palaia_dir):
         cwd=palaia_dir.parent,
     )
     assert result.returncode == 0
-    assert "openai → sentence-transformers → bm25" in result.stdout
+    assert "openai -> sentence-transformers -> bm25" in result.stdout
 
     config = load_config(palaia_dir)
     assert config["embedding_chain"] == ["openai", "sentence-transformers", "bm25"]

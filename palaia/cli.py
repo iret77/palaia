@@ -4,19 +4,36 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
-from palaia import __version__
-from palaia.config import DEFAULT_CONFIG, find_palaia_root, get_root, load_config, save_config
-from palaia.doctor import apply_fixes, format_doctor_report, run_doctor
-from palaia.ingest import DocumentIngestor, format_rag_output
-from palaia.migrate import format_result, migrate
-from palaia.project import ProjectManager
-from palaia.search import SearchEngine
-from palaia.store import Store
-from palaia.sync import export_entries, import_entries
-from palaia.ui import (
+# Suppress noisy HuggingFace / tokenizers / safetensors warnings before any ML imports.
+# Must run before palaia.* imports which may trigger sentence_transformers loading.
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("HF_HUB_DISABLE_IMPLICIT_TOKEN", "1")
+
+import logging as _logging  # noqa: E402
+import warnings as _warnings  # noqa: E402
+
+_warnings.filterwarnings("ignore", module="huggingface_hub")
+_warnings.filterwarnings("ignore", module="transformers")
+_warnings.filterwarnings("ignore", module="sentence_transformers")
+for _name in ("sentence_transformers", "transformers", "huggingface_hub", "torch", "safetensors"):
+    _logging.getLogger(_name).setLevel(_logging.ERROR)
+
+from palaia import __version__  # noqa: E402
+from palaia.config import DEFAULT_CONFIG, find_palaia_root, get_root, load_config, save_config  # noqa: E402
+from palaia.doctor import apply_fixes, format_doctor_report, run_doctor  # noqa: E402
+from palaia.ingest import DocumentIngestor, format_rag_output  # noqa: E402
+from palaia.migrate import format_result, migrate  # noqa: E402
+from palaia.project import ProjectManager  # noqa: E402
+from palaia.search import SearchEngine  # noqa: E402
+from palaia.store import Store  # noqa: E402
+from palaia.sync import export_entries, import_entries  # noqa: E402
+from palaia.ui import (  # noqa: E402
     format_size,
     print_header,
     relative_time,
