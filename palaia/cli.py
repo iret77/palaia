@@ -18,6 +18,37 @@ from palaia.store import Store
 from palaia.sync import export_entries, import_entries
 
 
+def check_version_nag():
+    """Warn if installed palaia version is newer than store version."""
+    try:
+        from palaia import __version__
+        from palaia.config import find_palaia_root
+
+        root = find_palaia_root()
+        if not root:
+            return
+
+        config_path = root / "config.json"
+        if not config_path.exists():
+            return
+
+        config = json.loads(config_path.read_text())
+        store_version = config.get("store_version", "")
+
+        if not store_version:
+            # No store version = needs palaia doctor
+            print("⚠️  Palaia store has no version stamp. Run: palaia doctor --fix", file=sys.stderr)
+            return
+
+        if store_version != __version__:
+            print(
+                f"⚠️  Palaia CLI is v{__version__} but store is v{store_version}. Run: palaia doctor --fix",
+                file=sys.stderr,
+            )
+    except Exception:
+        pass  # Never block normal operation
+
+
 def _json_out(data, args):
     """Print JSON if --json flag is set, return True if printed."""
     if getattr(args, "json", False):
@@ -151,6 +182,7 @@ def cmd_init(args):
 
 def cmd_write(args):
     """Write a memory entry."""
+    check_version_nag()
     root = get_root()
     store = Store(root)
 
@@ -199,6 +231,7 @@ def cmd_write(args):
 
 def cmd_query(args):
     """Search memories."""
+    check_version_nag()
     root = get_root()
     store = Store(root)
     store.recover()
@@ -412,6 +445,7 @@ def cmd_recover(args):
 
 def cmd_list(args):
     """List memories in a tier."""
+    check_version_nag()
     root = get_root()
     store = Store(root)
     store.recover()
@@ -474,6 +508,7 @@ def cmd_list(args):
 
 def cmd_status(args):
     """Show system status."""
+    check_version_nag()
     root = get_root()
     store = Store(root)
     recovered = store.recover()
@@ -1661,22 +1696,6 @@ def main():
     if not args.command:
         parser.print_help()
         return 1
-
-    # Version drift warning (skip for init/doctor/detect)
-    if args.command not in ("init", "doctor", "detect") and not getattr(args, "json", False):
-        try:
-            root = find_palaia_root()
-            if root:
-                cfg = load_config(root)
-                store_ver = cfg.get("store_version", "")
-                if store_ver and store_ver != __version__:
-                    print(
-                        f"⚠️  Store created with v{store_ver}, running v{__version__}. "
-                        "Run `palaia doctor` for upgrade checks.",
-                        file=sys.stderr,
-                    )
-        except Exception:
-            pass
 
     commands = {
         "init": cmd_init,

@@ -502,4 +502,7 @@ def format_doctor_report(results: list[dict[str, Any]], show_fix: bool = False) 
     else:
         lines.append("All clear! Palaia is healthy. 🎉")
 
+    lines.append("")
+    lines.append("💡 To check for updates: pip install --upgrade palaia")
+
     return "\n".join(lines)

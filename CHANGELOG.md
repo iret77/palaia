@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.3] — 2026-03-13
+
+### Added
+- **Update nag** — CLI warns on `query`, `write`, `list`, `status` when store version doesn't match CLI version.
+- **Doctor upgrade hint** — `palaia doctor` always suggests checking for updates.
+- **README install section** — Clear instructions for OpenClaw and manual install, including "tell your agent" hint.
+- **ClawHub description** — Now includes post-install instruction.
+
 ## [1.4.2] — 2026-03-12
 
 ### Added

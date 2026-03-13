@@ -7,7 +7,7 @@ Persistent, local memory for AI agents — write something today, find it next w
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Released March 2026](https://img.shields.io/badge/released-March%202026-brightgreen.svg)]()
 
-## What's New in 1.4.2
+## What's New in 1.4.3
 
 - 🔒 **Project Locking** — Prevent multiple agents from working on the same project (`palaia lock/unlock`)
 - 💬 **Inter-Agent Messaging** — Async memos between agents (`palaia memo send/inbox/ack`)
@@ -17,6 +17,28 @@ Persistent, local memory for AI agents — write something today, find it next w
 - 🩺 **Health Checks** — `palaia doctor` with version tracking and upgrade guidance
 
 See [CHANGELOG.md](CHANGELOG.md) for full details.
+
+## Installation
+
+### For OpenClaw users (recommended)
+```
+clawhub install palaia
+```
+Then tell your agent: **"Set up Palaia"** — it will handle the rest.
+
+### Manual install
+```bash
+pip install palaia
+palaia init
+palaia doctor --fix
+```
+
+### After updating
+```bash
+pip install --upgrade palaia
+palaia doctor --fix
+```
+Your agent can also do this — just say: **"Update Palaia"**
 
 ## What Palaia Does
 
