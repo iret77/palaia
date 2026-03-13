@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.8.1] — 2026-03-13
+
+### Fixed
+- **Critical: search.py now respects embedding_chain config** — Previously always used `auto_detect_provider()`, ignoring the configured chain. With both sentence-transformers and fastembed installed, queries took 14-18s instead of 2s because the slower provider was always selected. (#49)
+
+### Added
+- **Warmup now builds embedding index** — `palaia warmup` pre-computes embeddings for all entries (batch processing, progress display). Queries after warmup use cached embeddings instead of recomputing on every call. Reduces query time from 14s to <2s. (#48)
+- **Status shows warmup hint** — `palaia status` now shows "Index: 0/23 — 23 entries not indexed. Run: palaia warmup" instead of just "Index: 0/23". (#47)
+- **`palaia skill` command** — Prints the embedded SKILL.md documentation. Works without `palaia init`. Useful for pip-only installations without ClawHub.
+- **MANIFEST.in** — SKILL.md, CHANGELOG.md, and LICENSE now included in PyPI source tarball.
+- **Setup verification step** in SKILL.md — Mandatory Step 5: test query must return results in <5s before setup is considered complete.
+- **`palaia migrate --suggest`** now part of standard setup flow (Step 3 in SKILL.md).
+
 ## [1.8.0] — 2026-03-13
 
 ### Added
