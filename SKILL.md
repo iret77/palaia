@@ -571,6 +571,32 @@ When upgrading to Palaia 1.7+, migrate existing planning data into structured Pa
 - If unread memos exist: "You have N unread memos. Run: palaia memo inbox"
 - This nudge is frequency-limited (max 1x/hour) and suppressed in --json mode
 
+**Best Practice: Two-Layer Messaging (Multi-Agent Setups)**
+
+When sending memos to other agents, use a two-layer approach for reliable delivery:
+
+1. **Send the memo** (the actual message, persistent):
+   ```bash
+   palaia memo send AgentName "Important update about project X"
+   # or broadcast to all:
+   palaia memo broadcast "New process available — check palaia query --type process"
+   ```
+
+2. **Ring the doorbell** (short notification to active sessions, ephemeral):
+   Notify active agent sessions that new memos are waiting. This is platform-specific — Palaia doesn't handle this part, but here's how it works in practice:
+
+   *OpenClaw example:*
+   ```python
+   sessions_send(sessionKey="agent:agentname:...", 
+     message="New Palaia memos waiting. Please run: palaia memo inbox")
+   ```
+
+   *Other platforms:* Use whatever inter-process or webhook mechanism is available to ping the agent.
+
+   If no active notification is possible, that's fine — the CLI nudge will inform the agent at their next `palaia query` or `palaia write`.
+
+**Why two layers?** The memo is the message (persistent, platform-independent). The doorbell is just a ping (ephemeral, platform-specific). If the doorbell fails, the memo is still there. Never put the full message content in the doorbell — that creates duplicates.
+
 ## After Updating Palaia
 
 Always run `palaia doctor` after updating. It checks your store for compatibility, suggests new features (like projects or embedding chain improvements), and handles version stamping. If the installed version differs from the store version, Palaia will warn you automatically on every CLI call until you run `palaia doctor`.
