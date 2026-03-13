@@ -18,15 +18,6 @@ Tell your agent:
 
 That's it. Your agent handles everything. You just confirm.
 
-Once installed, your agent can remember things across sessions:
-
-```bash
-palaia write "Deploy server moved to 10.0.1.5, new SSH key in vault" --tags "infra"
-# ... three days and fifteen sessions later ...
-palaia query "where is the server"
-# → Found: "Deploy server moved to 10.0.1.5, new SSH key in vault"
-```
-
 No cloud. No API keys. No database server. Everything stays on your machine.
 
 ---
