@@ -583,6 +583,28 @@ This is the most important section for avoiding duplicated knowledge. Get this r
 - Keeping decision logs in markdown files instead of Palaia entries
 - Duplicating task lists between files and Palaia
 
+## Reconciling with Existing Memory Patterns
+
+When your user installs Palaia, they're telling you: "I want better memory management." That's the benchmark. Your job is to make Palaia deliver on that promise — without breaking what already works.
+
+**If your workspace has existing CONTEXT.md, MEMORY.md, or AGENTS.md files with memory rules that predate Palaia:**
+
+1. **Don't fight them.** These files are authoritative workspace config. You can't and shouldn't override them.
+2. **Do identify overlaps.** Read through the existing memory rules and find where they conflict with effective Palaia usage. Common patterns:
+   - "Write all project knowledge to CONTEXT.md" → Processes, decisions, and learnings are better in Palaia (searchable, scope-aware, nudge-capable)
+   - "Keep checklists in MEMORY.md" → These should be Palaia process entries
+   - "Update CONTEXT.md after every task" → Static facts yes, dynamic knowledge should go to Palaia
+3. **Propose changes to your user.** Explain what you found, why Palaia would serve them better for dynamic knowledge, and suggest specific edits to their workspace files. Don't make the changes silently.
+4. **Migrate gradually.** Move one category at a time (e.g., processes first, then decisions). After each migration, add a pointer in the old location: "Processes now live in Palaia: `palaia query --type process`"
+5. **Keep what works.** CONTEXT.md is great for static project steckbriefs. MEMORY.md is great for session-start headlines. These files complement Palaia — they don't compete with it. The goal is clear boundaries, not replacing everything.
+
+**What good coexistence looks like:**
+- CONTEXT.md: project URL, tech stack, current version, Palaia project name + common tags
+- MEMORY.md: routing rules, agent identities, quick-reference pointers
+- Palaia: processes, decisions, learnings, tasks, anything searchable or shareable
+
+**The user chose Palaia.** Honor that choice by making it the primary home for dynamic knowledge. But be pragmatic — a working hybrid is better than a dogmatic migration that breaks the agent's workflow.
+
 ## Migration Best Practice
 
 When upgrading to Palaia 1.7+, migrate existing planning data into structured Palaia entries:
