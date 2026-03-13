@@ -24,7 +24,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 Tell your agent:
 
-> "Install the Palaia memory skill from ClawHub and set it up completely"
+> "Install the latest Palaia memory skill from ClawHub (even if already present) and set it up completely"
 
 Your agent will handle installation, configuration, and onboarding automatically.
 
@@ -77,7 +77,7 @@ Your agent's memory stays local — private by default, shareable when you choos
 
 If you're using [OpenClaw](https://openclaw.ai), tell your agent:
 
-> "Install the Palaia memory skill from ClawHub"
+> "Install the latest Palaia memory skill from ClawHub (even if already present) and set it up completely"
 
 The agent will install Palaia, check what's available on your system, recommend the best search setup, and configure everything. You just confirm what you want.
 
@@ -426,18 +426,8 @@ palaia config set-chain <providers...>  # Set embedding fallback chain
 - [ ] ClawHub skill registry integration (auto-update)
 - [ ] Multi-agent shared memory via git sync
 
-## Get Started
+## Links
 
-**Recommended:** Ask your OpenClaw agent to install Palaia:
-> "Install the Palaia memory skill from ClawHub"
-
-**Or install manually:**
-
-```bash
-pip install "palaia[fastembed]"
-```
-
-**Links:**
 - [ClawHub](https://clawhub.com/skills/palaia) — Install via agent
 - [GitHub](https://github.com/iret77/palaia) — Source + Issues
 - [OpenClaw](https://openclaw.ai) — The agent platform Palaia is built for
