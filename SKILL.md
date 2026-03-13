@@ -20,8 +20,8 @@ metadata:
       - command: "palaia init"
         label: "Initialize Palaia store"
     postUpdate:
-      - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && palaia doctor --fix"
-        label: "Upgrade Palaia and run health checks"
+      - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && npm install -g @byte5ai/palaia@latest && palaia doctor --fix && palaia warmup"
+        label: "Upgrade Palaia (pip + npm plugin) and run health checks"
     plugin:
       slot: memory
       package: "@byte5ai/palaia"
@@ -700,18 +700,27 @@ When sending memos to other agents, use a two-layer approach for reliable delive
 
 ## After Updating Palaia
 
-Always run `palaia doctor` after updating. It checks your store for compatibility, suggests new features (like projects or embedding chain improvements), and handles version stamping. If the installed version differs from the store version, Palaia will warn you automatically on every CLI call until you run `palaia doctor`.
+Palaia has three independent components. Update ALL of them — they version independently:
 
 ```bash
-# pip
+# 1. Python CLI (the main tool)
 python3 -m pip install --upgrade "palaia[fastembed]"
+# or: uv tool install "palaia[fastembed]"  (always include [fastembed]!)
 
-# uv (always include [fastembed] — uv removes unlisted extras on upgrade)
-uv tool install "palaia[fastembed]"
+# 2. OpenClaw plugin (memory-slot integration)
+npm install -g @byte5ai/palaia@latest
 
-# Then always:
+# 3. SKILL.md (agent instructions — if installed via ClawHub)
+clawhub update palaia
+
+# 4. Always run after updating:
 palaia doctor --fix
+palaia warmup
 ```
+
+**Why all three?** The pip package is the CLI. The npm package is the OpenClaw plugin that wires Palaia into the memory slot. The SKILL.md (via ClawHub) tells agents how to use Palaia. Updating only one leaves the others stale.
+
+`palaia doctor` checks your store for compatibility, suggests new features, and handles version stamping. If the installed version differs from the store version, Palaia will warn you on every CLI call until you run `palaia doctor`.
 
 ## Configuration Keys
 
