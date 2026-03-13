@@ -56,17 +56,19 @@ class TestIsInitialized:
     def test_not_initialized_no_root(self):
         assert is_initialized(Path("/nonexistent/.palaia")) is False
 
-    def test_not_initialized_no_agent(self, palaia_root):
-        assert is_initialized(palaia_root) is False
+    def test_initialized_without_agent(self, palaia_root):
+        """config.json exists → initialized, even without agent field."""
+        assert is_initialized(palaia_root) is True
 
     def test_initialized_with_agent(self, initialized_root):
         assert is_initialized(initialized_root) is True
 
-    def test_not_initialized_empty_agent(self, palaia_root):
+    def test_initialized_empty_agent(self, palaia_root):
+        """config.json exists with empty agent → still initialized."""
         config = json.loads((palaia_root / "config.json").read_text())
         config["agent"] = ""
         (palaia_root / "config.json").write_text(json.dumps(config))
-        assert is_initialized(palaia_root) is False
+        assert is_initialized(palaia_root) is True
 
 
 class TestGetAgent:
@@ -115,35 +117,49 @@ class TestGatekeeper:
         monkeypatch.setattr("sys.argv", ["palaia"] + args)
         return main()
 
-    def test_write_blocked_without_init(self, palaia_root, monkeypatch, capsys):
-        rc = self._run_palaia(palaia_root, ["write", "test content"], monkeypatch)
-        assert rc == 1
-        captured = capsys.readouterr()
-        assert "not initialized" in captured.err.lower()
-        assert "palaia init --agent" in captured.err
+    @pytest.fixture
+    def uninit_root(self, tmp_path):
+        """A .palaia dir without config.json — truly uninitialized."""
+        root = tmp_path / "empty" / ".palaia"
+        root.mkdir(parents=True)
+        return root
 
-    def test_query_blocked_without_init(self, palaia_root, monkeypatch, capsys):
-        rc = self._run_palaia(palaia_root, ["query", "test"], monkeypatch)
-        assert rc == 1
-        captured = capsys.readouterr()
-        assert "not initialized" in captured.err.lower()
-
-    def test_list_blocked_without_init(self, palaia_root, monkeypatch, capsys):
-        rc = self._run_palaia(palaia_root, ["list"], monkeypatch)
+    def test_write_blocked_without_init(self, uninit_root, monkeypatch, capsys):
+        rc = self._run_palaia(uninit_root, ["write", "test content"], monkeypatch)
         assert rc == 1
         captured = capsys.readouterr()
         assert "not initialized" in captured.err.lower()
 
-    def test_memo_blocked_without_init(self, palaia_root, monkeypatch, capsys):
-        rc = self._run_palaia(palaia_root, ["memo", "inbox"], monkeypatch)
+    def test_query_blocked_without_init(self, uninit_root, monkeypatch, capsys):
+        rc = self._run_palaia(uninit_root, ["query", "test"], monkeypatch)
         assert rc == 1
         captured = capsys.readouterr()
         assert "not initialized" in captured.err.lower()
+
+    def test_list_blocked_without_init(self, uninit_root, monkeypatch, capsys):
+        rc = self._run_palaia(uninit_root, ["list"], monkeypatch)
+        assert rc == 1
+        captured = capsys.readouterr()
+        assert "not initialized" in captured.err.lower()
+
+    def test_memo_blocked_without_init(self, uninit_root, monkeypatch, capsys):
+        rc = self._run_palaia(uninit_root, ["memo", "inbox"], monkeypatch)
+        assert rc == 1
+        captured = capsys.readouterr()
+        assert "not initialized" in captured.err.lower()
+
+    def test_write_allowed_without_agent(self, palaia_root, monkeypatch, capsys):
+        """Config exists but no agent field → still initialized, write allowed."""
+        rc = self._run_palaia(
+            palaia_root,
+            ["write", "test content", "--title", "Test"],
+            monkeypatch,
+        )
+        assert rc == 0
 
     def test_init_always_allowed(self, palaia_root, monkeypatch, capsys):
         """Init command should never be blocked."""
         rc = self._run_palaia(palaia_root, ["init", "--agent", "Test"], monkeypatch)
-        # Should succeed (return 0) since init is always allowed
         assert rc == 0
 
     def test_doctor_always_allowed(self, palaia_root, monkeypatch, capsys):
@@ -413,13 +429,13 @@ class TestMemoNudge:
 class TestDoctorAgentIdentity:
     """Test doctor check for agent identity."""
 
-    def test_warns_without_agent(self, palaia_root, monkeypatch):
+    def test_info_without_agent(self, palaia_root, monkeypatch):
         from palaia.doctor import _check_agent_identity
 
         monkeypatch.setenv("HOME", str(palaia_root.parent))
         result = _check_agent_identity(palaia_root)
-        assert result["status"] == "warn"
-        assert "agent" in result["message"].lower()
+        assert result["status"] == "info"
+        assert "default" in result["message"].lower()
 
     def test_ok_with_agent(self, initialized_root, monkeypatch):
         from palaia.doctor import _check_agent_identity

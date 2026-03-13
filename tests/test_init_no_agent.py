@@ -59,23 +59,24 @@ def _run_palaia(args, monkeypatch):
 
 
 class TestInitWithoutAgent:
-    def test_fresh_init_without_agent_fails(self, fresh_dir, monkeypatch, capsys):
-        """palaia init without --agent on fresh store must fail with clear error."""
+    def test_fresh_init_without_agent_defaults_to_default(self, fresh_dir, monkeypatch, capsys):
+        """palaia init without --agent on fresh store must succeed with agent='default'."""
         rc = _run_palaia(["init", "--path", str(fresh_dir)], monkeypatch)
-        assert rc == 1
+        assert rc == 0
+        assert (fresh_dir / ".palaia").exists()
+        config = json.loads((fresh_dir / ".palaia" / "config.json").read_text())
+        assert config["agent"] == "default"
         captured = capsys.readouterr()
-        assert "agent name required" in captured.err.lower()
-        assert "palaia init --agent" in captured.err
-        # .palaia directory should NOT have been created
-        assert not (fresh_dir / ".palaia").exists()
+        assert "use --agent NAME to customize" in captured.out
 
-    def test_fresh_init_without_agent_json(self, fresh_dir, monkeypatch, capsys):
-        """JSON mode should return error too."""
-        rc = _run_palaia(["init", "--path", str(fresh_dir), "--json"], monkeypatch)
-        assert rc == 1
-        captured = capsys.readouterr()
-        data = json.loads(captured.out)
-        assert data["error"] == "agent_required"
+    def test_fresh_init_without_agent_gatekeeper_ok(self, fresh_dir, monkeypatch, capsys):
+        """After init without --agent, gatekeeper must allow store commands."""
+        rc = _run_palaia(["init", "--path", str(fresh_dir)], monkeypatch)
+        assert rc == 0
+        # is_initialized should return True
+        from palaia.config import is_initialized
+
+        assert is_initialized(fresh_dir / ".palaia") is True
 
     def test_fresh_init_with_agent_succeeds(self, fresh_dir, monkeypatch, capsys):
         """palaia init --agent NAME on fresh store must succeed."""
@@ -93,8 +94,8 @@ class TestInitWithoutAgent:
         config = json.loads((existing_store / "config.json").read_text())
         assert config["agent"] == "ExistingAgent"
 
-    def test_reinit_without_agent_fails_if_no_agent(self, tmp_path, monkeypatch, capsys):
-        """Re-init without --agent when NO agent configured and no auto-detect must fail."""
+    def test_reinit_without_agent_defaults_if_no_agent(self, tmp_path, monkeypatch, capsys):
+        """Re-init without --agent when NO agent configured → defaults to 'default'."""
         store = tmp_path / ".palaia"
         store.mkdir()
         for sub in ("hot", "warm", "cold", "wal", "index"):
@@ -122,9 +123,9 @@ class TestInitWithoutAgent:
         monkeypatch.delenv("OPENCLAW_CONFIG", raising=False)
 
         rc = _run_palaia(["init"], monkeypatch)
-        assert rc == 1
-        captured = capsys.readouterr()
-        assert "agent name required" in captured.err.lower()
+        assert rc == 0
+        result_config = json.loads((store / "config.json").read_text())
+        assert result_config["agent"] == "default"
 
 
 class TestSingleAgentAutoDetect:
@@ -215,11 +216,11 @@ class TestSingleAgentAutoDetect:
         assert config["agent"] == "CyberClaw"
 
 
-class TestMultiAgentErrors:
-    """Tests for multi-agent error messages."""
+class TestMultiAgentAutoDetectFallback:
+    """Tests for multi-agent scenarios where auto-detect can't pick one → defaults to 'default'."""
 
-    def test_multiple_agents_no_default_list_format(self, tmp_path, monkeypatch, capsys):
-        """Multiple agents without default:true → 'Multiple agents found' error."""
+    def test_multiple_agents_no_default_uses_default(self, tmp_path, monkeypatch, capsys):
+        """Multiple agents without default:true → falls back to agent='default'."""
         oc_dir = tmp_path / ".openclaw"
         oc_dir.mkdir()
         oc_config = {
@@ -239,36 +240,18 @@ class TestMultiAgentErrors:
         monkeypatch.setenv("PALAIA_HOME", str(work))
 
         rc = _run_palaia(["init", "--path", str(work)], monkeypatch)
-        assert rc == 1
-        captured = capsys.readouterr()
-        assert "multiple agents found" in captured.err.lower()
-        assert "palaia init --agent" in captured.err
+        assert rc == 0
+        config = json.loads((work / ".palaia" / "config.json").read_text())
+        assert config["agent"] == "default"
 
-    def test_multiple_agents_no_default_object_format(self, tmp_path, monkeypatch, capsys):
-        """Multiple agents as object without default:true → 'Multiple agents found'."""
-        oc_dir = tmp_path / ".openclaw"
-        oc_dir.mkdir()
-        oc_config = {"agents": {"hal": {"name": "HAL"}, "jarvis": {"name": "JARVIS"}}}
-        (oc_dir / "openclaw.json").write_text(json.dumps(oc_config))
-        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
-        monkeypatch.delenv("OPENCLAW_CONFIG", raising=False)
-
-        work = tmp_path / "workspace"
-        work.mkdir()
-        monkeypatch.setenv("PALAIA_HOME", str(work))
-
-        rc = _run_palaia(["init", "--path", str(work)], monkeypatch)
-        assert rc == 1
-        captured = capsys.readouterr()
-        assert "multiple agents found" in captured.err.lower()
-
-    def test_no_openclaw_config_fails(self, fresh_dir, monkeypatch, capsys):
-        """No OpenClaw config → generic 'Agent name required' error."""
+    def test_no_openclaw_config_uses_default(self, fresh_dir, monkeypatch, capsys):
+        """No OpenClaw config → agent='default'."""
         rc = _run_palaia(["init", "--path", str(fresh_dir)], monkeypatch)
-        assert rc == 1
+        assert rc == 0
+        config = json.loads((fresh_dir / ".palaia" / "config.json").read_text())
+        assert config["agent"] == "default"
         captured = capsys.readouterr()
-        assert "agent name required" in captured.err.lower()
-        assert "palaia init --agent" in captured.err
+        assert "use --agent NAME to customize" in captured.out
 
 
 class TestSingleToMultiMigration:
@@ -440,3 +423,44 @@ class TestMultiAgentScopeAndMemo:
 
         assert len(mm.inbox(agent="HAL")) == 1
         assert len(mm.inbox(agent="JARVIS")) == 1
+
+
+class TestDefaultAgentWorkflow:
+    """Test the full init→write→query workflow with default agent."""
+
+    def test_init_write_query_without_agent(self, fresh_dir, monkeypatch, capsys):
+        """palaia init without --agent, then write, then query → all work."""
+        # Init
+        rc = _run_palaia(["init", "--path", str(fresh_dir)], monkeypatch)
+        assert rc == 0
+        config = json.loads((fresh_dir / ".palaia" / "config.json").read_text())
+        assert config["agent"] == "default"
+        capsys.readouterr()  # clear
+
+        # Write
+        rc = _run_palaia(["write", "Test memory entry", "--title", "Test"], monkeypatch)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "Written:" in captured.out
+
+        # Query
+        rc = _run_palaia(["query", "Test memory", "--json"], monkeypatch)
+        assert rc == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert len(data["results"]) > 0
+
+    def test_reinit_with_agent_changes_from_default(self, fresh_dir, monkeypatch, capsys):
+        """palaia init without --agent, then re-init with --agent NAME → changes to NAME."""
+        # First init → default
+        rc = _run_palaia(["init", "--path", str(fresh_dir)], monkeypatch)
+        assert rc == 0
+        config = json.loads((fresh_dir / ".palaia" / "config.json").read_text())
+        assert config["agent"] == "default"
+        capsys.readouterr()
+
+        # Re-init with --agent
+        rc = _run_palaia(["init", "--path", str(fresh_dir), "--agent", "MyAgent"], monkeypatch)
+        assert rc == 0
+        config = json.loads((fresh_dir / ".palaia" / "config.json").read_text())
+        assert config["agent"] == "MyAgent"

@@ -94,9 +94,9 @@ def save_config(palaia_root: Path, config: dict) -> None:
 
 
 def is_initialized(palaia_root: Path | None = None) -> bool:
-    """Check if Palaia has been initialized with an agent identity.
+    """Check if Palaia has been initialized.
 
-    Returns True if .palaia/config.json exists and has a non-empty 'agent' field.
+    Returns True if .palaia/config.json exists (agent field is optional).
     """
     if palaia_root is None:
         palaia_root = find_palaia_root()
@@ -106,8 +106,8 @@ def is_initialized(palaia_root: Path | None = None) -> bool:
     if not config_path.exists():
         return False
     try:
-        config = json.loads(config_path.read_text())
-        return bool(config.get("agent"))
+        json.loads(config_path.read_text())
+        return True
     except (json.JSONDecodeError, OSError):
         return False
 

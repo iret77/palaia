@@ -144,18 +144,19 @@ def _check_gatekeeper(command: str) -> bool:
 
     root = find_palaia_root()
     if root is None:
-        print("Palaia not initialized. Run: palaia init --agent YOUR_NAME", file=sys.stderr)
+        print("Palaia not initialized. Run: palaia init", file=sys.stderr)
         return False
     if not is_initialized(root):
-        print("Palaia not initialized. Run: palaia init --agent YOUR_NAME", file=sys.stderr)
+        print("Palaia not initialized. Run: palaia init", file=sys.stderr)
         return False
     return True
 
 
 def _resolve_agent(args) -> str | None:
-    """Resolve agent name: explicit --agent flag > config > env var > None.
+    """Resolve agent name: explicit --agent flag > config > env var > 'default'.
 
     For gated commands, config agent is always available (gatekeeper ensures init).
+    Falls back to 'default' when no agent identity can be determined.
     """
     explicit = getattr(args, "agent", None)
     if explicit:
@@ -167,7 +168,8 @@ def _resolve_agent(args) -> str | None:
             return config_agent
     except FileNotFoundError:
         pass
-    return _detect_current_agent()
+    detected = _detect_current_agent()
+    return detected or "default"
 
 
 def _resolve_instance_for_write(args) -> str | None:
@@ -367,58 +369,45 @@ def cmd_init(args):
             target = Path(".") / ".palaia"
     is_reinit = target.exists()
     agent_name = getattr(args, "agent", None)
+    used_default = False
 
-    # Auto-detect agent from OpenClaw config if not provided
-    detect_result: _AgentDetectResult | None = None
+    # Resolve agent name when not explicitly provided
     if not agent_name:
-        # For re-init, check existing config first
         if is_reinit:
+            # Re-init: keep existing agent if set
             try:
                 existing_config = load_config(target)
                 if existing_config.get("agent"):
                     agent_name = None  # Will be preserved in re-init path
                 else:
-                    detect_result = _detect_agent_from_openclaw_config_ext()
-                    agent_name = detect_result.agent
-                    if agent_name and not getattr(args, "json", False):
-                        print(f"Auto-detected agent: {agent_name} (from OpenClaw config)")
+                    # Try auto-detect, fall back to "default"
+                    detected = _detect_agent_from_openclaw_config()
+                    if detected:
+                        agent_name = detected
+                        if not getattr(args, "json", False):
+                            print(f"Auto-detected agent: {agent_name} (from OpenClaw config)")
+                    else:
+                        agent_name = "default"
+                        used_default = True
             except (json.JSONDecodeError, OSError):
-                detect_result = _detect_agent_from_openclaw_config_ext()
-                agent_name = detect_result.agent
-                if agent_name and not getattr(args, "json", False):
-                    print(f"Auto-detected agent: {agent_name} (from OpenClaw config)")
-        else:
-            detect_result = _detect_agent_from_openclaw_config_ext()
-            agent_name = detect_result.agent
-            if agent_name and not getattr(args, "json", False):
-                print(f"Auto-detected agent: {agent_name} (from OpenClaw config)")
-
-    # Block fresh init without --agent and no auto-detect (Issue #46)
-    if not is_reinit and not agent_name:
-        if detect_result and detect_result.status == "multiple":
-            msg = "Multiple agents found. Specify with: palaia init --agent YOUR_NAME"
-        else:
-            msg = "Error: Agent name required. Run: palaia init --agent YOUR_NAME"
-        if _json_out({"error": "agent_required", "message": msg}, args):
-            return 1
-        print(msg, file=sys.stderr)
-        return 1
-
-    # Block re-init without --agent if no agent is configured yet and no auto-detect
-    if is_reinit and not agent_name:
-        try:
-            existing_config = load_config(target)
-            if not existing_config.get("agent"):
-                if detect_result and detect_result.status == "multiple":
-                    msg = "Multiple agents found. Specify with: palaia init --agent YOUR_NAME"
+                detected = _detect_agent_from_openclaw_config()
+                if detected:
+                    agent_name = detected
+                    if not getattr(args, "json", False):
+                        print(f"Auto-detected agent: {agent_name} (from OpenClaw config)")
                 else:
-                    msg = "Error: Agent name required. Run: palaia init --agent YOUR_NAME"
-                if _json_out({"error": "agent_required", "message": msg}, args):
-                    return 1
-                print(msg, file=sys.stderr)
-                return 1
-        except (json.JSONDecodeError, OSError):
-            pass
+                    agent_name = "default"
+                    used_default = True
+        else:
+            # Fresh init: try auto-detect, fall back to "default"
+            detected = _detect_agent_from_openclaw_config()
+            if detected:
+                agent_name = detected
+                if not getattr(args, "json", False):
+                    print(f"Auto-detected agent: {agent_name} (from OpenClaw config)")
+            else:
+                agent_name = "default"
+                used_default = True
 
     if is_reinit:
         # Re-init: update only explicitly provided values
@@ -508,6 +497,8 @@ def cmd_init(args):
         ):
             return 0
         print(f"Initialized Palaia at {target}")
+        if used_default:
+            print("Initialized with agent: default (use --agent NAME to customize)")
 
     # Show chain info
     has_local = any(p in chain for p in ("sentence-transformers", "fastembed", "ollama"))

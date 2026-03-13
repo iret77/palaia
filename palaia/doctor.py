@@ -49,13 +49,50 @@ def _check_agent_identity(palaia_root: Path | None) -> dict[str, Any]:
     agent = config.get("agent")
 
     if not agent:
+        # No agent at all — still functional with "default" but worth noting
         return {
             "name": "agent_identity",
             "label": "Agent identity",
-            "status": "warn",
-            "message": "No agent configured — store commands will be blocked",
-            "fix": "Run: palaia init --agent YOUR_NAME",
-            "fixable": False,
+            "status": "info",
+            "message": 'No agent configured (using "default")',
+            "fix": "Customize with: palaia init --agent YOUR_NAME",
+        }
+
+    if agent == "default":
+        # Check for multi-agent usage hints
+        agents_seen: set[str] = set()
+        for tier in ("hot", "warm", "cold"):
+            tier_dir = palaia_root / tier
+            if not tier_dir.exists():
+                continue
+            for p in tier_dir.glob("*.md"):
+                try:
+                    from palaia.entry import parse_entry
+
+                    text = p.read_text(encoding="utf-8")
+                    meta, _ = parse_entry(text)
+                    entry_agent = meta.get("agent")
+                    if entry_agent:
+                        agents_seen.add(entry_agent)
+                except Exception:
+                    continue
+
+        non_default_agents = agents_seen - {"default"}
+        if non_default_agents:
+            return {
+                "name": "agent_identity",
+                "label": "Agent identity",
+                "status": "info",
+                "message": f"Agent: default (other agents found: {', '.join(sorted(non_default_agents))})",
+                "fix": "Consider naming your agent: palaia init --agent YOUR_NAME",
+            }
+
+        return {
+            "name": "agent_identity",
+            "label": "Agent identity",
+            "status": "ok",
+            "message": "Agent: default",
+            "details": {"agent": agent},
         }
 
     return {
