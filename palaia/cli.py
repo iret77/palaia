@@ -257,6 +257,27 @@ def cmd_init(args):
     is_reinit = target.exists()
     agent_name = getattr(args, "agent", None)
 
+    # Block fresh init without --agent (Issue #46)
+    if not is_reinit and not agent_name:
+        msg = "Error: Agent name required. Run: palaia init --agent YOUR_NAME"
+        if _json_out({"error": "agent_required", "message": msg}, args):
+            return 1
+        print(msg, file=sys.stderr)
+        return 1
+
+    # Block re-init without --agent if no agent is configured yet
+    if is_reinit and not agent_name:
+        try:
+            existing_config = load_config(target)
+            if not existing_config.get("agent"):
+                msg = "Error: Agent name required. Run: palaia init --agent YOUR_NAME"
+                if _json_out({"error": "agent_required", "message": msg}, args):
+                    return 1
+                print(msg, file=sys.stderr)
+                return 1
+        except (json.JSONDecodeError, OSError):
+            pass
+
     if is_reinit:
         # Re-init: update only explicitly provided values
         existing_config = load_config(target)

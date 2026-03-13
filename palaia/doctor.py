@@ -637,36 +637,138 @@ def apply_fixes(palaia_root: Path | None, results: list[dict[str, Any]]) -> list
     from palaia.embeddings import detect_providers
 
     config = load_config(palaia_root)
+    ran_warmup = False
 
     for r in results:
         if r.get("status") != "warn":
             continue
 
-        # Fix: embedding chain has missing providers → re-detect and rebuild chain
+        # Fix: embedding chain has missing providers
         if r.get("name") == "embedding_chain" and r.get("fixable"):
+            missing = r.get("details", {}).get("missing", [])
+            old_chain = config.get("embedding_chain", [])
+            installed_providers: list[str] = []
+
+            # Step 1: Try to install missing providers via pip
+            for provider_name in missing:
+                install_cmd = _pip_install_cmd(provider_name)
+                if install_cmd:
+                    print(f"  Attempting: {install_cmd}")
+                    success = _try_pip_install(install_cmd)
+                    if success:
+                        installed_providers.append(provider_name)
+                        actions.append(f"Installed {provider_name}")
+                        print(f"  Installed {provider_name} successfully.")
+                    else:
+                        print(f"  Could not install {provider_name}.")
+
+            # Step 2: Re-detect providers after installation attempts
             detected = detect_providers()
             detected_map = {p["name"]: p["available"] for p in detected}
-            old_chain = config.get("embedding_chain", [])
 
-            # Strategy: keep providers that are available, drop missing ones
+            # Step 3: Build new chain — keep available providers from old chain
             new_chain = [p for p in old_chain if p == "bm25" or detected_map.get(p, False)]
 
-            # If chain is empty or only bm25, auto-detect available providers
+            # If chain is empty or only bm25, build best available chain
+            # Prefer semantic providers over bm25-only
             if not new_chain or new_chain == ["bm25"]:
-                new_chain = []
-                for p in detected:
-                    if p["available"] and p["name"] not in ("voyage",):
-                        new_chain.append(p["name"])
-                new_chain.append("bm25")
+                new_chain = _build_best_chain(detected)
 
             if "bm25" not in new_chain:
                 new_chain.append("bm25")
 
             config["embedding_chain"] = new_chain
             save_config(palaia_root, config)
-            actions.append(f"Updated embedding chain: {' → '.join(new_chain)}")
+
+            chain_str = " → ".join(new_chain)
+            if installed_providers:
+                actions.append(f"Chain: {chain_str}")
+            else:
+                still_missing = [p for p in missing if not detected_map.get(p, False)]
+                if still_missing:
+                    actions.append(f"{', '.join(still_missing)} not available, chain updated to {chain_str}")
+                else:
+                    actions.append(f"Updated embedding chain: {chain_str}")
+
+            # Step 4: Run warmup to download models
+            if any(p != "bm25" for p in new_chain):
+                ran_warmup = True
+
+        # Fix: no chain configured → auto-detect and set
+        if r.get("name") == "embedding_chain" and r.get("fixable") and not r.get("details", {}).get("missing"):
+            detected = detect_providers()
+            new_chain = _build_best_chain(detected)
+            config["embedding_chain"] = new_chain
+            save_config(palaia_root, config)
+            actions.append(f"Auto-configured chain: {' → '.join(new_chain)}")
+            if any(p != "bm25" for p in new_chain):
+                ran_warmup = True
+
+    # Run warmup after all fixes if we have semantic providers
+    if ran_warmup:
+        try:
+            from palaia.embeddings import warmup_providers
+
+            print("  Running warmup to pre-download models...")
+            warmup_results = warmup_providers(config)
+            for wr in warmup_results:
+                status_label = "ok" if wr["status"] == "ready" else wr["status"]
+                print(f"    [{status_label}] {wr['name']}: {wr['message']}")
+            actions.append("Warmup complete")
+        except Exception as e:
+            actions.append(f"Warmup failed: {e}")
 
     return actions
+
+
+def _pip_install_cmd(provider_name: str) -> str | None:
+    """Return the pip install command for a provider, or None if not pip-installable."""
+    install_map = {
+        "sentence-transformers": 'pip install "palaia[sentence-transformers]"',
+        "fastembed": 'pip install "palaia[fastembed]"',
+    }
+    return install_map.get(provider_name)
+
+
+def _try_pip_install(cmd: str) -> bool:
+    """Try to run a pip install command. Returns True on success."""
+    import subprocess
+    import sys
+
+    # Extract package spec from the command (e.g. 'pip install "palaia[st]"' -> 'palaia[st]')
+    parts = cmd.split()
+    if len(parts) < 3:
+        return False
+    # Use the current Python interpreter's pip to ensure correct environment
+    pkg = parts[2].strip('"').strip("'")
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", pkg],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+
+
+def _build_best_chain(detected: list[dict[str, Any]]) -> list[str]:
+    """Build the best available embedding chain from detected providers.
+
+    Prefers semantic providers. BM25-only is the last resort.
+    Priority: openai > sentence-transformers > fastembed > ollama > bm25
+    """
+    chain: list[str] = []
+    priority_order = ["openai", "sentence-transformers", "fastembed", "ollama"]
+    detected_map = {p["name"]: p["available"] for p in detected}
+
+    for name in priority_order:
+        if detected_map.get(name, False):
+            chain.append(name)
+
+    chain.append("bm25")
+    return chain
 
 
 def format_doctor_report(results: list[dict[str, Any]], show_fix: bool = False) -> str:
