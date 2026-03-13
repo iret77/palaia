@@ -21,10 +21,12 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 ## Installation
 
 ### For OpenClaw users (recommended)
-```
-clawhub install palaia
-```
-Then tell your agent: **"Set up Palaia completely"**
+
+Tell your agent:
+
+> "Install the Palaia memory skill from ClawHub and set it up completely"
+
+Your agent will handle installation, configuration, and onboarding automatically.
 
 ### Manual install
 ```bash
