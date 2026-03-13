@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.5.0] — 2026-03-13
+
+### Added
+- **Project Ownership** — `palaia project create --owner`, `project set-owner`, `project list --owner`. Each project can have one owner, contributors are auto-aggregated from entries. (#30, #31)
+- **Update nag** — CLI warns on `query`, `write`, `list`, `status` when store version doesn't match CLI version. (#26)
+- **Doctor upgrade hint** — `palaia doctor` always suggests checking for updates. (#26)
+
+### Fixed
+- **Init triggers onboarding** — `palaia init` outputs step-by-step setup instructions for LLM agents. (#23)
+- **`PALAIA_HOME` env variable** — Override `.palaia` store location; plugin sets it automatically. (#23)
+- **Ruff lint errors** in test_memo.py fixed. (#25)
+- **SKILL.md auto-check** — Agents run `palaia doctor` on every skill load. (#24)
+- **README beginner flow** — One prompt install for OpenClaw users, no CLI required. (#28, #29)
+
 ## [1.4.3] — 2026-03-13
 
 ### Added
