@@ -26,9 +26,9 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 
 Tell your agent:
 
-> "Install the latest Palaia memory skill from ClawHub (even if already present) and set it up completely"
+> "Install or update the Palaia memory skill from ClawHub to the latest version (even if already present). Read the SKILL.md completely and follow it step by step. Run `palaia init --agent YOUR_NAME`, then `palaia doctor --fix` and resolve all warnings — don't stop until the doctor report is clean. Set up completely."
 
-Your agent will handle installation, configuration, and onboarding automatically.
+This prompt works for both first-time installations and updates. Your agent will handle installation, configuration, and onboarding automatically.
 
 ### Manual install
 ```bash
@@ -79,9 +79,9 @@ Your agent's memory stays local — private by default, shareable when you choos
 
 If you're using [OpenClaw](https://openclaw.ai), tell your agent:
 
-> "Install the latest Palaia memory skill from ClawHub (even if already present) and set it up completely"
+> "Install or update the Palaia memory skill from ClawHub to the latest version (even if already present). Read the SKILL.md completely and follow it step by step. Run `palaia init --agent YOUR_NAME`, then `palaia doctor --fix` and resolve all warnings — don't stop until the doctor report is clean. Set up completely."
 
-The agent will install Palaia, check what's available on your system, recommend the best search setup, and configure everything. You just confirm what you want.
+This prompt works for both first-time installations and updates. The agent will install Palaia, check what's available on your system, recommend the best search setup, and configure everything. You just confirm what you want.
 
 ### Manual installation
 
