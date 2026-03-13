@@ -555,6 +555,34 @@ Palaia organizes entries into three tiers based on access frequency:
 
 Run `palaia gc` periodically (or let cron handle it) to rotate entries between tiers. `palaia gc --aggressive` forces more entries to lower tiers.
 
+## What Goes Where (Single Source of Truth)
+
+This is the most important section for avoiding duplicated knowledge. Get this right.
+
+**Project files (CONTEXT.md, MEMORY.md, etc.) = static facts:**
+- Repo URL, tech stack, architecture overview, current version
+- Palaia usage info for this project: project name, common tags, scopes, conventions
+- Pointers to Palaia: "Processes: `palaia query --type process --project <name>`"
+- Changes rarely. Never store processes, checklists, or decision logs here.
+
+**Palaia = all dynamic knowledge:**
+- Processes and checklists (type: process) — reusable, searchable, scope-aware
+- Decisions and ADRs (type: memory, tag: adr)
+- Learnings and insights (type: memory, tag: learning)
+- Tasks and planning (type: task)
+- Anything that evolves, gets shared, or should surface at the right time
+
+**External issue trackers (GitHub Issues, Jira, etc.) = bugs and tickets:**
+- If a project uses one: bugs, feature requests, and technical tickets live there
+- Never duplicate between external trackers and Palaia tasks
+
+**The test:** "Is this a static fact about the project?" → project file. "Is this knowledge that evolves, gets shared, or should be actively surfaced?" → Palaia. "Is this a bug or feature request?" → external tracker.
+
+**Common mistakes to avoid:**
+- Writing a release checklist into CONTEXT.md instead of `palaia write --type process`
+- Keeping decision logs in markdown files instead of Palaia entries
+- Duplicating task lists between files and Palaia
+
 ## Migration Best Practice
 
 When upgrading to Palaia 1.7+, migrate existing planning data into structured Palaia entries:
@@ -563,12 +591,6 @@ When upgrading to Palaia 1.7+, migrate existing planning data into structured Pa
 - Roadmap items, TODOs, pending tasks from CONTEXT.md or MEMORY.md → `palaia write --type task --status open --priority <level>`
 - Checklists, SOPs, release processes → `palaia write --type process`
 - Existing Palaia entries without type → run `palaia migrate --suggest` for recommendations
-
-**Points of Truth (important rule):**
-- If a project uses an external issue tracker (GitHub Issues, Jira, Bitbucket, Linear, etc.): bugs, tickets, and feature requests live **there** (single source of truth)
-- Planungen, ideas, concepts, roadmap items not tracked externally live in **Palaia** (type: task)
-- Processes and checklists live in **Palaia** (type: process)
-- Never duplicate between external issue trackers and Palaia tasks
 
 **After migration:**
 - Remove migrated items from CONTEXT.md, MEMORY.md, or wherever they lived before
