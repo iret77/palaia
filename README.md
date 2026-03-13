@@ -24,7 +24,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full details.
 ```
 clawhub install palaia
 ```
-Then tell your agent: **"Set up Palaia"** — it will handle the rest.
+Then tell your agent: **"Install the Palaia memory skill from ClawHub and set it up completely"**
 
 ### Manual install
 ```bash

@@ -3,7 +3,7 @@ name: palaia
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   Replaces built-in memory-core with semantic search, projects, and scope-based access control.
-  After installing, tell your agent: "Set up Palaia" to complete the onboarding.
+  After installing or updating, run: palaia doctor --fix to complete setup.
 metadata:
   openclaw:
     emoji: 🧠
