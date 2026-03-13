@@ -77,7 +77,11 @@ def _serialize_memo(meta: dict, body: str) -> str:
 
 
 def _detect_agent() -> str | None:
-    """Detect current agent from PALAIA_AGENT env var."""
+    """Detect current agent from PALAIA_AGENT env var.
+
+    Note: CLI layer resolves agent from config (palaia init --agent).
+    This function is the low-level fallback for programmatic use.
+    """
     return os.environ.get("PALAIA_AGENT")
 
 

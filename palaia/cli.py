@@ -25,7 +25,18 @@ for _name in ("sentence_transformers", "transformers", "huggingface_hub", "torch
     _logging.getLogger(_name).setLevel(_logging.ERROR)
 
 from palaia import __version__  # noqa: E402
-from palaia.config import DEFAULT_CONFIG, find_palaia_root, get_root, load_config, save_config  # noqa: E402
+from palaia.config import (  # noqa: E402
+    DEFAULT_CONFIG,
+    clear_instance,
+    find_palaia_root,
+    get_agent,
+    get_instance,
+    get_root,
+    is_initialized,
+    load_config,
+    save_config,
+    set_instance,
+)
 from palaia.doctor import apply_fixes, format_doctor_report, run_doctor  # noqa: E402
 from palaia.ingest import DocumentIngestor, format_rag_output  # noqa: E402
 from palaia.migrate import format_result, migrate  # noqa: E402
@@ -84,6 +95,141 @@ def _json_out(data, args):
     return False
 
 
+# Commands that require a valid init (agent identity set)
+GATED_COMMANDS = frozenset(
+    {
+        "write",
+        "query",
+        "list",
+        "edit",
+        "memo",
+        "gc",
+        "export",
+        "import",
+        "ingest",
+        "get",
+        "recover",
+        "status",
+        "project",
+        "lock",
+        "unlock",
+        "setup",
+        "warmup",
+        "migrate",
+    }
+)
+
+# Commands that are always allowed without init
+UNGATED_COMMANDS = frozenset(
+    {
+        "init",
+        "detect",
+        "doctor",
+        "config",
+        "instance",
+    }
+)
+
+
+def _check_gatekeeper(command: str) -> bool:
+    """Check if the command requires init and if init is valid.
+
+    Returns True if the command can proceed, False if it should be blocked.
+    Prints error message and returns False if blocked.
+    """
+    if command in UNGATED_COMMANDS:
+        return True
+    if command not in GATED_COMMANDS:
+        return True  # Unknown commands pass through (argparse will handle them)
+
+    root = find_palaia_root()
+    if root is None:
+        print("Palaia not initialized. Run: palaia init --agent YOUR_NAME", file=sys.stderr)
+        return False
+    if not is_initialized(root):
+        print("Palaia not initialized. Run: palaia init --agent YOUR_NAME", file=sys.stderr)
+        return False
+    return True
+
+
+def _resolve_agent(args) -> str | None:
+    """Resolve agent name: explicit --agent flag > config > env var > None.
+
+    For gated commands, config agent is always available (gatekeeper ensures init).
+    """
+    explicit = getattr(args, "agent", None)
+    if explicit:
+        return explicit
+    try:
+        root = get_root()
+        config_agent = get_agent(root)
+        if config_agent:
+            return config_agent
+    except FileNotFoundError:
+        pass
+    return _detect_current_agent()
+
+
+def _resolve_instance_for_write(args) -> str | None:
+    """Resolve instance: explicit --instance flag > config file > env var > None."""
+    explicit = getattr(args, "instance", None)
+    if explicit:
+        return explicit
+    try:
+        root = get_root()
+        return get_instance(root)
+    except FileNotFoundError:
+        pass
+    return None
+
+
+def _memo_nudge(args) -> None:
+    """Check for unread memos and print a nudge if any exist.
+
+    Frequency-limited to max once per hour. Suppressed in --json mode.
+    """
+    if getattr(args, "json", False):
+        return
+    try:
+        import time
+
+        root = get_root()
+        hints_file = root / ".hints_shown"
+        shown = {}
+        if hints_file.exists():
+            try:
+                shown = json.loads(hints_file.read_text())
+            except (json.JSONDecodeError, OSError):
+                shown = {}
+            last_nudge = shown.get("memo_nudge", 0)
+            if time.time() - last_nudge < 3600:
+                return
+
+        # Check unread memo count
+        agent = _resolve_agent(args)
+        if not agent:
+            return
+
+        from palaia.memo import MemoManager
+
+        mm = MemoManager(root)
+        unread = mm.inbox(agent=agent, include_read=False)
+        if not unread:
+            return
+
+        count = len(unread)
+        print(f"\nYou have {count} unread memo(s). Run: palaia memo inbox", file=sys.stderr)
+
+        # Update frequency limiter
+        shown["memo_nudge"] = time.time()
+        try:
+            hints_file.write_text(json.dumps(shown))
+        except OSError:
+            pass
+    except Exception:
+        pass  # Never block normal operation
+
+
 def _detect_agents() -> list[str]:
     """Detect OpenClaw agents by checking ~/.openclaw/agents/ directory."""
     agents_dir = Path.home() / ".openclaw" / "agents"
@@ -94,19 +240,44 @@ def _detect_agents() -> list[str]:
 
 def cmd_init(args):
     """Initialize .palaia directory."""
-    target = Path(args.path or ".") / ".palaia"
+    # Respect PALAIA_HOME if set and no explicit path given
+    explicit_path = getattr(args, "path", None)
+    if explicit_path:
+        target = Path(explicit_path) / ".palaia"
+    else:
+        env_home = os.environ.get("PALAIA_HOME")
+        if env_home:
+            env_path = Path(env_home)
+            if env_path.name == ".palaia":
+                target = env_path
+            else:
+                target = env_path / ".palaia"
+        else:
+            target = Path(".") / ".palaia"
     is_reinit = target.exists()
+    agent_name = getattr(args, "agent", None)
 
     if is_reinit:
-        # Re-init: check if chain is already configured
+        # Re-init: update only explicitly provided values
         existing_config = load_config(target)
+
+        # Update agent if provided
+        if agent_name:
+            existing_config["agent"] = agent_name
+
+        # Check if chain is already configured
         existing_chain = existing_config.get("embedding_chain")
-        if _json_out({"status": "exists", "path": str(target)}, args):
-            return 0
-        print(f"Already initialized: {target}")
-        # Only auto-configure if no chain is set yet
+
         if existing_chain and len(existing_chain) > 0:
+            # Chain exists, just save updated config (agent may have changed)
+            save_config(target, existing_config)
+            if _json_out({"status": "updated", "path": str(target), "agent": existing_config.get("agent")}, args):
+                return 0
+            print(f"Updated config: {target}")
+            if existing_config.get("agent"):
+                print(f"Agent: {existing_config['agent']}")
             return 0
+
         # Fall through to auto-configure chain
         config = existing_config
     else:
@@ -133,6 +304,10 @@ def cmd_init(args):
     chain.append("bm25")  # always last
 
     config["embedding_chain"] = chain
+
+    # Store agent identity if provided
+    if agent_name:
+        config["agent"] = agent_name
 
     # Multi-agent detection
     agents = _detect_agents()
@@ -244,11 +419,15 @@ def cmd_write(args):
     if recovered and not getattr(args, "json", False):
         print(f"Recovered {recovered} pending entries from WAL.")
 
+    # Resolve agent from config if not explicitly set
+    agent = _resolve_agent(args)
+    instance = _resolve_instance_for_write(args)
+
     entry_type = getattr(args, "type", None)
     entry_id = store.write(
         body=args.text,
         scope=args.scope,
-        agent=args.agent,
+        agent=agent,
         tags=args.tags.split(",") if args.tags else None,
         title=args.title,
         project=getattr(args, "project", None),
@@ -257,7 +436,7 @@ def cmd_write(args):
         priority=getattr(args, "priority", None),
         assignee=getattr(args, "assignee", None),
         due_date=getattr(args, "due_date", None),
-        instance=getattr(args, "instance", None),
+        instance=instance,
     )
 
     # Check if this was a dedup (existing entry returned)
@@ -294,6 +473,9 @@ def cmd_write(args):
             "Use --type (memory|process|task) to classify entries. Tasks support --status, --priority, --assignee.",
             args,
         )
+
+    # Memo nudge (ADR-011)
+    _memo_nudge(args)
 
     return 0
 
@@ -375,13 +557,15 @@ def cmd_query(args):
     store = Store(root)
     store.recover()
 
+    agent = _resolve_agent(args)
+
     engine = SearchEngine(store)
     results = engine.search(
         args.query,
         top_k=args.limit,
         include_cold=args.all,
         project=getattr(args, "project", None),
-        agent=getattr(args, "agent", None),
+        agent=agent,
         entry_type=getattr(args, "type", None),
         status=getattr(args, "status", None),
         priority=getattr(args, "priority", None),
@@ -442,6 +626,10 @@ def cmd_query(args):
 
     search_tier = "hybrid" if engine.has_embeddings else "BM25"
     print(f"\n{len(results)} result(s) found. (Search tier: {search_tier})")
+
+    # Memo nudge (ADR-011)
+    _memo_nudge(args)
+
     return 0
 
 
@@ -1579,6 +1767,47 @@ def cmd_project(args):
         return 1
 
 
+def cmd_instance(args):
+    """Manage session instance identity."""
+    root = get_root()
+    action = args.instance_action
+
+    if action == "set":
+        set_instance(root, args.name)
+        if _json_out({"instance": args.name, "status": "set"}, args):
+            return 0
+        print(f"Instance set: {args.name}")
+        return 0
+
+    elif action == "get":
+        instance = get_instance(root)
+        if _json_out({"instance": instance}, args):
+            return 0
+        if instance:
+            print(f"Current instance: {instance}")
+        else:
+            print("No instance set.")
+        return 0
+
+    elif action == "clear":
+        clear_instance(root)
+        if _json_out({"instance": None, "status": "cleared"}, args):
+            return 0
+        print("Instance cleared.")
+        return 0
+
+    else:
+        # No subcommand: show current instance
+        instance = get_instance(root)
+        if _json_out({"instance": instance}, args):
+            return 0
+        if instance:
+            print(f"Current instance: {instance}")
+        else:
+            print("No instance set. Use: palaia instance set NAME")
+        return 0
+
+
 def _format_lock_human(lock_data: dict) -> str:
     """Format lock info for human-readable output."""
     from datetime import datetime
@@ -1779,11 +2008,14 @@ def cmd_memo(args):
     mm = MemoManager(root)
     action = args.memo_action
 
+    # Resolve agent from config for all memo operations
+    agent = _resolve_agent(args)
+
     if action == "send":
         meta = mm.send(
             to=args.to,
             message=args.message,
-            from_agent=args.agent,
+            from_agent=agent,
             priority=args.priority,
             ttl_hours=args.ttl_hours,
         )
@@ -1796,7 +2028,7 @@ def cmd_memo(args):
     if action == "broadcast":
         meta = mm.broadcast(
             message=args.message,
-            from_agent=args.agent,
+            from_agent=agent,
             priority=args.priority,
             ttl_hours=args.ttl_hours,
         )
@@ -1806,7 +2038,7 @@ def cmd_memo(args):
         return 0
 
     if action == "inbox":
-        memos = mm.inbox(agent=args.agent, include_read=args.all)
+        memos = mm.inbox(agent=agent, include_read=args.all)
         if _json_out(
             [{"meta": m, "body": b} for m, b in memos],
             args,
@@ -1841,7 +2073,7 @@ def cmd_memo(args):
 
     if action == "ack":
         if args.all:
-            count = mm.ack_all(agent=args.agent)
+            count = mm.ack_all(agent=agent)
             if _json_out({"acked": count}, args):
                 return 0
             print(f"Acknowledged {count} memo(s).")
@@ -1907,6 +2139,7 @@ def main():
 
     # init
     p_init = sub.add_parser("init", help="Initialize .palaia directory")
+    p_init.add_argument("--agent", default=None, help="Agent name (required for first init)")
     p_init.add_argument("--path", default=None, help="Target directory")
     p_init.add_argument("--json", action="store_true", help="Output as JSON")
     p_init.add_argument(
@@ -1915,6 +2148,11 @@ def main():
         const="isolated",
         dest="store_mode",
         help="Use isolated stores per agent (default: shared)",
+    )
+    p_init.add_argument(
+        "--reset",
+        action="store_true",
+        help="Reset config to defaults (preserves entries)",
     )
 
     # write
@@ -2130,6 +2368,20 @@ def main():
     p_unlock.add_argument("project", help="Project name")
     p_unlock.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # instance
+    p_instance = sub.add_parser("instance", help="Manage session identity")
+    instance_sub = p_instance.add_subparsers(dest="instance_action")
+
+    p_instance_set = instance_sub.add_parser("set", help="Set session instance name")
+    p_instance_set.add_argument("name", help="Instance name (e.g. Claw-Palaia)")
+    p_instance_set.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_instance_get = instance_sub.add_parser("get", help="Show current instance")
+    p_instance_get.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_instance_clear = instance_sub.add_parser("clear", help="Clear session instance")
+    p_instance_clear.add_argument("--json", action="store_true", help="Output as JSON")
+
     # setup
     p_setup = sub.add_parser("setup", help="Multi-agent setup")
     p_setup.add_argument("--multi-agent", default=None, help="Path to agents directory")
@@ -2196,6 +2448,10 @@ def main():
         parser.print_help()
         return 1
 
+    # Gatekeeper: block store commands without valid init
+    if not _check_gatekeeper(args.command):
+        return 1
+
     commands = {
         "init": cmd_init,
         "write": cmd_write,
@@ -2219,6 +2475,7 @@ def main():
         "memo": cmd_memo,
         "lock": cmd_lock,
         "unlock": cmd_unlock,
+        "instance": cmd_instance,
     }
     try:
         return commands[args.command](args)

@@ -91,3 +91,66 @@ def save_config(palaia_root: Path, config: dict) -> None:
     config_path = palaia_root / "config.json"
     with open(config_path, "w") as f:
         json.dump(config, f, indent=2)
+
+
+def is_initialized(palaia_root: Path | None = None) -> bool:
+    """Check if Palaia has been initialized with an agent identity.
+
+    Returns True if .palaia/config.json exists and has a non-empty 'agent' field.
+    """
+    if palaia_root is None:
+        palaia_root = find_palaia_root()
+    if palaia_root is None:
+        return False
+    config_path = palaia_root / "config.json"
+    if not config_path.exists():
+        return False
+    try:
+        config = json.loads(config_path.read_text())
+        return bool(config.get("agent"))
+    except (json.JSONDecodeError, OSError):
+        return False
+
+
+def get_agent(palaia_root: Path | None = None) -> str | None:
+    """Get the configured agent name from .palaia/config.json."""
+    if palaia_root is None:
+        palaia_root = find_palaia_root()
+    if palaia_root is None:
+        return None
+    config = load_config(palaia_root)
+    return config.get("agent") or None
+
+
+def get_instance(palaia_root: Path | None = None) -> str | None:
+    """Get the current session instance from .palaia/current-instance.
+
+    Instance is session-local and set via `palaia instance set`.
+    Falls back to PALAIA_INSTANCE env var.
+    """
+    if palaia_root is None:
+        palaia_root = find_palaia_root()
+    if palaia_root is None:
+        return os.environ.get("PALAIA_INSTANCE") or None
+    instance_file = palaia_root / "current-instance"
+    if instance_file.exists():
+        try:
+            value = instance_file.read_text().strip()
+            if value:
+                return value
+        except OSError:
+            pass
+    return os.environ.get("PALAIA_INSTANCE") or None
+
+
+def set_instance(palaia_root: Path, instance_name: str) -> None:
+    """Set the current session instance in .palaia/current-instance."""
+    instance_file = palaia_root / "current-instance"
+    instance_file.write_text(instance_name.strip())
+
+
+def clear_instance(palaia_root: Path) -> None:
+    """Clear the current session instance."""
+    instance_file = palaia_root / "current-instance"
+    if instance_file.exists():
+        instance_file.unlink()
