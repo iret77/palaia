@@ -52,8 +52,18 @@ Example pacing:
 ### Step 1: Install and initialize
 ```bash
 python3 -m pip install "palaia[fastembed]"
-palaia init
+palaia init --agent YOUR_AGENT_NAME
 ```
+
+**Agent identity is mandatory.** Without `--agent`, all store commands (write, query, list, etc.) will be blocked with: "Palaia not initialized. Run: palaia init --agent YOUR_NAME"
+
+The agent name is stored in `.palaia/config.json` and automatically attached to all writes and memo operations. No env vars needed.
+
+**Optional: Set session instance** (for multi-instance agents):
+```bash
+palaia instance set YOUR_INSTANCE_NAME
+```
+Instance is session-local and adds traceability to entries. Memos can target specific instances.
 
 ### Step 2: Check for existing memory systems (REQUIRED — do not skip)
 ```bash
@@ -551,9 +561,15 @@ When upgrading to Palaia 1.7+, migrate existing planning data into structured Pa
 - This prevents double sources of truth
 
 **Session Identity:**
-- Set `PALAIA_INSTANCE` env var to a human-readable name for your session (e.g., "Claw-Main", "Claw-Palaia")
+- Run `palaia instance set YOUR_INSTANCE_NAME` at session start (e.g., "Claw-Main", "Claw-Palaia")
 - This distinguishes entries from different sessions of the same agent
 - Use `--instance` flag on queries to filter by session origin
+- Alternatively, set `PALAIA_INSTANCE` env var (config file takes precedence)
+
+**Memo Awareness:**
+- After `palaia query` and `palaia write`, Palaia automatically checks for unread memos
+- If unread memos exist: "You have N unread memos. Run: palaia memo inbox"
+- This nudge is frequency-limited (max 1x/hour) and suppressed in --json mode
 
 ## After Updating Palaia
 
