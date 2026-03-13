@@ -24,12 +24,14 @@ class Project:
         default_scope: str = "team",
         created_at: str | None = None,
         members: list[str] | None = None,
+        owner: str | None = None,
     ):
         self.name = name
         self.description = description
         self.default_scope = default_scope
         self.created_at = created_at or datetime.now(timezone.utc).isoformat()
         self.members = members or []
+        self.owner = owner
 
     def to_dict(self) -> dict:
         return {
@@ -38,6 +40,7 @@ class Project:
             "default_scope": self.default_scope,
             "created_at": self.created_at,
             "members": self.members,
+            "owner": self.owner,
         }
 
     @classmethod
@@ -48,6 +51,7 @@ class Project:
             default_scope=data.get("default_scope", "team"),
             created_at=data.get("created_at"),
             members=data.get("members", []),
+            owner=data.get("owner"),
         )
 
 
@@ -81,6 +85,7 @@ class ProjectManager:
         name: str,
         description: str = "",
         default_scope: str = "team",
+        owner: str | None = None,
     ) -> Project:
         """Create a new project."""
         if not name or not name.strip():
@@ -94,7 +99,7 @@ class ProjectManager:
         if name in data:
             raise ValueError(f"Project '{name}' already exists.")
 
-        project = Project(name=name, description=description, default_scope=default_scope)
+        project = Project(name=name, description=description, default_scope=default_scope, owner=owner)
         data[name] = project.to_dict()
         self._save(data)
         return project
@@ -150,6 +155,36 @@ class ProjectManager:
         data[name]["default_scope"] = scope
         self._save(data)
         return Project.from_dict(data[name])
+
+    def set_owner(self, name: str, owner: str) -> Project:
+        """Set or change a project's owner."""
+        data = self._load()
+        if name not in data:
+            raise ValueError(f"Project '{name}' not found.")
+
+        data[name]["owner"] = owner
+        self._save(data)
+        return Project.from_dict(data[name])
+
+    def clear_owner(self, name: str) -> Project:
+        """Remove a project's owner."""
+        data = self._load()
+        if name not in data:
+            raise ValueError(f"Project '{name}' not found.")
+
+        data[name]["owner"] = None
+        self._save(data)
+        return Project.from_dict(data[name])
+
+    def get_contributors(self, name: str, store) -> list[str]:
+        """Get distinct agent names from all entries of a project."""
+        entries = self.get_project_entries(name, store)
+        agents = set()
+        for meta, _body, _tier in entries:
+            agent = meta.get("agent")
+            if agent:
+                agents.add(agent)
+        return sorted(agents)
 
     def _strip_project_from_entries(self, project_name: str, store) -> int:
         """Remove project tag from all entries belonging to a project."""
