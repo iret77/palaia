@@ -781,7 +781,7 @@ def apply_fixes(palaia_root: Path | None, results: list[dict[str, Any]]) -> list
             if any(p != "bm25" for p in new_chain):
                 ran_warmup = True
 
-    # Run warmup after all fixes if we have semantic providers
+    # Run warmup + reindex after all fixes if we have semantic providers
     if ran_warmup:
         try:
             from palaia.embeddings import warmup_providers
@@ -792,6 +792,23 @@ def apply_fixes(palaia_root: Path | None, results: list[dict[str, Any]]) -> list
                 status_label = "ok" if wr["status"] == "ready" else wr["status"]
                 print(f"    [{status_label}] {wr['name']}: {wr['message']}")
             actions.append("Warmup complete")
+
+            # Reindex entries to fill embedding cache
+            try:
+                from palaia.cli import _reindex_entries
+
+                class _FakeArgs:
+                    json = False
+
+                print("  Building embedding index...")
+                index_stats = _reindex_entries(palaia_root, config, _FakeArgs())
+                if index_stats.get("new", 0) > 0:
+                    actions.append(
+                        f"Indexed {index_stats['indexed']} entries "
+                        f"({index_stats['new']} new, {index_stats['cached']} cached)"
+                    )
+            except Exception as e:
+                actions.append(f"Reindex failed: {e}")
         except Exception as e:
             actions.append(f"Warmup failed: {e}")
 

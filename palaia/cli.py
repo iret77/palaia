@@ -1196,6 +1196,26 @@ def cmd_status(args):
 
     info = store.status()
 
+    # Compute index hint for both JSON and text output
+    try:
+        from palaia.index import EmbeddingCache as _EC
+
+        _cache = _EC(root)
+        _idx_count = len(_cache._load()) if hasattr(_cache, "_load") else None
+    except Exception:
+        _idx_count = None
+    _total = info["total"]
+    if isinstance(_idx_count, int) and isinstance(_total, int):
+        _not_indexed = _total - _idx_count
+        if _not_indexed > 0:
+            info["index_hint"] = (
+                f"Index: {_idx_count}/{_total} — {_not_indexed} entries not indexed. Run: palaia warmup"
+            )
+        else:
+            info["index_hint"] = f"Index: {_idx_count}/{_total} — fully indexed"
+    else:
+        info["index_hint"] = None
+
     if _json_out(info, args):
         return 0
 
@@ -1306,6 +1326,10 @@ def cmd_status(args):
 
     print(section("Embeddings"))
     print(table_kv(embed_rows))
+
+    # Index hint (warmup guidance)
+    if info.get("index_hint"):
+        print(info["index_hint"], file=sys.stderr)
 
     # BM25-only warning
     has_embed = any(s["available"] and s["name"] != "bm25" for s in statuses)
@@ -1598,6 +1622,81 @@ def cmd_config(args):
     return 0
 
 
+def _reindex_entries(root, config, args) -> dict:
+    """Build embedding index for all HOT+WARM entries missing from cache.
+
+    Returns dict with keys: indexed, new, cached.
+    """
+    from palaia.embeddings import BM25Provider, auto_detect_provider
+
+    store = Store(root)
+    is_json = getattr(args, "json", False)
+
+    try:
+        provider = auto_detect_provider(config)
+    except Exception:
+        provider = BM25Provider()
+
+    if isinstance(provider, BM25Provider):
+        return {"indexed": 0, "new": 0, "cached": 0}
+
+    entries = store.all_entries(include_cold=False)
+    total = len(entries)
+    if total == 0:
+        return {"indexed": 0, "new": 0, "cached": 0}
+
+    # Separate entries into cached and uncached
+    uncached_entries = []
+    cached_count = 0
+    for meta, body, _tier in entries:
+        entry_id = meta.get("id", "")
+        if not entry_id:
+            continue
+        if store.embedding_cache.get_cached(entry_id) is not None:
+            cached_count += 1
+        else:
+            title = meta.get("title", "")
+            tags = " ".join(meta.get("tags", []))
+            full_text = f"{title} {tags} {body}"
+            uncached_entries.append((entry_id, full_text))
+
+    if not uncached_entries:
+        if not is_json:
+            print(f"Indexed {total}/{total} entries (0 new, {cached_count} cached)", file=sys.stderr)
+        return {"indexed": total, "new": 0, "cached": cached_count}
+
+    # Batch embed uncached entries
+    model_name = getattr(provider, "model_name", None) or getattr(provider, "model", "unknown")
+    batch_size = 32
+    new_count = 0
+
+    for i in range(0, len(uncached_entries), batch_size):
+        batch = uncached_entries[i : i + batch_size]
+        texts = [text for _, text in batch]
+        ids = [eid for eid, _ in batch]
+
+        try:
+            vectors = provider.embed(texts)
+            for eid, vec in zip(ids, vectors):
+                store.embedding_cache.set_cached(eid, vec, model=model_name)
+                new_count += 1
+        except Exception as e:
+            if not is_json:
+                print(f"Embedding failed for batch {i // batch_size + 1}: {e}", file=sys.stderr)
+            break
+
+        # Progress every 10 entries
+        done = min(i + len(batch), len(uncached_entries))
+        if not is_json and done % 10 < batch_size and done < len(uncached_entries):
+            print(f"Indexing: {cached_count + done}/{total}...", file=sys.stderr)
+
+    indexed = cached_count + new_count
+    if not is_json:
+        print(f"Indexed {indexed}/{total} entries ({new_count} new, {cached_count} cached)", file=sys.stderr)
+
+    return {"indexed": indexed, "new": new_count, "cached": cached_count}
+
+
 def cmd_warmup(args):
     """Pre-download embedding models for instant first search."""
     root = get_root()
@@ -1606,7 +1705,10 @@ def cmd_warmup(args):
 
     results = warmup_providers(config)
 
-    if _json_out({"providers": results}, args):
+    # Reindex entries after model warmup
+    index_stats = _reindex_entries(root, config, args)
+
+    if _json_out({"providers": results, **index_stats}, args):
         return 0
 
     if not results:
