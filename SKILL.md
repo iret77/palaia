@@ -530,6 +530,31 @@ Palaia organizes entries into three tiers based on access frequency:
 
 Run `palaia gc` periodically (or let cron handle it) to rotate entries between tiers. `palaia gc --aggressive` forces more entries to lower tiers.
 
+## Migration Best Practice
+
+When upgrading to Palaia 1.7+, migrate existing planning data into structured Palaia entries:
+
+**What to migrate:**
+- Roadmap items, TODOs, pending tasks from CONTEXT.md or MEMORY.md → `palaia write --type task --status open --priority <level>`
+- Checklists, SOPs, release processes → `palaia write --type process`
+- Existing Palaia entries without type → run `palaia migrate --suggest` for recommendations
+
+**Points of Truth (important rule):**
+- If a project has a GitHub repo: Issues, bugs, and feature requests live in **GitHub Issues** (single source of truth)
+- Planungen, ideas, concepts, roadmap items without a GitHub issue live in **Palaia** (type: task)
+- Processes and checklists live in **Palaia** (type: process)
+- Never duplicate between GitHub Issues and Palaia tasks
+
+**After migration:**
+- Remove migrated items from CONTEXT.md, MEMORY.md, or wherever they lived before
+- Replace with a pointer: "Tasks live in Palaia: `palaia list --type task --project <name>`"
+- This prevents double sources of truth
+
+**Session Identity:**
+- Set `PALAIA_INSTANCE` env var to a human-readable name for your session (e.g., "Claw-Main", "Claw-Palaia")
+- This distinguishes entries from different sessions of the same agent
+- Use `--instance` flag on queries to filter by session origin
+
 ## After Updating Palaia
 
 Always run `palaia doctor` after updating. It checks your store for compatibility, suggests new features (like projects or embedding chain improvements), and handles version stamping. If the installed version differs from the store version, Palaia will warn you automatically on every CLI call until you run `palaia doctor`.
