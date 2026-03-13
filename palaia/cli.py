@@ -258,6 +258,122 @@ def _memo_nudge(args) -> None:
         pass  # Never block normal operation
 
 
+def _process_nudge(context_text: str, context_tags: list[str] | None, args) -> None:
+    """Check for process entries relevant to the current operation and nudge.
+
+    Uses hybrid matching: embedding similarity OR exact tag overlap.
+    Frequency-limited to max once per process per hour. Suppressed in --json mode.
+
+    Args:
+        context_text: The text from the current write/query operation.
+        context_tags: Tags from the current operation (if any).
+        args: Parsed CLI args (checked for --json flag).
+    """
+    if getattr(args, "json", False):
+        return
+    try:
+        import time
+
+        root = get_root()
+
+        # Load frequency-limiting state
+        nudge_state_file = root / "process-nudge-state.json"
+        nudge_state: dict = {}
+        if nudge_state_file.exists():
+            try:
+                nudge_state = json.loads(nudge_state_file.read_text())
+            except (json.JSONDecodeError, OSError):
+                nudge_state = {}
+
+        # Get all process entries
+        store = Store(root)
+        all_entries = store.all_entries(include_cold=False)
+        processes = [(meta, body, tier) for meta, body, tier in all_entries if meta.get("type") == "process"]
+
+        if not processes:
+            return
+
+        now = time.time()
+        best_match: tuple[float, dict] | None = None  # (score, meta)
+
+        # Tag matching
+        context_tag_set = set(context_tags) if context_tags else set()
+
+        # Try embedding similarity
+        has_embeddings = False
+        context_vec: list[float] | None = None
+        try:
+            from palaia.embeddings import BM25Provider, auto_detect_provider, cosine_similarity
+
+            provider = auto_detect_provider(store.config)
+            if not isinstance(provider, BM25Provider):
+                has_embeddings = True
+                context_vec = provider.embed_query(context_text)
+        except Exception:
+            pass
+
+        for meta, body, _tier in processes:
+            proc_id = meta.get("id", "")
+            short_id = proc_id[:8]
+
+            # Frequency limit: skip if nudged within the last hour
+            last_nudged = nudge_state.get(short_id, 0)
+            if now - last_nudged < 3600:
+                continue
+
+            score = 0.0
+
+            # Embedding similarity
+            if has_embeddings and context_vec is not None:
+                try:
+                    proc_title = meta.get("title", "")
+                    proc_tags = " ".join(meta.get("tags", []))
+                    proc_text = f"{proc_title} {proc_tags} {body}"
+                    # Check embedding cache first
+                    cached = store.embedding_cache.get_cached(proc_id)
+                    if cached:
+                        sim = cosine_similarity(context_vec, cached)
+                    else:
+                        proc_vec = provider.embed_query(proc_text)
+                        sim = cosine_similarity(context_vec, proc_vec)
+                    score = max(score, sim)
+                except Exception:
+                    pass
+
+            # Tag overlap (fallback or additional signal)
+            if context_tag_set:
+                proc_tags_set = set(meta.get("tags", []))
+                if context_tag_set & proc_tags_set:
+                    # Tag match: set a high score to ensure nudge
+                    score = max(score, 0.5)
+
+            # Threshold check
+            if score >= 0.3:
+                if best_match is None or score > best_match[0]:
+                    best_match = (score, meta)
+
+        if best_match is None:
+            return
+
+        _, best_meta = best_match
+        proc_title = best_meta.get("title", "(untitled)")
+        proc_short_id = best_meta.get("id", "")[:8]
+
+        print(
+            f"\nRelated process: {proc_title} (palaia get {proc_short_id})",
+            file=sys.stderr,
+        )
+
+        # Update frequency limiter
+        nudge_state[proc_short_id] = now
+        try:
+            nudge_state_file.write_text(json.dumps(nudge_state))
+        except OSError:
+            pass
+    except Exception:
+        pass  # Never block normal operation
+
+
 def _detect_agents() -> list[str]:
     """Detect OpenClaw agents by checking ~/.openclaw/agents/ directory."""
     agents_dir = Path.home() / ".openclaw" / "agents"
@@ -657,6 +773,12 @@ def cmd_write(args):
     # Memo nudge (ADR-011)
     _memo_nudge(args)
 
+    # Process nudge: show relevant processes for context
+    write_text = args.text
+    write_title = getattr(args, "title", None) or ""
+    write_tags = args.tags.split(",") if args.tags else []
+    _process_nudge(f"{write_title} {write_text}", write_tags, args)
+
     return 0
 
 
@@ -809,6 +931,10 @@ def cmd_query(args):
 
     # Memo nudge (ADR-011)
     _memo_nudge(args)
+
+    # Process nudge: show relevant processes for query context
+    query_tags = []  # query doesn't have explicit tags
+    _process_nudge(args.query, query_tags, args)
 
     return 0
 
