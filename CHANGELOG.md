@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.7.2] — 2026-03-13
+## [1.7.3] — 2026-03-13
 
 ### Added
 - **Frictionless init** — `palaia init` without `--agent` now works, defaulting to agent name "default". Single-agent systems no longer need to specify a name.
