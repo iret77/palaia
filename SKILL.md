@@ -20,8 +20,8 @@ metadata:
       - command: "palaia init"
         label: "Initialize Palaia store"
     postUpdate:
-      - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && npm install -g @byte5ai/palaia@latest && palaia doctor --fix && palaia warmup"
-        label: "Upgrade Palaia (pip + npm plugin) and run health checks"
+      - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && (npm install -g @byte5ai/palaia@latest 2>/dev/null || true) && palaia doctor --fix && palaia warmup"
+        label: "Upgrade Palaia (pip + npm plugin if available) and run health checks"
     plugin:
       slot: memory
       package: "@byte5ai/palaia"
