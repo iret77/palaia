@@ -493,7 +493,7 @@ def format_result(result: dict) -> str:
     if system_files:
         lines.append("")
         for sf in system_files:
-            lines.append(f"⚠️  System file detected: {sf}")
+            lines.append(f"Warning: System file detected: {sf}")
             lines.append("    This file is used at runtime by agents. It was copied to Palaia but NOT deleted.")
             lines.append("    Do not remove it manually.")
         lines.append("")

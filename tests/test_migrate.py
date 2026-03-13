@@ -328,6 +328,6 @@ def test_format_result_shows_system_file_warnings():
         "system_files_detected": ["MEMORY.md", "memory/projects/clawsy/CONTEXT.md"],
     }
     output = format_result(result)
-    assert "⚠️  System file detected: MEMORY.md" in output
-    assert "⚠️  System file detected: memory/projects/clawsy/CONTEXT.md" in output
+    assert "Warning: System file detected: MEMORY.md" in output
+    assert "Warning: System file detected: memory/projects/clawsy/CONTEXT.md" in output
     assert "Do not remove it manually" in output

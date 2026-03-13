@@ -16,6 +16,16 @@ from palaia.project import ProjectManager
 from palaia.search import SearchEngine
 from palaia.store import Store
 from palaia.sync import export_entries, import_entries
+from palaia.ui import (
+    format_size,
+    print_header,
+    relative_time,
+    score_display,
+    section,
+    table_kv,
+    table_multi,
+    truncate,
+)
 
 
 def check_version_nag():
@@ -37,12 +47,12 @@ def check_version_nag():
 
         if not store_version:
             # No store version = needs palaia doctor
-            print("⚠️  Palaia store has no version stamp. Run: palaia doctor --fix", file=sys.stderr)
+            print("Warning: Palaia store has no version stamp. Run: palaia doctor --fix", file=sys.stderr)
             return
 
         if store_version != __version__:
             print(
-                f"⚠️  Palaia CLI is v{__version__} but store is v{store_version}. Run: palaia doctor --fix",
+                f"Warning: Palaia CLI is v{__version__} but store is v{store_version}. Run: palaia doctor --fix",
                 file=sys.stderr,
             )
     except Exception:
@@ -113,18 +123,18 @@ def cmd_init(args):
         store_mode = getattr(args, "store_mode", None)
         if store_mode == "isolated":
             config["store_mode"] = "isolated"
-            print(f"🤖 Found {len(agents)} agents: {', '.join(agents)}")
-            print("   Using isolated stores — each agent gets its own .palaia directory.")
+            print(f"Found {len(agents)} agents: {', '.join(agents)}")
+            print("  Using isolated stores — each agent gets its own .palaia directory.")
         else:
             config["store_mode"] = "shared"
-            print(f"🤖 Found {len(agents)} agents: {', '.join(agents)}")
-            print(f"   Using shared store at {target}")
-            print("   All agents will see team-scoped entries.")
-            print("   Use --agent flag when writing so entries are attributed correctly.")
+            print(f"Found {len(agents)} agents: {', '.join(agents)}")
+            print(f"  Using shared store at {target}")
+            print("  All agents will see team-scoped entries.")
+            print("  Use --agent flag when writing so entries are attributed correctly.")
             if store_mode is None:
-                print("   (Use 'palaia init --isolated' for separate stores per agent)")
+                print("  (Use 'palaia init --isolated' for separate stores per agent)")
     elif len(agents) == 1:
-        print(f"🤖 Found 1 agent: {agents[0]}")
+        print(f"Found 1 agent: {agents[0]}")
         config["store_mode"] = "shared"
 
     config["store_version"] = __version__
@@ -148,23 +158,23 @@ def cmd_init(args):
     has_local = any(p in chain for p in ("sentence-transformers", "fastembed", "ollama"))
     has_openai = "openai" in chain
     if has_openai and not has_local:
-        print(f"⚠️  Embedding chain: {' → '.join(chain)} (no local fallback)")
-        print("   If OpenAI is unavailable, search quality will drop significantly.")
-        print("   Recommend: pip install sentence-transformers && palaia warmup")
+        print(f"Embedding chain: {' -> '.join(chain)} (no local fallback)")
+        print("  If OpenAI is unavailable, search quality will drop significantly.")
+        print("  Recommend: pip install sentence-transformers && palaia warmup")
     elif len(chain) > 1:
-        print(f"✅ Embedding chain configured: {' → '.join(chain)}")
+        print(f"Embedding chain configured: {' -> '.join(chain)}")
     else:
-        print("⚠️  No semantic search providers found. Using BM25 only.")
-        print("   To enable semantic search, install one of:")
-        print("   • sentence-transformers: pip install sentence-transformers")
-        print("   • fastembed: pip install fastembed")
-        print("   • ollama: https://ollama.ai (then: palaia config set-chain ollama bm25)")
-        print("   • OpenAI: set OPENAI_API_KEY env var")
-        print("   Then run: palaia warmup")
+        print("No semantic search providers found. Using BM25 only.")
+        print("  To enable semantic search, install one of:")
+        print("  - sentence-transformers: pip install sentence-transformers")
+        print("  - fastembed: pip install fastembed")
+        print("  - ollama: https://ollama.ai (then: palaia config set-chain ollama bm25)")
+        print("  - OpenAI: set OPENAI_API_KEY env var")
+        print("  Then run: palaia warmup")
 
     # Post-init instructions for LLM agents
     print()
-    print("⚠️  SETUP REQUIRED — Continue with these steps:")
+    print("SETUP REQUIRED — Continue with these steps:")
     print("1. Run: palaia doctor --fix")
     print("   (Checks your system, fixes common issues, configures version tracking)")
     print("2. Run: palaia detect")
@@ -258,7 +268,8 @@ def cmd_query(args):
             print()
 
     if not results:
-        print("No results found.")
+        print_header()
+        print("\nNo results found.")
         return 0
 
     # RAG output format
@@ -277,15 +288,21 @@ def cmd_query(args):
         print(format_rag_output(args.query, enriched))
         return 0
 
+    print_header()
+    print(section(f"Results for: {args.query}"))
+
+    rows = []
     for r in results:
-        tier_badge = {"hot": "🔥", "warm": "🌤", "cold": "❄️"}.get(r["tier"], "?")
         title = r["title"] or "(untitled)"
-        print(f"\n{tier_badge} [{r['score']}] {title}")
-        print(f"  ID: {r['id']}")
-        print(f"  Scope: {r['scope']} | Decay: {r['decay_score']}")
-        if r["tags"]:
-            print(f"  Tags: {', '.join(r['tags'])}")
-        print(f"  {r['body']}")
+        score_str = score_display(r["score"])
+        body_preview = truncate(r["body"].replace("\n", " "), 50)
+        rows.append((r["id"][:8], score_str, r["tier"], title, body_preview))
+
+    print(table_multi(
+        headers=("ID", "Score", "Tier", "Title", "Preview"),
+        rows=rows,
+        min_widths=(8, 18, 4, 16, 20),
+    ))
 
     search_tier = "hybrid" if engine.has_embeddings else "BM25"
     print(f"\n{len(results)} result(s) found. (Search tier: {search_tier})")
@@ -411,11 +428,11 @@ def cmd_ingest(args):
         print(f"  Skipped (too short): {result.skipped_chunks}")
         return 0
 
-    print(f"  Chunking: {args.chunk_size} words, {args.chunk_overlap} overlap → {result.total_chunks} chunks")
+    print(f"  Chunking: {args.chunk_size} words, {args.chunk_overlap} overlap -> {result.total_chunks} chunks")
     print(f"\nDone in {result.duration_seconds}s")
-    print(f"  ✅ {result.stored_chunks} chunks stored")
+    print(f"  {result.stored_chunks} chunks stored")
     if result.skipped_chunks:
-        print(f"  ⏭  {result.skipped_chunks} chunks skipped (too short)")
+        print(f"  {result.skipped_chunks} chunks skipped (too short)")
     if result.project:
         print(f"  Project: {result.project}")
     print(f"  Scope: {args.scope or 'private'}")
@@ -490,17 +507,26 @@ def cmd_list(args):
         return 0
 
     if not entries:
-        print(f"No entries in {tier}.")
+        print_header()
+        print(f"\nNo entries in {tier}.")
         return 0
 
+    print_header()
+    print(section(f"Entries ({tier})"))
+
+    rows = []
     for meta, body in entries:
         title = meta.get("title", "(untitled)")
-        entry_id = meta.get("id", "?")
+        entry_id = meta.get("id", "?")[:8]
         scope = meta.get("scope", "team")
-        score = meta.get("decay_score", 0)
-        preview = body[:80].replace("\n", " ")
-        print(f"  {entry_id[:8]}  [{scope}] {title} (score: {score})")
-        print(f"           {preview}...")
+        age = relative_time(meta.get("created", ""))
+        rows.append((entry_id, scope, title, age))
+
+    print(table_multi(
+        headers=("ID", "Scope", "Title", "Age"),
+        rows=rows,
+        min_widths=(8, 6, 20, 8),
+    ))
 
     print(f"\n{len(entries)} entries in {tier}.")
     return 0
@@ -518,17 +544,54 @@ def cmd_status(args):
     if _json_out(info, args):
         return 0
 
-    print(f"Palaia v{__version__}")
-    print(f"Root: {info['palaia_root']}")
-    print("\nEntries:")
-    print(f"  🔥 HOT:  {info['entries']['hot']}")
-    print(f"  🌤  WARM: {info['entries']['warm']}")
-    print(f"  ❄️  COLD: {info['entries']['cold']}")
-    print(f"  Total: {info['total']}")
+    print_header()
+
+    # Calculate disk size
+    disk_bytes = 0
+    for tier in ("hot", "warm", "cold"):
+        tier_dir = root / tier
+        if tier_dir.exists():
+            for f in tier_dir.iterdir():
+                if f.is_file():
+                    disk_bytes += f.stat().st_size
+
+    # Count projects
+    projects_file = root / "projects.json"
+    project_count = 0
+    if projects_file.exists():
+        try:
+            pdata = json.loads(projects_file.read_text())
+            project_count = len(pdata) if isinstance(pdata, dict) else 0
+        except Exception:
+            pass
+
+    # Last write / Last GC timestamps
+    last_write = _find_latest_mtime(root, ("hot", "warm"))
+    last_gc = _find_gc_time(root)
+
+    entries_str = f"{info['entries']['hot']} hot"
+    if info['entries']['warm']:
+        entries_str += f" / {info['entries']['warm']} warm"
+    if info['entries']['cold']:
+        entries_str += f" / {info['entries']['cold']} cold"
+
+    store_rows = [
+        ("Root", str(info["palaia_root"])),
+        ("Store version", f"v{__version__}"),
+        ("Entries", entries_str),
+        ("Projects", str(project_count)),
+        ("Disk size", format_size(disk_bytes)),
+        ("Last write", relative_time(last_write) if last_write else "never"),
+        ("Last GC", relative_time(last_gc) if last_gc else "never"),
+    ]
+
     if info["wal_pending"]:
-        print(f"\n⚠️  WAL pending: {info['wal_pending']}")
+        store_rows.append(("WAL pending", str(info["wal_pending"])))
     if recovered:
-        print(f"  Recovered: {recovered} entries")
+        store_rows.append(("WAL recovered", f"{recovered} entries"))
+
+    print(section("Store"))
+    print(table_kv(store_rows))
 
     # Embedding chain status
     from palaia.embeddings import build_embedding_chain
@@ -536,35 +599,68 @@ def cmd_status(args):
     chain = build_embedding_chain(store.config)
     statuses = chain.provider_status()
 
-    chain_display = " → ".join(s["name"] for s in statuses)
-    print(f"\nEmbedding chain: {chain_display}")
-    for i, s in enumerate(statuses, 1):
+    embed_rows = []
+    labels = ["Primary", "Fallback", "Last resort"]
+    for i, s in enumerate(statuses):
+        label = labels[i] if i < len(labels) else f"Provider {i + 1}"
         model_str = f" ({s['model']})" if s.get("model") else ""
-        mark = "✓" if s["available"] else "✗"
-        print(f"  {i}. {s['name']}{model_str} {mark} {s['status']}")
+        avail = "ok" if s["available"] else "n/a"
+        embed_rows.append((label, f"{s['name']}{model_str} [{avail}]"))
 
-    # Determine active provider
-    has_embed = any(s["available"] and s["name"] != "bm25" for s in statuses)
-    if chain.fallback_reason:
-        active = chain.active_provider_name or "bm25"
-        print(f"Active: {active} (fallback — {chain.fallback_reason})")
-    elif has_embed:
-        # First available non-bm25
-        active = next((s["name"] for s in statuses if s["available"] and s["name"] != "bm25"), "bm25")
-        print(f"Active: {active} (primary)")
-    else:
-        print("Active: bm25 (keyword search)")
+    # Index status
+    try:
+        from palaia.index import EmbeddingCache
+        cache = EmbeddingCache(root)
+        idx_count = len(cache._load()) if hasattr(cache, "_load") else "?"
+    except Exception:
+        idx_count = "?"
+    embed_rows.append(("Index", f"{idx_count}/{info['total']} entries indexed"))
+
+    print(section("Embeddings"))
+    print(table_kv(embed_rows))
 
     # BM25-only warning
+    has_embed = any(s["available"] and s["name"] != "bm25" for s in statuses)
     bm25_only = all(s["name"] == "bm25" for s in statuses) or not has_embed
     if bm25_only:
-        print()
-        print("⚠️  Semantic search is not enabled.")
-        print("   Results are keyword-based only.")
-        print("   Run 'palaia detect' to see available providers.")
-        print("   Run 'palaia warmup' after adding a provider.")
+        print("\nNote: Semantic search is not enabled. Results are keyword-based only.")
+        print("  Run 'palaia detect' to see available providers.")
 
     return 0
+
+
+def _find_latest_mtime(root: Path, tiers: tuple[str, ...] = ("hot",)) -> str | None:
+    """Find the latest file mtime across tiers, return as ISO string."""
+    from datetime import datetime, timezone
+
+    latest = 0.0
+    for tier in tiers:
+        tier_dir = root / tier
+        if not tier_dir.exists():
+            continue
+        for f in tier_dir.iterdir():
+            if f.is_file():
+                mt = f.stat().st_mtime
+                if mt > latest:
+                    latest = mt
+    if latest == 0.0:
+        return None
+    return datetime.fromtimestamp(latest, tz=timezone.utc).isoformat()
+
+
+def _find_gc_time(root: Path) -> str | None:
+    """Try to find the last GC run timestamp from config or file markers."""
+
+    config_path = root / "config.json"
+    if config_path.exists():
+        try:
+            config = json.loads(config_path.read_text())
+            gc_ts = config.get("last_gc")
+            if gc_ts:
+                return gc_ts
+        except Exception:
+            pass
+    return None
 
 
 def cmd_detect(args):
@@ -588,102 +684,71 @@ def cmd_detect(args):
     ):
         return 0
 
-    print("Palaia Environment Detection")
-    print("=" * 29)
-    print(f"System: {sys_info}")
-    print(f"Python: {py_ver}")
-    print()
-    print("Embedding providers found:")
+    print_header()
+    print(section("Environment"))
+    print(table_kv([
+        ("System", sys_info),
+        ("Python", py_ver),
+    ]))
 
+    # Build provider rows
     available = []
+    provider_rows = []
     for p in providers:
         name = p["name"]
         if name == "ollama":
             if p["server_running"]:
-                has_nomic = p.get("has_nomic", False)
-                model_status = (
-                    f"nomic-embed-text: {'available ✓' if has_nomic else 'not pulled (ollama pull nomic-embed-text)'}"
-                )
-                mark = "✓" if p["available"] else "△"
-                print(f"  {mark} ollama        — server running at localhost:11434")
-                print(f"                    {model_status}")
+                status = "running"
                 if p["available"]:
                     available.append("ollama")
+                    status = "ok"
             else:
-                print(f"  ✗ ollama        — server not running ({p.get('install_hint', 'start with: ollama serve')})")
-        elif name == "sentence-transformers":
+                status = "not running"
+            provider_rows.append((name, "ok" if p["available"] else "n/a", status))
+        elif name in ("sentence-transformers", "fastembed"):
             if p["available"]:
-                print(f"  ✓ sentence-transformers {p['version']} — installed")
-                available.append("sentence-transformers")
+                available.append(name)
+                provider_rows.append((name, "ok", f"v{p['version']}"))
             else:
-                print(f"  ✗ sentence-transformers — not installed ({p['install_hint']})")
-        elif name == "fastembed":
+                provider_rows.append((name, "n/a", p.get("install_hint", "not installed")))
+        elif name in ("openai", "voyage"):
             if p["available"]:
-                print(f"  ✓ fastembed {p['version']} — installed")
-                available.append("fastembed")
+                available.append(name)
+                provider_rows.append((name, "ok", "key found"))
             else:
-                print(f"  ✗ fastembed     — not installed ({p['install_hint']})")
-        elif name == "openai":
-            if p["available"]:
-                print("  ✓ OpenAI API    — key found")
-                available.append("openai")
-            else:
-                print("  ✗ OpenAI API    — no key found")
-        elif name == "voyage":
-            if p["available"]:
-                print("  ✓ Voyage API    — key found")
-                available.append("voyage")
-            else:
-                print("  ✗ Voyage API    — no key found")
+                provider_rows.append((name, "n/a", "no key"))
 
-    print()
-    print("BM25 keyword search: always available ✓")
+    provider_rows.append(("bm25", "ok", "always available"))
 
-    if available:
-        rec = available[0]
-        rec_desc = {
-            "ollama": "ollama (server running, nomic-embed-text available)",
-            "sentence-transformers": "sentence-transformers (installed, best local quality)",
-            "fastembed": "fastembed (installed, lightweight)",
-            "openai": "OpenAI API (cloud-based)",
-        }
-        print(f"\nRecommendation: {rec_desc.get(rec, rec)}")
-        if len(available) > 1:
-            alt = available[1]
-            print(f"Alternatively:  {rec_desc.get(alt, alt)}")
-    else:
-        print("\nNo embedding providers found. Using keyword search (BM25).")
-        print("Install one for semantic search: pip install 'palaia[sentence-transformers]'")
+    print(section("Providers"))
+    print(table_multi(
+        headers=("Provider", "Status", "Details"),
+        rows=provider_rows,
+        min_widths=(22, 6, 30),
+    ))
 
     # Recommended chain
     has_openai = "openai" in available
     has_local = any(p in available for p in ("sentence-transformers", "fastembed", "ollama"))
     local_name = next((p for p in ("sentence-transformers", "fastembed", "ollama") if p in available), None)
 
-    print()
     if has_openai and has_local:
         chain_parts = ["openai", local_name, "bm25"]
-        chain_str = " → ".join(chain_parts)
-        print(f"Recommended chain: {chain_str}")
-        print("  (Best quality cloud + best local fallback + always-on keyword backup)")
     elif has_local:
         chain_parts = [local_name, "bm25"]
-        chain_str = " → ".join(chain_parts)
-        print(f"Recommended chain: {chain_str}")
-        print("  (Local provider, no cloud dependency)")
     elif has_openai:
         chain_parts = ["openai", "bm25"]
-        chain_str = " → ".join(chain_parts)
-        print(f"Recommended chain: {chain_str}")
-        print("  (Cloud-based. Install sentence-transformers for offline fallback)")
     else:
         chain_parts = ["bm25"]
-        chain_str = "bm25"
-        print(f"Recommended chain: {chain_str}")
-        print("  (Keyword search. pip install 'palaia[sentence-transformers]' for better results)")
 
+    chain_str = " -> ".join(chain_parts)
     cmd_str = " ".join(chain_parts)
-    print(f"\nSet with: palaia config set-chain {cmd_str}")
+
+    print(section("Recommendation"))
+    print(table_kv([
+        ("Chain", chain_str),
+        ("Set with", f"palaia config set-chain {cmd_str}"),
+    ]))
 
     # Show current config
     try:
@@ -692,7 +757,7 @@ def cmd_detect(args):
         chain_cfg = config.get("embedding_chain")
         provider_cfg = config.get("embedding_provider", "auto")
         if chain_cfg:
-            print(f"\nCurrent config: embedding_chain = {' → '.join(chain_cfg)}")
+            print(f"\nCurrent config: embedding_chain = {' -> '.join(chain_cfg)}")
         else:
             print(f"\nCurrent config: embedding_provider = {provider_cfg}")
     except FileNotFoundError:
@@ -723,7 +788,7 @@ def cmd_config_set_chain(args):
     config["embedding_chain"] = chain
     save_config(root, config)
 
-    chain_str = " → ".join(chain)
+    chain_str = " -> ".join(chain)
     if _json_out({"embedding_chain": chain}, args):
         return 0
     print(f"Embedding chain: {chain_str}")
@@ -797,15 +862,17 @@ def cmd_warmup(args):
         print("No embedding providers configured (using BM25 keyword search).")
         return 0
 
+    print_header()
+    print(section("Warmup"))
+    warmup_rows = []
     for r in results:
-        if r["status"] == "ready":
-            print(f"✓ {r['name']}: {r['message']}")
-        elif r["status"] == "skipped":
-            print(f"– {r['name']}: {r['message']}")
-        elif r["status"] == "action_needed":
-            print(f"△ {r['name']}: {r['message']}")
-        else:
-            print(f"✗ {r['name']}: {r['message']}")
+        status = {"ready": "ok", "skipped": "skip", "action_needed": "warn"}.get(r["status"], "error")
+        warmup_rows.append((r["name"], f"[{status}]", r["message"]))
+    print(table_multi(
+        headers=("Provider", "Status", "Details"),
+        rows=warmup_rows,
+        min_widths=(22, 8, 30),
+    ))
 
     return 0
 
@@ -857,7 +924,7 @@ def cmd_doctor(args):
     if fix_actions:
         print("\nFixes applied:")
         for action in fix_actions:
-            print(f"  ✓ {action}")
+            print(f"  [ok] {action}")
         print()
 
     return 0
@@ -972,22 +1039,22 @@ def cmd_setup(args):
 
         if symlink_path.exists() or symlink_path.is_symlink():
             if not dry_run and not getattr(args, "json", False):
-                print(f"  ⏭  {agent_name}: .palaia already exists")
+                print(f"  [skip] {agent_name}: .palaia already exists")
             continue
 
         if dry_run:
             if not getattr(args, "json", False):
-                print(f"  🔗 {agent_name}: would create .palaia → {store_path}")
+                print(f"  [plan] {agent_name}: would create .palaia -> {store_path}")
             symlinks_created += 1
         else:
             try:
                 symlink_path.symlink_to(store_path)
                 symlinks_created += 1
                 if not getattr(args, "json", False):
-                    print(f"  ✅ {agent_name}: .palaia → {store_path}")
+                    print(f"  [ok] {agent_name}: .palaia -> {store_path}")
             except OSError as e:
                 if not getattr(args, "json", False):
-                    print(f"  ❌ {agent_name}: {e}")
+                    print(f"  [error] {agent_name}: {e}")
 
     result = {
         "agents": agents,
@@ -1045,12 +1112,21 @@ def cmd_project(args):
         if _json_out({"projects": [p.to_dict() for p in projects]}, args):
             return 0
         if not projects:
-            print("No projects.")
+            print_header()
+            print("\nNo projects.")
             return 0
+        print_header()
+        print(section("Projects"))
+        rows = []
         for p in projects:
-            owner_str = f", owner: {p.owner}" if p.owner else ""
-            desc = f" — {p.description}" if p.description else ""
-            print(f"  {p.name} (scope: {p.default_scope}{owner_str}){desc}")
+            owner_str = p.owner or ""
+            desc = p.description or ""
+            rows.append((p.name, p.default_scope, owner_str, desc))
+        print(table_multi(
+            headers=("Name", "Scope", "Owner", "Description"),
+            rows=rows,
+            min_widths=(12, 6, 8, 20),
+        ))
         print(f"\n{len(projects)} project(s).")
         return 0
 
@@ -1086,26 +1162,32 @@ def cmd_project(args):
             args,
         ):
             return 0
-        desc = f" — {project.description}" if project.description else ""
-        print(f"Project: {project.name}{desc}")
-        owner_display = project.owner or "(none)"
-        print(f"  Owner: {owner_display}")
-        print(f"  Scope: {project.default_scope}")
-        if contributors:
-            print(f"  Contributors: {', '.join(contributors)}")
-        print(f"  Created: {project.created_at}")
+        print_header()
+        print(section(f"Project: {project.name}"))
+        info_rows = [
+            ("Name", project.name),
+            ("Description", project.description or "(none)"),
+            ("Owner", project.owner or "(none)"),
+            ("Default scope", project.default_scope),
+            ("Contributors", ", ".join(contributors) if contributors else "(none)"),
+            ("Created", project.created_at),
+            ("Entries", str(len(entries))),
+        ]
+        print(table_kv(info_rows))
+
         if entries:
-            print(f"\n  Entries ({len(entries)}):")
+            print(section("Entries"))
+            entry_rows = []
             for meta, body, tier in entries:
                 title = meta.get("title", "(untitled)")
-                entry_id = meta.get("id", "?")
+                entry_id = meta.get("id", "?")[:8]
                 scope = meta.get("scope", "team")
-                preview = body[:80].replace("\n", " ")
-                tier_badge = {"hot": "🔥", "warm": "🌤", "cold": "❄️"}.get(tier, "?")
-                print(f"    {tier_badge} {entry_id[:8]}  [{scope}] {title}")
-                print(f"              {preview}...")
-        else:
-            print("\n  No entries yet.")
+                entry_rows.append((entry_id, tier, scope, title))
+            print(table_multi(
+                headers=("ID", "Tier", "Scope", "Title"),
+                rows=entry_rows,
+                min_widths=(8, 4, 6, 20),
+            ))
         return 0
 
     elif action == "write":
@@ -1140,14 +1222,23 @@ def cmd_project(args):
         if _json_out({"results": results, "project": args.name}, args):
             return 0
         if not results:
-            print(f"No results in project '{args.name}'.")
+            print_header()
+            print(f"\nNo results in project '{args.name}'.")
             return 0
+
+        print_header()
+        print(section(f"Results in project '{args.name}'"))
+        rows = []
         for r in results:
-            tier_badge = {"hot": "🔥", "warm": "🌤", "cold": "❄️"}.get(r["tier"], "?")
             title = r["title"] or "(untitled)"
-            print(f"\n{tier_badge} [{r['score']}] {title}")
-            print(f"  ID: {r['id']}")
-            print(f"  {r['body']}")
+            score_str = score_display(r["score"])
+            body_preview = truncate(r["body"].replace("\n", " "), 50)
+            rows.append((r["id"][:8], score_str, r["tier"], title, body_preview))
+        print(table_multi(
+            headers=("ID", "Score", "Tier", "Title", "Preview"),
+            rows=rows,
+            min_widths=(8, 18, 4, 16, 20),
+        ))
         print(f"\n{len(results)} result(s) in project '{args.name}'.")
         return 0
 
@@ -1227,7 +1318,7 @@ def _format_lock_human(lock_data: dict) -> str:
     except (ValueError, TypeError):
         time_str = acquired
 
-    result = f"🔒 Locked by {agent} since {time_str} ({age_str})"
+    result = f"Locked by {agent} since {time_str} ({age_str})"
     if reason:
         result += f"\n   Reason: {reason}"
     return result
@@ -1277,7 +1368,7 @@ def cmd_lock(args):
 
         if _json_out(lock_data, args):
             return 0
-        print(f"🔒 Locked project '{project}' for agent '{agent}'")
+        print(f"Locked project '{project}' for agent '{agent}'")
         if reason:
             print(f"   Reason: {reason}")
         ttl_min = lock_data.get("ttl_seconds", 1800) // 60
@@ -1325,7 +1416,7 @@ def cmd_lock(args):
         if _json_out(lock_data, args):
             return 0
         ttl_min = lock_data.get("ttl_seconds", 1800) // 60
-        print(f"🔄 Lock renewed for project '{project}' — expires {lock_data['expires']} ({ttl_min}min)")
+        print(f"Lock renewed for project '{project}' — expires {lock_data['expires']} ({ttl_min}min)")
         return 0
 
     elif action == "break":
@@ -1338,7 +1429,7 @@ def cmd_lock(args):
         if old:
             if _json_out({"broken": True, "previous_lock": old}, args):
                 return 0
-            print(f"⚠️  Lock for project '{project}' force-broken (was held by {old.get('agent', '?')})")
+            print(f"Lock for project '{project}' force-broken (was held by {old.get('agent', '?')})")
         else:
             if _json_out({"broken": False, "project": project}, args):
                 return 0
@@ -1387,7 +1478,7 @@ def cmd_unlock(args):
     if removed:
         if _json_out({"unlocked": True, "project": project}, args):
             return 0
-        print(f"🔓 Unlocked project '{project}'")
+        print(f"Unlocked project '{project}'")
     else:
         if _json_out({"unlocked": False, "project": project}, args):
             return 0
@@ -1413,8 +1504,8 @@ def cmd_memo(args):
         )
         if _json_out(meta, args):
             return 0
-        prio_icon = "🔴" if meta["priority"] == "high" else "📨"
-        print(f"{prio_icon} Memo sent to '{meta['to']}' (id: {meta['id'][:8]}…)")
+        prio_label = " [high]" if meta["priority"] == "high" else ""
+        print(f"Memo sent to '{meta['to']}'{prio_label} (id: {meta['id'][:8]})")
         return 0
 
     if action == "broadcast":
@@ -1426,7 +1517,7 @@ def cmd_memo(args):
         )
         if _json_out(meta, args):
             return 0
-        print(f"📢 Broadcast sent (id: {meta['id'][:8]}…)")
+        print(f"Broadcast sent (id: {meta['id'][:8]})")
         return 0
 
     if action == "inbox":
@@ -1437,18 +1528,26 @@ def cmd_memo(args):
         ):
             return 0
         if not memos:
-            print("📭 No memos.")
+            print("No memos.")
             return 0
-        print(f"📬 {len(memos)} memo(s):\n")
+        print(f"{len(memos)} memo(s):\n")
+        rows = []
         for meta, body in memos:
-            prio = " 🔴" if meta.get("priority") == "high" else ""
-            read_mark = " ✓" if meta.get("read") else ""
-            print(f"  [{meta['id'][:8]}…] from {meta.get('from', '?')}{prio}{read_mark}")
-            print(f"    {meta.get('sent', '?')}")
-            # Show first line of body
-            first_line = body.split("\n")[0][:80] if body else ""
-            print(f"    {first_line}")
-            print()
+            prio = "[high]" if meta.get("priority") == "high" else ""
+            read_mark = "[read]" if meta.get("read") else "[new]"
+            first_line = body.split("\n")[0][:60] if body else ""
+            rows.append((
+                meta["id"][:8],
+                meta.get("from", "?"),
+                read_mark,
+                prio,
+                first_line,
+            ))
+        print(table_multi(
+            headers=("ID", "From", "State", "Prio", "Message"),
+            rows=rows,
+            min_widths=(8, 8, 6, 6, 20),
+        ))
         return 0
 
     if action == "ack":
@@ -1456,7 +1555,7 @@ def cmd_memo(args):
             count = mm.ack_all(agent=args.agent)
             if _json_out({"acked": count}, args):
                 return 0
-            print(f"✅ Acknowledged {count} memo(s).")
+            print(f"Acknowledged {count} memo(s).")
             return 0
         if not args.memo_id:
             print("Error: memo ID required (or use --all)", file=sys.stderr)
@@ -1465,7 +1564,7 @@ def cmd_memo(args):
         if _json_out({"acked": ok, "id": args.memo_id}, args):
             return 0
         if ok:
-            print(f"✅ Memo {args.memo_id[:8]}… acknowledged.")
+            print(f"Memo {args.memo_id[:8]} acknowledged.")
         else:
             print(f"Memo {args.memo_id} not found.", file=sys.stderr)
             return 1
@@ -1476,7 +1575,7 @@ def cmd_memo(args):
         if _json_out(stats, args):
             return 0
         print(
-            f"🧹 GC: removed {stats['removed_expired']} expired, "
+            f"GC: removed {stats['removed_expired']} expired, "
             f"{stats['removed_read']} read ({stats['total_removed']} total)"
         )
         return 0

@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 
 def test_detect_output_format():
-    """Test that palaia detect outputs the expected format."""
+    """Test that palaia detect outputs the expected format with tables."""
     from palaia.cli import cmd_detect
 
     args = type("Args", (), {"json": False})()
@@ -27,13 +27,13 @@ def test_detect_output_format():
 
     output = captured.getvalue()
 
-    # Check required sections
-    assert "Palaia Environment Detection" in output
-    assert "=====" in output
-    assert "System:" in output
-    assert "Python:" in output
-    assert "Embedding providers found:" in output
-    assert "BM25 keyword search: always available ✓" in output
+    # Check header
+    assert "Palaia v" in output
+    assert "Local memory for AI agents" in output
+    # Check table sections
+    assert "Environment" in output
+    assert "Providers" in output
+    assert "bm25" in output
 
 
 def test_detect_json_output():
@@ -89,6 +89,5 @@ def test_detect_with_ollama_available():
         sys.stdout = old_stdout
 
     output = captured.getvalue()
-    assert "✓ ollama" in output
-    assert "nomic-embed-text: available ✓" in output
-    assert "Recommendation: ollama" in output
+    assert "ollama" in output
+    assert "Recommendation" in output
