@@ -26,16 +26,17 @@ B_TL = "\u250c"  # ┌
 B_TR = "\u2510"  # ┐
 B_BL = "\u2514"  # └
 B_BR = "\u2518"  # ┘
-B_H = "\u2500"   # ─
-B_V = "\u2502"   # │
+B_H = "\u2500"  # ─
+B_V = "\u2502"  # │
 B_LT = "\u251c"  # ├
 B_RT = "\u2524"  # ┤
 B_TT = "\u252c"  # ┬
 B_BT = "\u2534"  # ┴
-B_X = "\u253c"   # ┼
+B_X = "\u253c"  # ┼
 
 
 # ── Terminal helpers ─────────────────────────────────────────────────────────
+
 
 def terminal_width() -> int:
     """Get terminal width, default 80 if unavailable."""
@@ -56,6 +57,7 @@ def truncate(text: str, max_len: int, suffix: str = "..") -> str:
 
 # ── Header ───────────────────────────────────────────────────────────────────
 
+
 def header() -> str:
     """Return the standard Palaia header (2 lines)."""
     return f"{HEADER_LINE}\n{HEADER_URL}"
@@ -67,6 +69,7 @@ def print_header() -> None:
 
 
 # ── Table rendering ──────────────────────────────────────────────────────────
+
 
 def _cell_widths(rows: Sequence[tuple[str, str]], key_min: int = 16, val_min: int = 20) -> tuple[int, int]:
     """Calculate column widths from rows (key-value pairs)."""
@@ -208,6 +211,7 @@ def table_multi(
 
 # ── Section helpers ──────────────────────────────────────────────────────────
 
+
 def section(title: str) -> str:
     """Return a section title line."""
     return f"\n{title}"
@@ -225,6 +229,7 @@ def status_label(status: str) -> str:
 
 
 # ── Age / relative time ─────────────────────────────────────────────────────
+
 
 def relative_time(iso_str: str) -> str:
     """Convert an ISO datetime string to a relative time like '2m ago', '3h ago', '5d ago'."""
@@ -263,6 +268,7 @@ def relative_time(iso_str: str) -> str:
 
 # ── Disk size formatting ─────────────────────────────────────────────────────
 
+
 def format_size(bytes_val: int) -> str:
     """Format bytes into human-readable size."""
     if bytes_val < 1024:
@@ -275,6 +281,7 @@ def format_size(bytes_val: int) -> str:
 
 
 # ── Score bar ────────────────────────────────────────────────────────────────
+
 
 def score_display(score: float, width: int = 10) -> str:
     """Render a score as a compact numeric + bar.

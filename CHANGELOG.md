@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.6.1] — 2026-03-13
+
+### Changed
+- **CLI copyright header** — All commands now display "(c) byte5 GmbH" in the header.
+- **HuggingFace warning suppression** — Noisy HF warnings silenced during query/warmup.
+- **Version sync** — All references (pyproject.toml, __init__.py, SKILL.md) bumped to 1.6.1.
+
+### Fixed
+- **Arrow character mismatch** — test_chain_cli.py updated for new UI arrow characters.
+
+### Published
+- ClawHub v1.6.1
+
+## [1.6.0] — 2026-03-13
+
+### Added
+- **palaia/ui.py** — Box-drawing table renderer, header, and formatting helpers. No external dependencies.
+- **Unified CLI header** — Every command now shows a consistent header.
+
+### Changed
+- **All emojis removed** from CLI output for a professional look.
+- **Commands overhauled** — status, doctor, list, query, detect, project, warmup, memo inbox all use the new UI.
+- **--json flag** unchanged (machine output unaffected).
+
+### Updated
+- Tests updated for new output format.
+
 ## [1.5.2] — 2026-03-13
 
 ### Fixed

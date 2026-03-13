@@ -7,14 +7,13 @@ Persistent, local memory for AI agents — write something today, find it next w
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Released March 2026](https://img.shields.io/badge/released-March%202026-brightgreen.svg)]()
 
-## What's New in 1.5.0
+## What's New in 1.6.1
 
-- 👤 **Project Ownership** — Assign owners to projects, list by owner, auto-track contributors
-- 🔒 **Project Locking** — Prevent concurrent agent work on the same project
-- 💬 **Inter-Agent Messaging** — Async memos between agents (`palaia memo`)
-- 🔌 **OpenClaw Plugin** — Automatic activation and setup
-- 🚀 **Auto-Onboarding** — `palaia init` guides agents through complete setup
-- 🩺 **Health Checks** — `palaia doctor` with version tracking and upgrade nag
+- **Professional CLI UI** — Box-drawing tables, unified header, no emojis. Clean terminal output.
+- **Copyright header** — All commands display "(c) byte5 GmbH".
+- **HuggingFace warning suppression** — No more noisy warnings during query/warmup.
+- **Commands overhauled** — status, doctor, list, query, detect, project, warmup, memo inbox.
+- **No external UI deps** — New `palaia/ui.py` renderer with zero additional dependencies.
 
 See [CHANGELOG.md](CHANGELOG.md) for full details.
 

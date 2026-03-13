@@ -315,11 +315,13 @@ def cmd_query(args):
         body_preview = truncate(r["body"].replace("\n", " "), 50)
         rows.append((r["id"][:8], score_str, r["tier"], title, body_preview))
 
-    print(table_multi(
-        headers=("ID", "Score", "Tier", "Title", "Preview"),
-        rows=rows,
-        min_widths=(8, 18, 4, 16, 20),
-    ))
+    print(
+        table_multi(
+            headers=("ID", "Score", "Tier", "Title", "Preview"),
+            rows=rows,
+            min_widths=(8, 18, 4, 16, 20),
+        )
+    )
 
     search_tier = "hybrid" if engine.has_embeddings else "BM25"
     print(f"\n{len(results)} result(s) found. (Search tier: {search_tier})")
@@ -539,11 +541,13 @@ def cmd_list(args):
         age = relative_time(meta.get("created", ""))
         rows.append((entry_id, scope, title, age))
 
-    print(table_multi(
-        headers=("ID", "Scope", "Title", "Age"),
-        rows=rows,
-        min_widths=(8, 6, 20, 8),
-    ))
+    print(
+        table_multi(
+            headers=("ID", "Scope", "Title", "Age"),
+            rows=rows,
+            min_widths=(8, 6, 20, 8),
+        )
+    )
 
     print(f"\n{len(entries)} entries in {tier}.")
     return 0
@@ -587,9 +591,9 @@ def cmd_status(args):
     last_gc = _find_gc_time(root)
 
     entries_str = f"{info['entries']['hot']} hot"
-    if info['entries']['warm']:
+    if info["entries"]["warm"]:
         entries_str += f" / {info['entries']['warm']} warm"
-    if info['entries']['cold']:
+    if info["entries"]["cold"]:
         entries_str += f" / {info['entries']['cold']} cold"
 
     store_rows = [
@@ -627,6 +631,7 @@ def cmd_status(args):
     # Index status
     try:
         from palaia.index import EmbeddingCache
+
         cache = EmbeddingCache(root)
         idx_count = len(cache._load()) if hasattr(cache, "_load") else "?"
     except Exception:
@@ -703,10 +708,14 @@ def cmd_detect(args):
 
     print_header()
     print(section("Environment"))
-    print(table_kv([
-        ("System", sys_info),
-        ("Python", py_ver),
-    ]))
+    print(
+        table_kv(
+            [
+                ("System", sys_info),
+                ("Python", py_ver),
+            ]
+        )
+    )
 
     # Build provider rows
     available = []
@@ -738,11 +747,13 @@ def cmd_detect(args):
     provider_rows.append(("bm25", "ok", "always available"))
 
     print(section("Providers"))
-    print(table_multi(
-        headers=("Provider", "Status", "Details"),
-        rows=provider_rows,
-        min_widths=(22, 6, 30),
-    ))
+    print(
+        table_multi(
+            headers=("Provider", "Status", "Details"),
+            rows=provider_rows,
+            min_widths=(22, 6, 30),
+        )
+    )
 
     # Recommended chain
     has_openai = "openai" in available
@@ -762,10 +773,14 @@ def cmd_detect(args):
     cmd_str = " ".join(chain_parts)
 
     print(section("Recommendation"))
-    print(table_kv([
-        ("Chain", chain_str),
-        ("Set with", f"palaia config set-chain {cmd_str}"),
-    ]))
+    print(
+        table_kv(
+            [
+                ("Chain", chain_str),
+                ("Set with", f"palaia config set-chain {cmd_str}"),
+            ]
+        )
+    )
 
     # Show current config
     try:
@@ -885,11 +900,13 @@ def cmd_warmup(args):
     for r in results:
         status = {"ready": "ok", "skipped": "skip", "action_needed": "warn"}.get(r["status"], "error")
         warmup_rows.append((r["name"], f"[{status}]", r["message"]))
-    print(table_multi(
-        headers=("Provider", "Status", "Details"),
-        rows=warmup_rows,
-        min_widths=(22, 8, 30),
-    ))
+    print(
+        table_multi(
+            headers=("Provider", "Status", "Details"),
+            rows=warmup_rows,
+            min_widths=(22, 8, 30),
+        )
+    )
 
     return 0
 
@@ -1139,11 +1156,13 @@ def cmd_project(args):
             owner_str = p.owner or ""
             desc = p.description or ""
             rows.append((p.name, p.default_scope, owner_str, desc))
-        print(table_multi(
-            headers=("Name", "Scope", "Owner", "Description"),
-            rows=rows,
-            min_widths=(12, 6, 8, 20),
-        ))
+        print(
+            table_multi(
+                headers=("Name", "Scope", "Owner", "Description"),
+                rows=rows,
+                min_widths=(12, 6, 8, 20),
+            )
+        )
         print(f"\n{len(projects)} project(s).")
         return 0
 
@@ -1200,11 +1219,13 @@ def cmd_project(args):
                 entry_id = meta.get("id", "?")[:8]
                 scope = meta.get("scope", "team")
                 entry_rows.append((entry_id, tier, scope, title))
-            print(table_multi(
-                headers=("ID", "Tier", "Scope", "Title"),
-                rows=entry_rows,
-                min_widths=(8, 4, 6, 20),
-            ))
+            print(
+                table_multi(
+                    headers=("ID", "Tier", "Scope", "Title"),
+                    rows=entry_rows,
+                    min_widths=(8, 4, 6, 20),
+                )
+            )
         return 0
 
     elif action == "write":
@@ -1251,11 +1272,13 @@ def cmd_project(args):
             score_str = score_display(r["score"])
             body_preview = truncate(r["body"].replace("\n", " "), 50)
             rows.append((r["id"][:8], score_str, r["tier"], title, body_preview))
-        print(table_multi(
-            headers=("ID", "Score", "Tier", "Title", "Preview"),
-            rows=rows,
-            min_widths=(8, 18, 4, 16, 20),
-        ))
+        print(
+            table_multi(
+                headers=("ID", "Score", "Tier", "Title", "Preview"),
+                rows=rows,
+                min_widths=(8, 18, 4, 16, 20),
+            )
+        )
         print(f"\n{len(results)} result(s) in project '{args.name}'.")
         return 0
 
@@ -1553,18 +1576,22 @@ def cmd_memo(args):
             prio = "[high]" if meta.get("priority") == "high" else ""
             read_mark = "[read]" if meta.get("read") else "[new]"
             first_line = body.split("\n")[0][:60] if body else ""
-            rows.append((
-                meta["id"][:8],
-                meta.get("from", "?"),
-                read_mark,
-                prio,
-                first_line,
-            ))
-        print(table_multi(
-            headers=("ID", "From", "State", "Prio", "Message"),
-            rows=rows,
-            min_widths=(8, 8, 6, 6, 20),
-        ))
+            rows.append(
+                (
+                    meta["id"][:8],
+                    meta.get("from", "?"),
+                    read_mark,
+                    prio,
+                    first_line,
+                )
+            )
+        print(
+            table_multi(
+                headers=("ID", "From", "State", "Prio", "Message"),
+                rows=rows,
+                min_widths=(8, 8, 6, 6, 20),
+            )
+        )
         return 0
 
     if action == "ack":

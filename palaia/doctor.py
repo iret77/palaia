@@ -594,11 +594,13 @@ def format_doctor_report(results: list[dict[str, Any]], show_fix: bool = False) 
         elif status == "error":
             errors += 1
 
-    lines.append(table_multi(
-        headers=("Status", "Check", "Details"),
-        rows=table_rows,
-        min_widths=(8, 22, 30),
-    ))
+    lines.append(
+        table_multi(
+            headers=("Status", "Check", "Details"),
+            rows=table_rows,
+            min_widths=(8, 22, 30),
+        )
+    )
 
     # Show fix details below table if requested
     if show_fix:

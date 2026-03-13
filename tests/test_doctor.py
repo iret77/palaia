@@ -188,7 +188,6 @@ class TestCheckOpenClawPlugin:
         assert "memory-core" in result["message"]
         assert "fix" in result
 
-
     def test_openclaw_config_env_var(self, tmp_path, monkeypatch):
         """OPENCLAW_CONFIG env var should be checked for config location."""
         monkeypatch.setenv("HOME", str(tmp_path))
