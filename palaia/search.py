@@ -8,8 +8,11 @@ from collections import Counter
 
 from palaia.embeddings import (
     BM25Provider,
+    _create_provider,
+    _resolve_embedding_models,
     auto_detect_provider,
     cosine_similarity,
+    detect_providers,
     get_provider_display_info,
 )
 
@@ -98,6 +101,31 @@ def detect_search_tier() -> int:
     return 1
 
 
+def _resolve_semantic_provider(config: dict):
+    """Resolve the semantic embedding provider respecting embedding_chain config.
+
+    Reads ``embedding_chain`` from *config*, iterates over its entries (skipping
+    ``"bm25"``), and returns the first provider that can be instantiated.
+    Falls back to ``auto_detect_provider()`` when the chain is absent, empty,
+    contains only ``"bm25"``, or none of its semantic entries are available.
+    """
+    chain = config.get("embedding_chain")
+    if chain and isinstance(chain, list):
+        models = _resolve_embedding_models(config)
+        available = {p["name"] for p in detect_providers() if p["available"]}
+        for name in chain:
+            if name == "bm25":
+                continue
+            if name not in available:
+                continue
+            try:
+                return _create_provider(name, models.get(name))
+            except (ImportError, ValueError):
+                continue
+    # No chain configured or no chain provider available → legacy fallback
+    return auto_detect_provider(config)
+
+
 class SearchEngine:
     """Unified hybrid search: BM25 + semantic embeddings."""
 
@@ -110,7 +138,7 @@ class SearchEngine:
     @property
     def provider(self):
         if self._provider is None:
-            self._provider = auto_detect_provider(self.config)
+            self._provider = _resolve_semantic_provider(self.config)
         return self._provider
 
     @property
