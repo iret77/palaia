@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.7.2] — 2026-03-13
+
+### Added
+- **Frictionless init** — `palaia init` without `--agent` now works, defaulting to agent name "default". Single-agent systems no longer need to specify a name.
+- **Single-agent auto-detect** — If an OpenClaw config with exactly one agent is found, the name is used automatically: "Auto-detected agent: HAL (from OpenClaw config)".
+- **Agent alias system** — `palaia config set-alias default HAL` makes queries for "HAL" also return entries written as "default". Enables clean single→multi-agent migration without rewriting entries.
+- **Doctor auto-fix for embedding chains** — `palaia doctor --fix` now actively repairs broken embedding chains: attempts pip install of missing providers, falls back to best available, runs warmup. BM25-only is last resort.
+- **Doctor alias nudge** — Warns when "default" entries exist alongside named agents without an alias configured.
+
+### Fixed
+- **Init without --agent no longer misleading** — Previously said "Initialized" then immediately "Not initialized" on next command. Now either succeeds with default name or gives clear error.
+- **Copyright year** — CLI header now shows "(c) 2026 byte5 GmbH".
+
 ## [1.7.1] — 2026-03-13
 
 ### Fixed

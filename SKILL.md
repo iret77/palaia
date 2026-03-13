@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "1.7.0"
+version: "1.7.2"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   Replaces built-in memory-core with semantic search, projects, and scope-based access control.
@@ -52,12 +52,27 @@ Example pacing:
 ### Step 1: Install and initialize
 ```bash
 python3 -m pip install "palaia[fastembed]"
+palaia init
+```
+
+**Agent identity is optional but recommended.** `palaia init` without `--agent` sets the agent name to "default". This works fine for single-agent systems. For multi-agent setups, use `--agent`:
+```bash
 palaia init --agent YOUR_AGENT_NAME
 ```
 
-**Agent identity is mandatory.** Without `--agent`, all store commands (write, query, list, etc.) will be blocked with: "Palaia not initialized. Run: palaia init --agent YOUR_NAME"
+If an OpenClaw config with a single agent is detected, the name is auto-detected:
+```
+Auto-detected agent: HAL (from OpenClaw config)
+```
 
 The agent name is stored in `.palaia/config.json` and automatically attached to all writes and memo operations. No env vars needed.
+
+**Single-Agent to Multi-Agent Migration:**
+When adding a second agent later, existing entries keep their original agent name ("default"). To associate old "default" entries with your named agent:
+```bash
+palaia config set-alias default YOUR_NAME
+```
+This makes queries for YOUR_NAME also return entries written as "default". No entries are rewritten — aliases are query-time only. `palaia doctor` will remind you if this is needed.
 
 **Optional: Set session instance** (for multi-instance agents):
 ```bash
