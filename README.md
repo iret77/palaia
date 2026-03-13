@@ -6,12 +6,19 @@ Yesterday's decisions, last week's server IP, that config you spent 20 minutes d
 
 Palaia gives your agent a memory that actually works. Local. Private. Instant.
 
-```bash
-pip install "palaia[fastembed]"
-palaia init
-```
+[![CI](https://github.com/iret77/palaia/actions/workflows/ci.yml/badge.svg)](https://github.com/iret77/palaia/actions/workflows/ci.yml)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-That's it. Your agent can now remember things:
+## Get Started
+
+Tell your agent:
+
+> "Install or update the Palaia memory skill from ClawHub to the latest version (even if already present). Read the SKILL.md completely and follow it step by step. Run `palaia init`, then `palaia doctor --fix` and resolve all warnings — don't stop until the doctor report is clean. Set up completely."
+
+That's it. Your agent handles everything. You just confirm.
+
+Once installed, your agent can remember things across sessions:
 
 ```bash
 palaia write "Deploy server moved to 10.0.1.5, new SSH key in vault" --tags "infra"
@@ -21,10 +28,6 @@ palaia query "where is the server"
 ```
 
 No cloud. No API keys. No database server. Everything stays on your machine.
-
-[![CI](https://github.com/iret77/palaia/actions/workflows/ci.yml/badge.svg)](https://github.com/iret77/palaia/actions/workflows/ci.yml)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
@@ -44,25 +47,6 @@ Palaia runs on your machine, survives crashes (WAL-backed), and finds things by 
 | Zero infrastructure | Yes | No | No | Yes |
 | Finds things by meaning | Yes | Sometimes | Yes | No |
 | Auto-organizes over time | Yes | No | No | No |
-
-## Quick Start
-
-### For OpenClaw users
-
-Tell your agent:
-
-> "Install or update the Palaia memory skill from ClawHub to the latest version (even if already present). Read the SKILL.md completely and follow it step by step. Run `palaia init`, then `palaia doctor --fix` and resolve all warnings — don't stop until the doctor report is clean. Set up completely."
-
-Your agent handles installation, configuration, and setup. You just confirm.
-
-### Manual install
-
-```bash
-pip install "palaia[fastembed]"    # or: uv tool install "palaia[fastembed]"
-palaia init
-palaia doctor --fix
-palaia warmup                      # pre-builds search index — don't skip this
-```
 
 ## Core Concepts
 
@@ -188,6 +172,15 @@ npm install @byte5ai/palaia
 Add to your OpenClaw config:
 ```json
 { "plugins": ["@byte5ai/palaia"] }
+```
+
+## Manual Install (without OpenClaw)
+
+```bash
+pip install "palaia[fastembed]"    # or: uv tool install "palaia[fastembed]"
+palaia init
+palaia doctor --fix
+palaia warmup                      # pre-builds search index — don't skip this
 ```
 
 ## Development
