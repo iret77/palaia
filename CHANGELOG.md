@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0] — 2026-03-13
+
+### Added
+- **Process Nudge** — After `palaia write` and `palaia query`, Palaia now checks for relevant process entries and surfaces them: "Related process: Release Checklist (palaia get 74bba31a)". Uses hybrid matching (embedding similarity + tag overlap). Frequency-limited (max 1 nudge per process per hour). Suppressed in `--json` mode. Gracefully degrades to tag-only matching when no embedding provider is available.
+- **"What Goes Where" guide** in SKILL.md — Clear boundary between project files (static facts) and Palaia (dynamic knowledge). Helps agents avoid duplicating knowledge across files and Palaia entries.
+- **Reconciliation guide** in SKILL.md — Best practices for agents working in environments with pre-Palaia memory patterns (CONTEXT.md, MEMORY.md). Gradual migration without breaking existing workflows.
+
 ## [1.7.3] — 2026-03-13
 
 ### Added
