@@ -1005,6 +1005,7 @@ def cmd_project(args):
                 name=args.name,
                 description=args.description or "",
                 default_scope=args.default_scope or "team",
+                owner=getattr(args, "owner", None),
             )
         except ValueError as e:
             if _json_out({"error": str(e)}, args):
@@ -1014,6 +1015,8 @@ def cmd_project(args):
         if _json_out(project.to_dict(), args):
             return 0
         print(f"Created project: {project.name}")
+        if project.owner:
+            print(f"  Owner: {project.owner}")
         if project.description:
             print(f"  Description: {project.description}")
         print(f"  Default scope: {project.default_scope}")
@@ -1021,14 +1024,18 @@ def cmd_project(args):
 
     elif action == "list":
         projects = pm.list()
+        owner_filter = getattr(args, "owner", None)
+        if owner_filter:
+            projects = [p for p in projects if p.owner == owner_filter]
         if _json_out({"projects": [p.to_dict() for p in projects]}, args):
             return 0
         if not projects:
             print("No projects.")
             return 0
         for p in projects:
+            owner_str = f", owner: {p.owner}" if p.owner else ""
             desc = f" — {p.description}" if p.description else ""
-            print(f"  {p.name} [{p.default_scope}]{desc}")
+            print(f"  {p.name} (scope: {p.default_scope}{owner_str}){desc}")
         print(f"\n{len(projects)} project(s).")
         return 0
 
@@ -1040,9 +1047,14 @@ def cmd_project(args):
             print(f"Project '{args.name}' not found.", file=sys.stderr)
             return 1
         entries = pm.get_project_entries(args.name, store)
+        contributors = pm.get_contributors(args.name, store)
+        tier_counts = {}
+        for _meta, _body, tier in entries:
+            tier_counts[tier] = tier_counts.get(tier, 0) + 1
         if _json_out(
             {
                 "project": project.to_dict(),
+                "contributors": contributors,
                 "entries": [
                     {
                         "id": meta.get("id", "?"),
@@ -1053,13 +1065,19 @@ def cmd_project(args):
                     }
                     for meta, body, tier in entries
                 ],
+                "entry_count": len(entries),
+                "tier_counts": tier_counts,
             },
             args,
         ):
             return 0
         desc = f" — {project.description}" if project.description else ""
         print(f"Project: {project.name}{desc}")
-        print(f"  Default scope: {project.default_scope}")
+        owner_display = project.owner or "(none)"
+        print(f"  Owner: {owner_display}")
+        print(f"  Scope: {project.default_scope}")
+        if contributors:
+            print(f"  Contributors: {', '.join(contributors)}")
         print(f"  Created: {project.created_at}")
         if entries:
             print(f"\n  Entries ({len(entries)}):")
@@ -1129,6 +1147,29 @@ def cmd_project(args):
         if _json_out({"project": args.name, "default_scope": project.default_scope}, args):
             return 0
         print(f"Project '{args.name}' default scope → {project.default_scope}")
+        return 0
+
+    elif action == "set-owner":
+        try:
+            if getattr(args, "clear", False):
+                project = pm.clear_owner(args.name)
+                if _json_out({"project": args.name, "owner": None}, args):
+                    return 0
+                print(f"Cleared owner for project '{args.name}'.")
+            else:
+                owner_value = getattr(args, "owner_value", None)
+                if not owner_value:
+                    print("Error: owner name required (or use --clear).", file=sys.stderr)
+                    return 1
+                project = pm.set_owner(args.name, owner_value)
+                if _json_out({"project": args.name, "owner": project.owner}, args):
+                    return 0
+                print(f"Project '{args.name}' owner → {project.owner}")
+        except ValueError as e:
+            if _json_out({"error": str(e)}, args):
+                return 1
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
         return 0
 
     elif action == "delete":
@@ -1547,9 +1588,11 @@ def main():
     p_proj_create.add_argument("name", help="Project name")
     p_proj_create.add_argument("--description", default=None, help="Project description")
     p_proj_create.add_argument("--default-scope", default=None, help="Default scope for entries")
+    p_proj_create.add_argument("--owner", default=None, help="Project owner")
     p_proj_create.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_proj_list = project_sub.add_parser("list", help="List projects")
+    p_proj_list.add_argument("--owner", default=None, help="Filter by owner")
     p_proj_list.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_proj_show = project_sub.add_parser("show", help="Show project details")
@@ -1575,6 +1618,12 @@ def main():
     p_proj_scope.add_argument("name", help="Project name")
     p_proj_scope.add_argument("scope_value", help="New default scope")
     p_proj_scope.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_proj_owner = project_sub.add_parser("set-owner", help="Set or clear project owner")
+    p_proj_owner.add_argument("name", help="Project name")
+    p_proj_owner.add_argument("owner_value", nargs="?", default=None, help="New owner name")
+    p_proj_owner.add_argument("--clear", action="store_true", help="Remove owner")
+    p_proj_owner.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_proj_delete = project_sub.add_parser("delete", help="Delete project (entries preserved)")
     p_proj_delete.add_argument("name", help="Project name")
