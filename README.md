@@ -7,14 +7,14 @@ Persistent, local memory for AI agents — write something today, find it next w
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Released March 2026](https://img.shields.io/badge/released-March%202026-brightgreen.svg)]()
 
-## What's New in 1.4.3
+## What's New in 1.5.0
 
-- 🔒 **Project Locking** — Prevent multiple agents from working on the same project (`palaia lock/unlock`)
-- 💬 **Inter-Agent Messaging** — Async memos between agents (`palaia memo send/inbox/ack`)
-- 🔌 **OpenClaw Plugin** — Full setup guide + automatic activation for `@byte5ai/palaia`
-- 🚀 **Auto-Onboarding** — `palaia init` guides agents through complete setup automatically
-- 🏠 **`PALAIA_HOME`** — Environment variable to override store location
-- 🩺 **Health Checks** — `palaia doctor` with version tracking and upgrade guidance
+- 👤 **Project Ownership** — Assign owners to projects, list by owner, auto-track contributors
+- 🔒 **Project Locking** — Prevent concurrent agent work on the same project
+- 💬 **Inter-Agent Messaging** — Async memos between agents (`palaia memo`)
+- 🔌 **OpenClaw Plugin** — Automatic activation and setup
+- 🚀 **Auto-Onboarding** — `palaia init` guides agents through complete setup
+- 🩺 **Health Checks** — `palaia doctor` with version tracking and upgrade nag
 
 See [CHANGELOG.md](CHANGELOG.md) for full details.
 
