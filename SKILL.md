@@ -540,10 +540,10 @@ When upgrading to Palaia 1.7+, migrate existing planning data into structured Pa
 - Existing Palaia entries without type → run `palaia migrate --suggest` for recommendations
 
 **Points of Truth (important rule):**
-- If a project has a GitHub repo: Issues, bugs, and feature requests live in **GitHub Issues** (single source of truth)
-- Planungen, ideas, concepts, roadmap items without a GitHub issue live in **Palaia** (type: task)
+- If a project uses an external issue tracker (GitHub Issues, Jira, Bitbucket, Linear, etc.): bugs, tickets, and feature requests live **there** (single source of truth)
+- Planungen, ideas, concepts, roadmap items not tracked externally live in **Palaia** (type: task)
 - Processes and checklists live in **Palaia** (type: process)
-- Never duplicate between GitHub Issues and Palaia tasks
+- Never duplicate between external issue trackers and Palaia tasks
 
 **After migration:**
 - Remove migrated items from CONTEXT.md, MEMORY.md, or wherever they lived before
