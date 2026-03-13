@@ -128,7 +128,11 @@ def validate_priority(priority: str | None) -> str | None:
 
 
 def _resolve_instance() -> str | None:
-    """Resolve instance name from PALAIA_INSTANCE env var."""
+    """Resolve instance name from PALAIA_INSTANCE env var.
+
+    Note: CLI layer resolves instance from config file (palaia instance set).
+    This function is the low-level fallback for programmatic use.
+    """
     return os.environ.get("PALAIA_INSTANCE") or None
 
 

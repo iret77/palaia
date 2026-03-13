@@ -33,6 +33,40 @@ def _check_palaia_init(palaia_root: Path | None) -> dict[str, Any]:
     }
 
 
+def _check_agent_identity(palaia_root: Path | None) -> dict[str, Any]:
+    """Check if agent identity is configured."""
+    if palaia_root is None:
+        return {
+            "name": "agent_identity",
+            "label": "Agent identity",
+            "status": "error",
+            "message": "Not initialized",
+        }
+
+    from palaia.config import load_config
+
+    config = load_config(palaia_root)
+    agent = config.get("agent")
+
+    if not agent:
+        return {
+            "name": "agent_identity",
+            "label": "Agent identity",
+            "status": "warn",
+            "message": "No agent configured — store commands will be blocked",
+            "fix": "Run: palaia init --agent YOUR_NAME",
+            "fixable": False,
+        }
+
+    return {
+        "name": "agent_identity",
+        "label": "Agent identity",
+        "status": "ok",
+        "message": f"Agent: {agent}",
+        "details": {"agent": agent},
+    }
+
+
 def _check_embedding_chain(palaia_root: Path | None) -> dict[str, Any]:
     """Check configured embedding chain and verify providers are actually installed."""
     if palaia_root is None:
@@ -578,6 +612,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
     """Run all doctor checks. Returns list of check results."""
     results = [
         _check_palaia_init(palaia_root),
+        _check_agent_identity(palaia_root),
         _check_store_version(palaia_root),
         _check_embedding_chain(palaia_root),
         _check_entry_classes(palaia_root),
