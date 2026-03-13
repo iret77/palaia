@@ -645,6 +645,73 @@ def _check_entry_classes(palaia_root: Path | None) -> dict[str, Any]:
     }
 
 
+def _check_default_agent_alias(palaia_root: Path | None) -> dict[str, Any]:
+    """Check if entries with agent='default' exist alongside named agents without previous_agents."""
+    if palaia_root is None:
+        return {
+            "name": "default_agent_alias",
+            "label": "Agent aliases",
+            "status": "ok",
+            "message": "Not initialized",
+        }
+
+    from palaia.config import load_config
+    from palaia.entry import parse_entry
+
+    config = load_config(palaia_root)
+    previous_agents = config.get("previous_agents", [])
+
+    # Scan all entries for agent names
+    agents_seen: dict[str, int] = {}
+    for tier in ("hot", "warm", "cold"):
+        tier_dir = palaia_root / tier
+        if not tier_dir.exists():
+            continue
+        for p in tier_dir.glob("*.md"):
+            try:
+                text = p.read_text(encoding="utf-8")
+                meta, _ = parse_entry(text)
+                agent = meta.get("agent", "")
+                if agent:
+                    agents_seen[agent] = agents_seen.get(agent, 0) + 1
+            except Exception:
+                continue
+
+    default_count = agents_seen.get("default", 0)
+    named_agents = {a for a in agents_seen if a != "default"}
+
+    if default_count == 0 or not named_agents:
+        return {
+            "name": "default_agent_alias",
+            "label": "Agent aliases",
+            "status": "ok",
+            "message": "No alias issues detected",
+        }
+
+    # Check if "default" is in previous_agents (migration already done)
+    if "default" in previous_agents:
+        return {
+            "name": "default_agent_alias",
+            "label": "Agent aliases",
+            "status": "ok",
+            "message": f"default in previous_agents ({default_count} entries accessible)",
+        }
+
+    # default entries exist + named agents exist + not tracked in previous_agents
+    current_agent = config.get("agent", "")
+    return {
+        "name": "default_agent_alias",
+        "label": "Agent aliases",
+        "status": "warn",
+        "message": (
+            f"You have {default_count} entries with agent='default' "
+            f"but also named agents ({', '.join(sorted(named_agents))}). "
+            f"These entries may not appear in private queries."
+        ),
+        "fix": f"Re-init to track: palaia init --agent {current_agent or 'YOUR_NAME'}",
+    }
+
+
 def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
     """Run all doctor checks. Returns list of check results."""
     results = [
@@ -655,6 +722,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_entry_classes(palaia_root),
         _check_projects_usage(palaia_root),
         _check_deprecated_config(palaia_root),
+        _check_default_agent_alias(palaia_root),
         _check_openclaw_plugin(),
         _check_smart_memory_skill(),
         _check_legacy_memory_files(),

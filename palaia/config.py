@@ -122,6 +122,21 @@ def get_agent(palaia_root: Path | None = None) -> str | None:
     return config.get("agent") or None
 
 
+def get_agent_aliases(palaia_root: Path | None = None) -> list[str]:
+    """Get previous agent names from .palaia/config.json.
+
+    Returns a list of previous agent names that should be treated as
+    equivalent to the current agent for scope/access purposes.
+    """
+    if palaia_root is None:
+        palaia_root = find_palaia_root()
+    if palaia_root is None:
+        return []
+    config = load_config(palaia_root)
+    aliases = config.get("previous_agents", [])
+    return aliases if isinstance(aliases, list) else []
+
+
 def get_instance(palaia_root: Path | None = None) -> str | None:
     """Get the current session instance from .palaia/current-instance.
 
@@ -154,3 +169,57 @@ def clear_instance(palaia_root: Path) -> None:
     instance_file = palaia_root / "current-instance"
     if instance_file.exists():
         instance_file.unlink()
+
+
+# --- Agent Alias System ---
+
+
+def get_aliases(palaia_root: Path) -> dict[str, str]:
+    """Get all agent aliases from config. Returns {from_name: to_name} mapping."""
+    config = load_config(palaia_root)
+    return dict(config.get("aliases", {}))
+
+
+def set_alias(palaia_root: Path, from_name: str, to_name: str) -> None:
+    """Set an agent alias: from_name is an alias for to_name."""
+    if not from_name or not to_name:
+        raise ValueError("Both alias source and target names are required.")
+    if from_name == to_name:
+        raise ValueError("Alias source and target cannot be the same.")
+    config = load_config(palaia_root)
+    aliases = config.get("aliases", {})
+    aliases[from_name] = to_name
+    config["aliases"] = aliases
+    save_config(palaia_root, config)
+
+
+def remove_alias(palaia_root: Path, from_name: str) -> bool:
+    """Remove an agent alias. Returns True if alias existed."""
+    config = load_config(palaia_root)
+    aliases = config.get("aliases", {})
+    if from_name not in aliases:
+        return False
+    del aliases[from_name]
+    config["aliases"] = aliases
+    save_config(palaia_root, config)
+    return True
+
+
+def resolve_agent_with_aliases(agent: str, aliases: dict[str, str]) -> set[str]:
+    """Resolve an agent name to a set of all names that should match.
+
+    Given aliases like {"default": "HAL"}, querying for "HAL" should also match
+    entries with agent="default", and querying for "default" should also match
+    entries with agent="HAL".
+
+    Returns a set of agent names to match against.
+    """
+    names = {agent}
+    # Forward: if agent is a key in aliases, add the target
+    if agent in aliases:
+        names.add(aliases[agent])
+    # Reverse: if agent is a value in aliases, add the source(s)
+    for src, tgt in aliases.items():
+        if tgt == agent:
+            names.add(src)
+    return names

@@ -26,15 +26,31 @@ def normalize_scope(scope: str | None, default: str = "team") -> str:
 
 
 def can_access(
-    entry_scope: str, agent_name: str | None, entry_agent: str | None, projects: list[str] | None = None
+    entry_scope: str,
+    agent_name: str | None,
+    entry_agent: str | None,
+    projects: list[str] | None = None,
+    agent_aliases: list[str] | None = None,
 ) -> bool:
-    """Check if an agent can access an entry based on scope rules."""
+    """Check if an agent can access an entry based on scope rules.
+
+    Args:
+        agent_aliases: Previous agent names that should be treated as equivalent
+                       to agent_name (e.g. after renaming from "default").
+    """
     if entry_scope == "team":
         return True
     if entry_scope == "public":
         return True
     if entry_scope == "private":
-        return agent_name is not None and agent_name == entry_agent
+        if agent_name is None:
+            return False
+        if agent_name == entry_agent:
+            return True
+        # Check aliases (previous agent names)
+        if agent_aliases and entry_agent in agent_aliases:
+            return True
+        return False
     if entry_scope.startswith(SHARED_PREFIX):
         project = entry_scope[len(SHARED_PREFIX) :]
         return projects is not None and project in projects

@@ -464,3 +464,114 @@ class TestDefaultAgentWorkflow:
         assert rc == 0
         config = json.loads((fresh_dir / ".palaia" / "config.json").read_text())
         assert config["agent"] == "MyAgent"
+        # previous_agents should track "default"
+        assert "default" in config.get("previous_agents", [])
+
+    def test_reinit_records_previous_agents(self, existing_store, monkeypatch, capsys):
+        """Re-init with different agent stores old name in previous_agents."""
+        config = json.loads((existing_store / "config.json").read_text())
+        assert config["agent"] == "ExistingAgent"
+
+        rc = _run_palaia(["init", "--agent", "NewAgent"], monkeypatch)
+        assert rc == 0
+        config = json.loads((existing_store / "config.json").read_text())
+        assert config["agent"] == "NewAgent"
+        assert "ExistingAgent" in config["previous_agents"]
+
+    def test_reinit_previous_agents_no_duplicates(self, existing_store, monkeypatch, capsys):
+        """Repeated renames don't create duplicate entries in previous_agents."""
+        _run_palaia(["init", "--agent", "Agent2"], monkeypatch)
+        _run_palaia(["init", "--agent", "Agent3"], monkeypatch)
+        _run_palaia(["init", "--agent", "Agent4"], monkeypatch)
+        # Rename back
+        _run_palaia(["init", "--agent", "Agent2"], monkeypatch)
+
+        config = json.loads((existing_store / "config.json").read_text())
+        assert config["agent"] == "Agent2"
+        prev = config["previous_agents"]
+        assert "ExistingAgent" in prev
+        assert "Agent2" in prev  # was added when renamed away from it
+        assert "Agent3" in prev
+        # No duplicates
+        assert len(prev) == len(set(prev))
+
+
+class TestPreviousAgentsAccess:
+    """Test that renamed agents can still access their old entries."""
+
+    @pytest.fixture
+    def renamed_store(self, tmp_path):
+        """Store where agent was renamed from 'default' to 'HAL'."""
+        store = tmp_path / ".palaia"
+        store.mkdir()
+        for sub in ("hot", "warm", "cold", "wal", "index"):
+            (store / sub).mkdir()
+        config = {
+            "version": 1,
+            "agent": "HAL",
+            "previous_agents": ["default"],
+            "embedding_chain": ["bm25"],
+            "store_version": "1.7.0",
+            "decay_lambda": 0.1,
+            "hot_threshold_days": 7,
+            "warm_threshold_days": 30,
+            "hot_max_entries": 50,
+            "hot_min_score": 0.5,
+            "warm_min_score": 0.1,
+            "default_scope": "team",
+            "wal_retention_days": 7,
+            "lock_timeout_seconds": 5,
+            "embedding_provider": "auto",
+            "embedding_model": "",
+        }
+        (store / "config.json").write_text(json.dumps(config))
+        return store
+
+    def test_private_entry_from_old_name_accessible(self, renamed_store):
+        """HAL can read private entries written as 'default'."""
+        from palaia.store import Store
+
+        store = Store(renamed_store)
+
+        # Write a private entry as "default" (simulating old entry)
+        eid = store.write(body="Old secret", scope="private", agent="default", title="Old")
+
+        # HAL (current agent) can read it because "default" is in previous_agents
+        entry = store.read(eid, agent="HAL")
+        assert entry is not None
+        meta, body = entry
+        assert "Old secret" in body
+
+    def test_private_entry_from_old_name_not_accessible_by_others(self, renamed_store):
+        """Other agents cannot read HAL's old 'default' private entries."""
+        from palaia.store import Store
+
+        store = Store(renamed_store)
+        eid = store.write(body="Old secret", scope="private", agent="default", title="Old")
+
+        # JARVIS cannot read it
+        entry = store.read(eid, agent="JARVIS")
+        assert entry is None
+
+    def test_team_entries_always_accessible(self, renamed_store):
+        """Team entries remain accessible regardless of agent rename."""
+        from palaia.store import Store
+
+        store = Store(renamed_store)
+        eid = store.write(body="Team knowledge", scope="team", agent="default", title="Shared")
+
+        assert store.read(eid, agent="HAL") is not None
+        assert store.read(eid, agent="JARVIS") is not None
+
+    def test_list_includes_old_private_entries(self, renamed_store):
+        """list_entries includes private entries from previous agent names."""
+        from palaia.store import Store
+
+        store = Store(renamed_store)
+        store.write(body="Old private", scope="private", agent="default", title="Old Private")
+        store.write(body="New private", scope="private", agent="HAL", title="New Private")
+
+        entries = store.list_entries("hot", agent="HAL")
+        titles = [meta.get("title") for meta, _ in entries]
+        assert "Old Private" in titles
+        assert "New Private" in titles

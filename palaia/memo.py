@@ -159,12 +159,14 @@ class MemoManager:
         self,
         agent: str | None = None,
         include_read: bool = False,
+        aliases: dict[str, str] | None = None,
     ) -> list[tuple[dict, str]]:
         """List memos for an agent (including broadcasts).
 
         Args:
             agent: Agent name. If None, uses PALAIA_AGENT env var.
             include_read: If True, include already-read memos.
+            aliases: Optional agent alias mapping for expanded matching.
 
         Returns:
             List of (meta, body) tuples sorted by sent time (newest first).
@@ -172,6 +174,16 @@ class MemoManager:
         target = agent or _detect_agent()
         if not target:
             raise ValueError("Agent name required. Use --agent flag or set PALAIA_AGENT env var.")
+
+        # Build set of all names that should match
+        target_names = {target}
+        if aliases:
+            # aliases is a dict {old_name: new_name} — resolve all matching names
+            for src, tgt in aliases.items():
+                if tgt == target:
+                    target_names.add(src)
+                if src == target:
+                    target_names.add(tgt)
 
         now = datetime.now(timezone.utc)
         results = []
@@ -192,9 +204,9 @@ class MemoManager:
                 except (ValueError, TypeError):
                     pass
 
-            # Check recipient: must be addressed to agent or broadcast
+            # Check recipient: must be addressed to agent (or alias) or broadcast
             to = meta.get("to", "")
-            if to != target and to != "_broadcast":
+            if to not in target_names and to != "_broadcast":
                 continue
 
             # Filter read/unread

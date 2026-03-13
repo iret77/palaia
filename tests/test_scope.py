@@ -43,6 +43,18 @@ def test_can_access_shared():
     assert can_access("shared:proj1", "agent1", "agent2", None) is False
 
 
+def test_can_access_private_with_aliases():
+    """Agent aliases allow access to private entries from previous agent names."""
+    # HAL can access "default"'s private entries via alias
+    assert can_access("private", "HAL", "default", agent_aliases=["default"]) is True
+    # But not some random agent's entries
+    assert can_access("private", "HAL", "JARVIS", agent_aliases=["default"]) is False
+    # Without aliases, no access
+    assert can_access("private", "HAL", "default") is False
+    assert can_access("private", "HAL", "default", agent_aliases=[]) is False
+    assert can_access("private", "HAL", "default", agent_aliases=None) is False
+
+
 def test_is_exportable():
     assert is_exportable("public") is True
     assert is_exportable("team") is False

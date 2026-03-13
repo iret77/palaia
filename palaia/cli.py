@@ -30,11 +30,15 @@ from palaia.config import (  # noqa: E402
     clear_instance,
     find_palaia_root,
     get_agent,
+    get_aliases,
     get_instance,
     get_root,
     is_initialized,
     load_config,
+    remove_alias,
+    resolve_agent_with_aliases,
     save_config,
+    set_alias,
     set_instance,
 )
 from palaia.doctor import apply_fixes, format_doctor_report, run_doctor  # noqa: E402
@@ -172,6 +176,24 @@ def _resolve_agent(args) -> str | None:
     return detected or "default"
 
 
+def _resolve_agent_names(agent: str | None) -> set[str] | None:
+    """Resolve an agent name to all matching names via aliases.
+
+    Returns None if agent is None (no filtering), otherwise a set of
+    agent names that should all be considered matches.
+    """
+    if agent is None:
+        return None
+    try:
+        root = get_root()
+        aliases = get_aliases(root)
+        if aliases:
+            return resolve_agent_with_aliases(agent, aliases)
+    except FileNotFoundError:
+        pass
+    return {agent}
+
+
 def _resolve_instance_for_write(args) -> str | None:
     """Resolve instance: explicit --instance flag > config file > env var > None."""
     explicit = getattr(args, "instance", None)
@@ -215,7 +237,11 @@ def _memo_nudge(args) -> None:
         from palaia.memo import MemoManager
 
         mm = MemoManager(root)
-        unread = mm.inbox(agent=agent, include_read=False)
+        try:
+            memo_aliases = get_aliases(root)
+        except Exception:
+            memo_aliases = None
+        unread = mm.inbox(agent=agent, include_read=False, aliases=memo_aliases or None)
         if not unread:
             return
 
@@ -413,8 +439,16 @@ def cmd_init(args):
         # Re-init: update only explicitly provided values
         existing_config = load_config(target)
 
-        # Update agent if provided
+        # Track previous agent names when renaming
         if agent_name:
+            old_agent = existing_config.get("agent")
+            if old_agent and old_agent != agent_name:
+                prev = existing_config.get("previous_agents", [])
+                if not isinstance(prev, list):
+                    prev = []
+                if old_agent not in prev:
+                    prev.append(old_agent)
+                existing_config["previous_agents"] = prev
             existing_config["agent"] = agent_name
 
         # Check if chain is already configured
@@ -966,7 +1000,8 @@ def cmd_list(args):
     if scope_filter:
         entries = [(meta, body) for meta, body in entries if meta.get("scope") == scope_filter]
     if agent_filter:
-        entries = [(meta, body) for meta, body in entries if meta.get("agent") == agent_filter]
+        agent_names = _resolve_agent_names(agent_filter)
+        entries = [(meta, body) for meta, body in entries if meta.get("agent") in agent_names]
     if type_filter:
         entries = [(meta, body) for meta, body in entries if meta.get("type", "memory") == type_filter]
     if status_filter:
@@ -1339,10 +1374,63 @@ def cmd_config_set_chain(args):
     return 0
 
 
+def cmd_config_set_alias(args):
+    """Set an agent alias."""
+    root = get_root()
+    from_name = args.from_name
+    to_name = args.to_name
+    try:
+        set_alias(root, from_name, to_name)
+    except ValueError as e:
+        if _json_out({"error": str(e)}, args):
+            return 1
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    if _json_out({"alias": from_name, "target": to_name}, args):
+        return 0
+    print(f"Alias set: {from_name} -> {to_name}")
+    return 0
+
+
+def cmd_config_get_aliases(args):
+    """Show all agent aliases."""
+    root = get_root()
+    aliases = get_aliases(root)
+    if _json_out({"aliases": aliases}, args):
+        return 0
+    if not aliases:
+        print("No aliases configured.")
+        return 0
+    for src, tgt in sorted(aliases.items()):
+        print(f"  {src} -> {tgt}")
+    return 0
+
+
+def cmd_config_remove_alias(args):
+    """Remove an agent alias."""
+    root = get_root()
+    from_name = args.from_name
+    removed = remove_alias(root, from_name)
+    if _json_out({"removed": removed, "alias": from_name}, args):
+        return 0
+    if removed:
+        print(f"Alias removed: {from_name}")
+    else:
+        print(f"No alias found for: {from_name}")
+        return 1
+    return 0
+
+
 def cmd_config(args):
     """Get or set configuration values."""
     if args.action == "set-chain":
         return cmd_config_set_chain(args)
+    if args.action == "set-alias":
+        return cmd_config_set_alias(args)
+    if args.action == "get-aliases":
+        return cmd_config_get_aliases(args)
+    if args.action == "remove-alias":
+        return cmd_config_remove_alias(args)
     if args.action == "get":
         root = get_root()
         config = load_config(root)
@@ -2192,7 +2280,11 @@ def cmd_memo(args):
         return 0
 
     if action == "inbox":
-        memos = mm.inbox(agent=agent, include_read=args.all)
+        try:
+            inbox_aliases = get_aliases(root)
+        except Exception:
+            inbox_aliases = None
+        memos = mm.inbox(agent=agent, include_read=args.all, aliases=inbox_aliases or None)
         if _json_out(
             [{"meta": m, "body": b} for m, b in memos],
             args,
@@ -2581,6 +2673,18 @@ def main():
     p_config_set_chain = config_sub.add_parser("set-chain", help="Set the embedding fallback chain")
     p_config_set_chain.add_argument("providers", nargs="+", help="Provider names in priority order")
     p_config_set_chain.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_config_set_alias = config_sub.add_parser("set-alias", help="Set an agent alias")
+    p_config_set_alias.add_argument("from_name", help="Alias source name (e.g. 'default')")
+    p_config_set_alias.add_argument("to_name", help="Alias target name (e.g. 'HAL')")
+    p_config_set_alias.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_config_get_aliases = config_sub.add_parser("get-aliases", help="Show all agent aliases")
+    p_config_get_aliases.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_config_remove_alias = config_sub.add_parser("remove-alias", help="Remove an agent alias")
+    p_config_remove_alias.add_argument("from_name", help="Alias source name to remove")
+    p_config_remove_alias.add_argument("--json", action="store_true", help="Output as JSON")
 
     # migrate
     p_migrate = sub.add_parser("migrate", help="Import from external memory formats or suggest type assignments")
