@@ -163,7 +163,14 @@ Tell the user what was configured — one sentence:
 
 Do not explain commands, WAL, BM25, embedding models, or any technical details unless the user explicitly asks.
 
-### Step 3: Check embedding setup (auto-configured by init)
+### Step 3: Migrate existing entries (best practice — do this now)
+If there are existing entries from an earlier Palaia version (or from initial setup), run:
+```bash
+palaia migrate --suggest
+```
+This checks for entries without type classification and suggests improvements. Better to do this early while the store is small — it gets harder as the store grows. Apply the suggestions that make sense.
+
+### Step 4: Check embedding setup (auto-configured by init)
 ```bash
 palaia detect
 ```
