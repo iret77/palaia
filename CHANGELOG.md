@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.7.1] — 2026-03-13
+
+### Fixed
+- **Test fixtures missing agent identity** — CLI integration tests in `test_locking.py`, `test_project.py`, and `test_ux_improvements.py` now set `agent` in their `palaia_root` fixtures, fixing 18 test failures caused by the init gatekeeper (PR #44) blocking store commands without prior `palaia init --agent`.
+
 ## [1.7.0] — 2026-03-13
 
 ### Added

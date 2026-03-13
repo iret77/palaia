@@ -25,6 +25,7 @@ def palaia_root(tmp_path):
         (root / sub).mkdir()
     config = dict(DEFAULT_CONFIG)
     config["store_version"] = __version__
+    config["agent"] = "TestAgent"
     save_config(root, config)
     return root
 

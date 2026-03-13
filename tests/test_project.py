@@ -21,7 +21,9 @@ def palaia_root(tmp_path):
     root.mkdir()
     for sub in ("hot", "warm", "cold", "wal", "index"):
         (root / sub).mkdir()
-    save_config(root, DEFAULT_CONFIG)
+    config = dict(DEFAULT_CONFIG)
+    config["agent"] = "TestAgent"
+    save_config(root, config)
     return root
 
 

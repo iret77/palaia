@@ -19,7 +19,7 @@ def palaia_root(tmp_path):
     root.mkdir()
     for sub in ("hot", "warm", "cold", "wal", "index"):
         (root / sub).mkdir()
-    config = {"version": 1, "embedding_chain": ["bm25"]}
+    config = {"version": 1, "embedding_chain": ["bm25"], "agent": "TestAgent"}
     (root / "config.json").write_text(json.dumps(config))
     return root
 
@@ -207,7 +207,7 @@ class TestCLIIntegration:
         return result
 
     def test_lock_unlock_cycle(self, tmp_path):
-        self._run(tmp_path, "init")
+        self._run(tmp_path, "init", "--agent", "TestAgent")
         r = self._run(tmp_path, "lock", "myproj", "--agent", "elliot", "--reason", "testing", "--json")
         assert r.returncode == 0
         data = json.loads(r.stdout)
@@ -235,14 +235,14 @@ class TestCLIIntegration:
 
     def test_lock_shorthand(self, tmp_path):
         """palaia lock <project> --agent should work as acquire shorthand."""
-        self._run(tmp_path, "init")
+        self._run(tmp_path, "init", "--agent", "TestAgent")
         r = self._run(tmp_path, "lock", "myproj", "--agent", "elliot", "--json")
         assert r.returncode == 0
         data = json.loads(r.stdout)
         assert data["project"] == "myproj"
 
     def test_lock_conflict_json(self, tmp_path):
-        self._run(tmp_path, "init")
+        self._run(tmp_path, "init", "--agent", "TestAgent")
         self._run(tmp_path, "lock", "myproj", "--agent", "elliot")
         r = self._run(tmp_path, "lock", "myproj", "--agent", "cyberclaw", "--json")
         assert r.returncode == 1
@@ -251,7 +251,7 @@ class TestCLIIntegration:
         assert "elliot" in data["error"]
 
     def test_lock_list_json(self, tmp_path):
-        self._run(tmp_path, "init")
+        self._run(tmp_path, "init", "--agent", "TestAgent")
         self._run(tmp_path, "lock", "proj1", "--agent", "elliot")
         self._run(tmp_path, "lock", "proj2", "--agent", "cyberclaw")
         r = self._run(tmp_path, "lock", "list", "--json")
@@ -260,7 +260,7 @@ class TestCLIIntegration:
         assert len(data["locks"]) == 2
 
     def test_lock_renew_json(self, tmp_path):
-        self._run(tmp_path, "init")
+        self._run(tmp_path, "init", "--agent", "TestAgent")
         self._run(tmp_path, "lock", "myproj", "--agent", "elliot")
         r = self._run(tmp_path, "lock", "renew", "myproj", "--json")
         assert r.returncode == 0
@@ -268,7 +268,7 @@ class TestCLIIntegration:
         assert data["ttl_seconds"] == DEFAULT_TTL_SECONDS
 
     def test_lock_break_json(self, tmp_path):
-        self._run(tmp_path, "init")
+        self._run(tmp_path, "init", "--agent", "TestAgent")
         self._run(tmp_path, "lock", "myproj", "--agent", "elliot")
         r = self._run(tmp_path, "lock", "break", "myproj", "--json")
         assert r.returncode == 0
@@ -278,7 +278,7 @@ class TestCLIIntegration:
 
     def test_env_agent(self, tmp_path):
         """PALAIA_AGENT env var should be used when --agent not given."""
-        self._run(tmp_path, "init")
+        self._run(tmp_path, "init", "--agent", "TestAgent")
         r = self._run(tmp_path, "lock", "myproj", "--json", env_extra={"PALAIA_AGENT": "desmond"})
         assert r.returncode == 0
         data = json.loads(r.stdout)
