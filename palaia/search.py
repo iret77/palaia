@@ -139,13 +139,42 @@ class SearchEngine:
         include_cold: bool = False,
         project: str | None = None,
         agent: str | None = None,
+        entry_type: str | None = None,
+        status: str | None = None,
+        priority: str | None = None,
+        assignee: str | None = None,
+        instance: str | None = None,
     ) -> list[dict]:
-        """Search memories using hybrid ranking (BM25 + embeddings when available)."""
+        """Search memories using hybrid ranking (BM25 + embeddings when available).
+
+        Structured filters (type, status, priority, assignee, instance) use exact match,
+        not embeddings.
+        """
         docs_with_meta = self.build_index(include_cold=include_cold, agent=agent)
 
-        # Filter by project if specified
+        # Apply structured filters (exact match, pre-BM25)
         if project:
             docs_with_meta = [(did, text, meta) for did, text, meta in docs_with_meta if meta.get("project") == project]
+        if entry_type:
+            docs_with_meta = [
+                (did, text, meta) for did, text, meta in docs_with_meta if meta.get("type", "memory") == entry_type
+            ]
+        if status:
+            docs_with_meta = [(did, text, meta) for did, text, meta in docs_with_meta if meta.get("status") == status]
+        if priority:
+            docs_with_meta = [
+                (did, text, meta) for did, text, meta in docs_with_meta if meta.get("priority") == priority
+            ]
+        if assignee:
+            docs_with_meta = [
+                (did, text, meta) for did, text, meta in docs_with_meta if meta.get("assignee") == assignee
+            ]
+        if instance:
+            docs_with_meta = [
+                (did, text, meta) for did, text, meta in docs_with_meta if meta.get("instance") == instance
+            ]
+
+        if project or entry_type or status or priority or assignee or instance:
             # Rebuild BM25 index with filtered docs
             self.bm25.index([(did, text) for did, text, meta in docs_with_meta])
 
@@ -213,18 +242,29 @@ class SearchEngine:
             entry = self.store.read(doc_id)
             if entry:
                 meta, body = entry
-                output.append(
-                    {
-                        "id": doc_id,
-                        "score": round(score, 4),
-                        "scope": meta.get("scope", "team"),
-                        "title": meta.get("title", ""),
-                        "tags": meta.get("tags", []),
-                        "body": body[:200] + ("..." if len(body) > 200 else ""),
-                        "tier": self._get_tier(doc_id),
-                        "decay_score": meta.get("decay_score", 0),
-                    }
-                )
+                result_entry = {
+                    "id": doc_id,
+                    "score": round(score, 4),
+                    "type": meta.get("type", "memory"),
+                    "scope": meta.get("scope", "team"),
+                    "title": meta.get("title", ""),
+                    "tags": meta.get("tags", []),
+                    "body": body[:200] + ("..." if len(body) > 200 else ""),
+                    "tier": self._get_tier(doc_id),
+                    "decay_score": meta.get("decay_score", 0),
+                }
+                # Include task fields if present
+                if meta.get("status"):
+                    result_entry["status"] = meta["status"]
+                if meta.get("priority"):
+                    result_entry["priority"] = meta["priority"]
+                if meta.get("assignee"):
+                    result_entry["assignee"] = meta["assignee"]
+                if meta.get("due_date"):
+                    result_entry["due_date"] = meta["due_date"]
+                if meta.get("instance"):
+                    result_entry["instance"] = meta["instance"]
+                output.append(result_entry)
         return output
 
     def _get_tier(self, entry_id: str) -> str:

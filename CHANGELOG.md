@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.7.0] — 2026-03-13
+
+### Added
+- **Entry Classes** — New `type` frontmatter field: `memory` (default), `process`, `task`. Existing entries without type default to `memory`.
+- **Structured Task Fields** — `status` (open|in-progress|done|wontfix), `priority` (critical|high|medium|low), `assignee`, `due_date` for task entries.
+- **`palaia edit`** — Edit existing entries: content, tags, title, and all task fields. WAL-backed, scope-enforced.
+- **Session Identities** — New `instance` frontmatter field for distinguishing sessions of the same agent. Auto-set via `PALAIA_INSTANCE` env var.
+- **Structured Query Filters** — `palaia query --type task --status open --priority high --assignee Elliot --instance Claw-Palaia`. Exact match, not embeddings.
+- **Structured List Filters** — `palaia list --type task --status open --priority high --assignee --instance`.
+- **Agent Nudging** — CLI hints after writes without `--type`. `palaia status` shows entry class breakdown with task status summary. Hints are frequency-limited and suppressed in JSON output.
+- **`palaia migrate --suggest`** — Scan existing entries and suggest type assignments based on content heuristics.
+- **Doctor entry class check** — `palaia doctor` detects untyped entries and suggests migration.
+
+### Changed
+- **`palaia status`** — Shows entry class breakdown (memory/process/task counts) and task status summary.
+- **`palaia write`** — Accepts `--type`, `--status`, `--priority`, `--assignee`, `--due-date`, `--instance`.
+- **Search results** — Include `type`, `status`, `priority`, `assignee`, `due_date`, `instance` fields when present.
+
+### Security
+- **Scope enforcement on edit** — Private entries can only be edited by the owning agent. No scope escalation possible. Non-negotiable.
+
 ## [1.6.1] — 2026-03-13
 
 ### Changed

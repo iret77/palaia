@@ -7,13 +7,16 @@ Persistent, local memory for AI agents — write something today, find it next w
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Released March 2026](https://img.shields.io/badge/released-March%202026-brightgreen.svg)]()
 
-## What's New in 1.6.1
+## What's New in 1.7.0
 
-- **Professional CLI UI** — Box-drawing tables, unified header, no emojis. Clean terminal output.
-- **Copyright header** — All commands display "(c) byte5 GmbH".
-- **HuggingFace warning suppression** — No more noisy warnings during query/warmup.
-- **Commands overhauled** — status, doctor, list, query, detect, project, warmup, memo inbox.
-- **No external UI deps** — New `palaia/ui.py` renderer with zero additional dependencies.
+- **Entry Classes** — Classify entries as `memory`, `process`, or `task` with `--type`.
+- **Structured Task Fields** — `--status`, `--priority`, `--assignee`, `--due-date` for task entries.
+- **`palaia edit`** — Edit existing entries (content, tags, metadata). WAL-backed, scope-enforced.
+- **Session Identities** — `--instance` field to distinguish different sessions of the same agent.
+- **Structured Filters** — `palaia query --type task --status open --priority high`. Exact match, not embeddings.
+- **Agent Nudging** — CLI hints for undiscovered features. `palaia status` shows class breakdown.
+- **`palaia migrate --suggest`** — Get type recommendations for untyped entries.
+- **Doctor entry class check** — Detects untyped entries and suggests migration.
 
 See [CHANGELOG.md](CHANGELOG.md) for full details.
 

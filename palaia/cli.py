@@ -207,6 +207,32 @@ def cmd_init(args):
     return 0
 
 
+def _nudge_hint(hint_key: str, message: str, args) -> None:
+    """Print an agent nudging hint if not in JSON mode and not recently shown."""
+    if getattr(args, "json", False):
+        return
+    # Frequency limiting: use a simple file marker
+    try:
+        root = get_root()
+        hints_file = root / ".hints_shown"
+        shown = {}
+        if hints_file.exists():
+            import time
+
+            shown = json.loads(hints_file.read_text())
+            last_shown = shown.get(hint_key, 0)
+            # Don't repeat within 1 hour
+            if time.time() - last_shown < 3600:
+                return
+        import time
+
+        shown[hint_key] = time.time()
+        hints_file.write_text(json.dumps(shown))
+    except Exception:
+        pass
+    print(f"\nHint: {message}", file=sys.stderr)
+
+
 def cmd_write(args):
     """Write a memory entry."""
     check_version_nag()
@@ -218,6 +244,7 @@ def cmd_write(args):
     if recovered and not getattr(args, "json", False):
         print(f"Recovered {recovered} pending entries from WAL.")
 
+    entry_type = getattr(args, "type", None)
     entry_id = store.write(
         body=args.text,
         scope=args.scope,
@@ -225,6 +252,12 @@ def cmd_write(args):
         tags=args.tags.split(",") if args.tags else None,
         title=args.title,
         project=getattr(args, "project", None),
+        entry_type=entry_type,
+        status=getattr(args, "status", None),
+        priority=getattr(args, "priority", None),
+        assignee=getattr(args, "assignee", None),
+        due_date=getattr(args, "due_date", None),
+        instance=getattr(args, "instance", None),
     )
 
     # Check if this was a dedup (existing entry returned)
@@ -253,7 +286,86 @@ def cmd_write(args):
         return 0
 
     print(f"Written: {entry_id}")
+
+    # Agent nudging: hint about --type if not specified (ADR-011)
+    if not entry_type:
+        _nudge_hint(
+            "write_type",
+            "Use --type (memory|process|task) to classify entries. Tasks support --status, --priority, --assignee.",
+            args,
+        )
+
     return 0
+
+
+def cmd_edit(args):
+    """Edit an existing memory entry."""
+    check_version_nag()
+    root = get_root()
+    store = Store(root)
+    store.recover()
+
+    entry_id = args.entry_id
+    # Accept short IDs (prefix match)
+    if len(entry_id) < 36:
+        entry_id = _resolve_short_id(store, entry_id)
+        if entry_id is None:
+            msg = f"No entry found matching: {args.entry_id}"
+            if _json_out({"error": msg}, args):
+                return 1
+            print(msg, file=sys.stderr)
+            return 1
+
+    body = getattr(args, "text", None)
+    tags = args.tags.split(",") if getattr(args, "tags", None) else None
+
+    try:
+        meta = store.edit(
+            entry_id=entry_id,
+            body=body,
+            agent=getattr(args, "agent", None),
+            tags=tags,
+            title=getattr(args, "title", None),
+            status=getattr(args, "status", None),
+            priority=getattr(args, "priority", None),
+            assignee=getattr(args, "assignee", None),
+            due_date=getattr(args, "due_date", None),
+            entry_type=getattr(args, "type", None),
+        )
+    except (ValueError, PermissionError) as e:
+        if _json_out({"error": str(e)}, args):
+            return 1
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if _json_out({"id": entry_id, "updated": True, "meta": meta}, args):
+        return 0
+
+    print(f"Updated: {entry_id}")
+    # Show what changed
+    changes = []
+    if body is not None:
+        changes.append("content")
+    if tags is not None:
+        changes.append("tags")
+    for field in ("title", "status", "priority", "assignee", "due_date", "type"):
+        if getattr(args, field, None) is not None:
+            changes.append(field)
+    if changes:
+        print(f"  Changed: {', '.join(changes)}")
+    return 0
+
+
+def _resolve_short_id(store, short_id: str) -> str | None:
+    """Resolve a short ID prefix to full UUID."""
+    for tier in ("hot", "warm", "cold"):
+        tier_dir = store.root / tier
+        if not tier_dir.exists():
+            continue
+        for p in tier_dir.glob("*.md"):
+            if p.stem.startswith(short_id):
+                return p.stem
+    return None
 
 
 def cmd_query(args):
@@ -270,6 +382,11 @@ def cmd_query(args):
         include_cold=args.all,
         project=getattr(args, "project", None),
         agent=getattr(args, "agent", None),
+        entry_type=getattr(args, "type", None),
+        status=getattr(args, "status", None),
+        priority=getattr(args, "priority", None),
+        assignee=getattr(args, "assignee", None),
+        instance=getattr(args, "instance", None),
     )
 
     if _json_out({"results": results}, args):
@@ -489,11 +606,16 @@ def cmd_list(args):
     tier = args.tier or "hot"
     entries = store.list_entries(tier, agent=getattr(args, "agent", None))
 
-    # Apply filters (#12)
+    # Apply filters (#12, #40)
     project_filter = getattr(args, "project", None)
     tag_filter = getattr(args, "tag", None)
     scope_filter = getattr(args, "scope", None)
     agent_filter = getattr(args, "agent", None)
+    type_filter = getattr(args, "type", None)
+    status_filter = getattr(args, "status", None)
+    priority_filter = getattr(args, "priority", None)
+    assignee_filter = getattr(args, "assignee", None)
+    instance_filter = getattr(args, "instance", None)
 
     if project_filter:
         entries = [(meta, body) for meta, body in entries if meta.get("project") == project_filter]
@@ -503,6 +625,16 @@ def cmd_list(args):
         entries = [(meta, body) for meta, body in entries if meta.get("scope") == scope_filter]
     if agent_filter:
         entries = [(meta, body) for meta, body in entries if meta.get("agent") == agent_filter]
+    if type_filter:
+        entries = [(meta, body) for meta, body in entries if meta.get("type", "memory") == type_filter]
+    if status_filter:
+        entries = [(meta, body) for meta, body in entries if meta.get("status") == status_filter]
+    if priority_filter:
+        entries = [(meta, body) for meta, body in entries if meta.get("priority") == priority_filter]
+    if assignee_filter:
+        entries = [(meta, body) for meta, body in entries if meta.get("assignee") == assignee_filter]
+    if instance_filter:
+        entries = [(meta, body) for meta, body in entries if meta.get("instance") == instance_filter]
 
     if _json_out(
         {
@@ -510,11 +642,17 @@ def cmd_list(args):
             "entries": [
                 {
                     "id": meta.get("id", "?"),
+                    "type": meta.get("type", "memory"),
                     "title": meta.get("title", "(untitled)"),
                     "scope": meta.get("scope", "team"),
                     "agent": meta.get("agent", ""),
+                    "instance": meta.get("instance", ""),
                     "tags": meta.get("tags", []),
                     "project": meta.get("project", ""),
+                    "status": meta.get("status", ""),
+                    "priority": meta.get("priority", ""),
+                    "assignee": meta.get("assignee", ""),
+                    "due_date": meta.get("due_date", ""),
                     "decay_score": meta.get("decay_score", 0),
                     "preview": body[:80].replace("\n", " "),
                 }
@@ -596,15 +734,47 @@ def cmd_status(args):
     if info["entries"]["cold"]:
         entries_str += f" / {info['entries']['cold']} cold"
 
+    # Entry class breakdown (ADR-012)
+    type_counts = {"memory": 0, "process": 0, "task": 0}
+    task_status_counts = {}
+    for tier_name in ("hot", "warm", "cold"):
+        tier_dir = root / tier_name
+        if not tier_dir.exists():
+            continue
+        for p in tier_dir.glob("*.md"):
+            try:
+                from palaia.entry import parse_entry as _pe
+
+                text = p.read_text(encoding="utf-8")
+                meta, _ = _pe(text)
+                et = meta.get("type", "memory")
+                type_counts[et] = type_counts.get(et, 0) + 1
+                if et == "task":
+                    st = meta.get("status", "open")
+                    task_status_counts[st] = task_status_counts.get(st, 0) + 1
+            except Exception:
+                continue
+
+    class_parts = []
+    for et in ("memory", "process", "task"):
+        if type_counts.get(et, 0) > 0:
+            class_parts.append(f"{type_counts[et]} {et}")
+    class_str = " / ".join(class_parts) if class_parts else "none"
+
     store_rows = [
         ("Root", str(info["palaia_root"])),
         ("Store version", f"v{__version__}"),
         ("Entries", entries_str),
+        ("Classes", class_str),
         ("Projects", str(project_count)),
         ("Disk size", format_size(disk_bytes)),
         ("Last write", relative_time(last_write) if last_write else "never"),
         ("Last GC", relative_time(last_gc) if last_gc else "never"),
     ]
+
+    if task_status_counts:
+        task_parts = [f"{v} {k}" for k, v in sorted(task_status_counts.items())]
+        store_rows.append(("Tasks", " / ".join(task_parts)))
 
     if info["wal_pending"]:
         store_rows.append(("WAL pending", str(info["wal_pending"])))
@@ -1020,6 +1190,10 @@ def cmd_migrate(args):
     store = Store(root)
     store.recover()
 
+    # --suggest mode: scan existing entries and suggest type assignments
+    if getattr(args, "suggest", False):
+        return _cmd_migrate_suggest(store, root, args)
+
     result = migrate(
         source=args.source,
         store=store,
@@ -1033,6 +1207,77 @@ def cmd_migrate(args):
 
     print(format_result(result))
     return 0
+
+
+def _cmd_migrate_suggest(store, root, args):
+    """Suggest entry type assignments for existing entries without a type field."""
+    from palaia.entry import parse_entry
+
+    suggestions = []
+    for tier in ("hot", "warm", "cold"):
+        tier_dir = root / tier
+        if not tier_dir.exists():
+            continue
+        for p in tier_dir.glob("*.md"):
+            try:
+                text = p.read_text(encoding="utf-8")
+                meta, body = parse_entry(text)
+                if "type" in meta:
+                    continue  # Already has a type
+                entry_id = meta.get("id", p.stem)
+                title = meta.get("title", "(untitled)")
+                # Simple heuristic for type suggestion
+                suggested_type = _suggest_type(title, body, meta)
+                suggestions.append(
+                    {
+                        "id": entry_id,
+                        "title": title,
+                        "tier": tier,
+                        "suggested_type": suggested_type,
+                    }
+                )
+            except Exception:
+                continue
+
+    if _json_out({"suggestions": suggestions, "total": len(suggestions)}, args):
+        return 0
+
+    if not suggestions:
+        print("All entries already have a type assigned.")
+        return 0
+
+    print_header()
+    print(section(f"Type suggestions for {len(suggestions)} untyped entries"))
+
+    rows = []
+    for s in suggestions:
+        rows.append((s["id"][:8], s["tier"], s["suggested_type"], s["title"]))
+
+    print(
+        table_multi(
+            headers=("ID", "Tier", "Suggested", "Title"),
+            rows=rows,
+            min_widths=(8, 4, 10, 20),
+        )
+    )
+
+    print(f"\n{len(suggestions)} entries without type field.")
+    print("Apply with: palaia edit <id> --type <type>")
+    return 0
+
+
+def _suggest_type(title: str, body: str, meta: dict) -> str:
+    """Heuristic to suggest entry type based on content."""
+    combined = f"{title} {body}".lower()
+    # Task indicators
+    task_keywords = ["todo", "task", "bug", "fix", "issue", "ticket", "deadline", "assigned", "blocker"]
+    if any(kw in combined for kw in task_keywords):
+        return "task"
+    # Process indicators
+    process_keywords = ["checklist", "sop", "procedure", "workflow", "step 1", "step 2", "how to", "guide", "runbook"]
+    if any(kw in combined for kw in process_keywords):
+        return "process"
+    return "memory"
 
 
 def cmd_setup(args):
@@ -1680,7 +1925,35 @@ def main():
     p_write.add_argument("--tags", default=None, help="Comma-separated tags")
     p_write.add_argument("--title", default=None, help="Entry title")
     p_write.add_argument("--project", default=None, help="Assign to project (uses project default scope)")
+    p_write.add_argument("--type", default=None, choices=["memory", "process", "task"], help="Entry class")
+    p_write.add_argument(
+        "--status", default=None, choices=["open", "in-progress", "done", "wontfix"], help="Task status"
+    )
+    p_write.add_argument(
+        "--priority", default=None, choices=["critical", "high", "medium", "low"], help="Task priority"
+    )
+    p_write.add_argument("--assignee", default=None, help="Task assignee")
+    p_write.add_argument("--due-date", default=None, dest="due_date", help="Task due date (ISO-8601)")
+    p_write.add_argument("--instance", default=None, help="Session identity name")
     p_write.add_argument("--json", action="store_true", help="Output as JSON")
+
+    # edit
+    p_edit = sub.add_parser("edit", help="Edit an existing memory entry")
+    p_edit.add_argument("entry_id", help="Entry UUID (or short prefix)")
+    p_edit.add_argument("text", nargs="?", default=None, help="New content (optional)")
+    p_edit.add_argument("--agent", default=None, help="Agent name (for scope enforcement)")
+    p_edit.add_argument("--tags", default=None, help="New comma-separated tags")
+    p_edit.add_argument("--title", default=None, help="New title")
+    p_edit.add_argument("--type", default=None, choices=["memory", "process", "task"], help="Change entry class")
+    p_edit.add_argument(
+        "--status", default=None, choices=["open", "in-progress", "done", "wontfix"], help="Set task status"
+    )
+    p_edit.add_argument(
+        "--priority", default=None, choices=["critical", "high", "medium", "low"], help="Set task priority"
+    )
+    p_edit.add_argument("--assignee", default=None, help="Set task assignee")
+    p_edit.add_argument("--due-date", default=None, dest="due_date", help="Set task due date (ISO-8601)")
+    p_edit.add_argument("--json", action="store_true", help="Output as JSON")
 
     # query
     p_query = sub.add_parser("query", help="Search memories")
@@ -1689,6 +1962,15 @@ def main():
     p_query.add_argument("--all", action="store_true", help="Include COLD tier")
     p_query.add_argument("--project", default=None, help="Filter by project")
     p_query.add_argument("--agent", default=None, help="Agent name (for scope filtering)")
+    p_query.add_argument("--type", default=None, choices=["memory", "process", "task"], help="Filter by entry class")
+    p_query.add_argument(
+        "--status", default=None, choices=["open", "in-progress", "done", "wontfix"], help="Filter by task status"
+    )
+    p_query.add_argument(
+        "--priority", default=None, choices=["critical", "high", "medium", "low"], help="Filter by priority"
+    )
+    p_query.add_argument("--assignee", default=None, help="Filter by assignee")
+    p_query.add_argument("--instance", default=None, help="Filter by session identity")
     p_query.add_argument("--rag", action="store_true", help="Output as RAG context block")
     p_query.add_argument("--json", action="store_true", help="Output as JSON")
 
@@ -1724,6 +2006,15 @@ def main():
     p_list.add_argument("--tag", default=None, help="Filter by tag")
     p_list.add_argument("--scope", default=None, help="Filter by scope")
     p_list.add_argument("--agent", default=None, help="Filter by agent")
+    p_list.add_argument("--type", default=None, choices=["memory", "process", "task"], help="Filter by entry class")
+    p_list.add_argument(
+        "--status", default=None, choices=["open", "in-progress", "done", "wontfix"], help="Filter by task status"
+    )
+    p_list.add_argument(
+        "--priority", default=None, choices=["critical", "high", "medium", "low"], help="Filter by priority"
+    )
+    p_list.add_argument("--assignee", default=None, help="Filter by assignee")
+    p_list.add_argument("--instance", default=None, help="Filter by session identity")
     p_list.add_argument("--json", action="store_true", help="Output as JSON")
 
     # status
@@ -1886,9 +2177,10 @@ def main():
     p_config_set_chain.add_argument("--json", action="store_true", help="Output as JSON")
 
     # migrate
-    p_migrate = sub.add_parser("migrate", help="Import from external memory formats")
-    p_migrate.add_argument("source", help="Source path (directory or file)")
+    p_migrate = sub.add_parser("migrate", help="Import from external memory formats or suggest type assignments")
+    p_migrate.add_argument("source", nargs="?", default=None, help="Source path (directory or file)")
     p_migrate.add_argument("--dry-run", action="store_true", help="Preview without writing")
+    p_migrate.add_argument("--suggest", action="store_true", help="Suggest entry type assignments for untyped entries")
     p_migrate.add_argument(
         "--format",
         default=None,
@@ -1907,6 +2199,7 @@ def main():
     commands = {
         "init": cmd_init,
         "write": cmd_write,
+        "edit": cmd_edit,
         "query": cmd_query,
         "ingest": cmd_ingest,
         "get": cmd_get,

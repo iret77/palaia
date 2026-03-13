@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "1.6.1"
+version: "1.7.0"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   Replaces built-in memory-core with semantic search, projects, and scope-based access control.
@@ -307,20 +307,29 @@ The config change requires a gateway restart to take effect.
 ### Basic Memory
 
 ```bash
-# Write a memory entry
-palaia write "text" [--scope private|team|public] [--project NAME] [--tags a,b] [--title "Title"]
+# Write a memory entry (default type: memory)
+palaia write "text" [--scope private|team|public] [--project NAME] [--tags a,b] [--title "Title"] [--type memory|process|task] [--instance NAME]
 
-# Search memories (semantic + keyword)
-palaia query "search term" [--project NAME] [--limit N] [--all]
+# Write a task with structured fields
+palaia write "fix login bug" --type task --status open --priority high --assignee Elliot --due-date 2026-04-01
+
+# Edit an existing entry (content, metadata, task fields)
+palaia edit <id> ["new content"] [--status done] [--priority high] [--tags new,tags] [--title "New Title"] [--type task]
+
+# Search memories (semantic + keyword) with structured filters
+palaia query "search term" [--project NAME] [--limit N] [--all] [--type task] [--status open] [--priority high] [--assignee NAME] [--instance NAME]
 
 # Read a specific entry by ID
 palaia get <id> [--from LINE] [--lines N]
 
-# List entries in a tier
-palaia list [--tier hot|warm|cold] [--project NAME]
+# List entries in a tier with filters
+palaia list [--tier hot|warm|cold] [--project NAME] [--type task] [--status open] [--priority high] [--assignee NAME] [--instance NAME]
 
-# System health and active providers
+# System health, active providers, and entry class breakdown
 palaia status
+
+# Suggest type assignments for untyped entries
+palaia migrate --suggest
 ```
 
 ### Projects
@@ -461,13 +470,19 @@ palaia project set-scope <name> <scope>
 |-----------|---------|
 | Remember a simple fact | `palaia write "..."` |
 | Remember something for a specific project | `palaia project write <name> "..."` |
+| Create a task/todo | `palaia write "fix bug" --type task --priority high` |
+| Record a process/SOP | `palaia write "deploy steps" --type process` |
+| Mark task as done | `palaia edit <id> --status done` |
 | Find something you stored | `palaia query "..."` |
+| Find open tasks | `palaia query "tasks" --type task --status open` |
+| List high-priority tasks | `palaia list --type task --priority high` |
 | Find something within a project | `palaia project query <name> "..."` |
 | Check what's in active memory | `palaia list` |
 | Check what's in archived memory | `palaia list --tier cold` |
-| See system health | `palaia status` |
+| See system health + class breakdown | `palaia status` |
 | Clean up old entries | `palaia gc` |
 | Index a document or website | `palaia ingest <file/url> --project <name>` |
+| Get type suggestions for old entries | `palaia migrate --suggest` |
 | Search indexed documents for LLM context | `palaia query "..." --project <name> --rag` |
 
 ## Document Knowledge Base

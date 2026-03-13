@@ -511,12 +511,76 @@ def _check_deprecated_config(palaia_root: Path | None) -> dict[str, Any]:
     }
 
 
+def _check_entry_classes(palaia_root: Path | None) -> dict[str, Any]:
+    """Check entry class adoption and suggest migration for untyped entries."""
+    if palaia_root is None:
+        return {
+            "name": "entry_classes",
+            "label": "Entry classes",
+            "status": "error",
+            "message": "Not initialized",
+        }
+
+    from palaia.entry import parse_entry
+
+    total = 0
+    untyped = 0
+    type_counts: dict[str, int] = {}
+
+    for tier in ("hot", "warm", "cold"):
+        tier_dir = palaia_root / tier
+        if not tier_dir.exists():
+            continue
+        for p in tier_dir.glob("*.md"):
+            try:
+                text = p.read_text(encoding="utf-8")
+                meta, _ = parse_entry(text)
+                total += 1
+                et = meta.get("type")
+                if et is None:
+                    untyped += 1
+                    et = "memory"
+                type_counts[et] = type_counts.get(et, 0) + 1
+            except Exception:
+                continue
+
+    if total == 0:
+        return {
+            "name": "entry_classes",
+            "label": "Entry classes",
+            "status": "info",
+            "message": "No entries yet",
+        }
+
+    parts = [f"{v} {k}" for k, v in sorted(type_counts.items())]
+    class_str = ", ".join(parts)
+
+    if untyped > 0:
+        return {
+            "name": "entry_classes",
+            "label": "Entry classes",
+            "status": "info",
+            "message": f"{class_str} ({untyped} untyped, default to memory)",
+            "fix": "Run: palaia migrate --suggest  to get type recommendations",
+            "details": {"total": total, "untyped": untyped, "types": type_counts},
+        }
+
+    return {
+        "name": "entry_classes",
+        "label": "Entry classes",
+        "status": "ok",
+        "message": class_str,
+        "details": {"total": total, "types": type_counts},
+    }
+
+
 def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
     """Run all doctor checks. Returns list of check results."""
     results = [
         _check_palaia_init(palaia_root),
         _check_store_version(palaia_root),
         _check_embedding_chain(palaia_root),
+        _check_entry_classes(palaia_root),
         _check_projects_usage(palaia_root),
         _check_deprecated_config(palaia_root),
         _check_openclaw_plugin(),

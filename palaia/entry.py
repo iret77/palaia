@@ -1,13 +1,22 @@
-"""Memory entry parsing and creation (ADR-006)."""
+"""Memory entry parsing and creation (ADR-006, ADR-012)."""
 
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import uuid
 from datetime import datetime, timezone
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
+
+# Entry class types (ADR-012)
+VALID_TYPES = {"memory", "process", "task"}
+DEFAULT_TYPE = "memory"
+
+# Task-specific structured fields (ADR-012)
+VALID_STATUSES = {"open", "in-progress", "done", "wontfix"}
+VALID_PRIORITIES = {"critical", "high", "medium", "low"}
 
 
 def _parse_yaml_simple(text: str) -> dict:
@@ -66,6 +75,41 @@ def content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def validate_entry_type(entry_type: str | None) -> str:
+    """Validate and return entry type, defaulting to 'memory'."""
+    if entry_type is None:
+        return DEFAULT_TYPE
+    entry_type = entry_type.strip().lower()
+    if entry_type not in VALID_TYPES:
+        raise ValueError(f"Invalid entry type: '{entry_type}'. Valid: {', '.join(sorted(VALID_TYPES))}")
+    return entry_type
+
+
+def validate_status(status: str | None) -> str | None:
+    """Validate task status."""
+    if status is None:
+        return None
+    status = status.strip().lower()
+    if status not in VALID_STATUSES:
+        raise ValueError(f"Invalid status: '{status}'. Valid: {', '.join(sorted(VALID_STATUSES))}")
+    return status
+
+
+def validate_priority(priority: str | None) -> str | None:
+    """Validate task priority."""
+    if priority is None:
+        return None
+    priority = priority.strip().lower()
+    if priority not in VALID_PRIORITIES:
+        raise ValueError(f"Invalid priority: '{priority}'. Valid: {', '.join(sorted(VALID_PRIORITIES))}")
+    return priority
+
+
+def _resolve_instance() -> str | None:
+    """Resolve instance name from PALAIA_INSTANCE env var."""
+    return os.environ.get("PALAIA_INSTANCE") or None
+
+
 def create_entry(
     body: str,
     scope: str = "team",
@@ -73,11 +117,20 @@ def create_entry(
     tags: list[str] | None = None,
     title: str | None = None,
     project: str | None = None,
+    entry_type: str | None = None,
+    status: str | None = None,
+    priority: str | None = None,
+    assignee: str | None = None,
+    due_date: str | None = None,
+    instance: str | None = None,
 ) -> str:
     """Create a full memory entry string with frontmatter."""
     now = datetime.now(timezone.utc).isoformat()
+    entry_type = validate_entry_type(entry_type)
+
     meta = {
         "id": str(uuid.uuid4()),
+        "type": entry_type,
         "scope": scope,
         "created": now,
         "accessed": now,
@@ -87,12 +140,26 @@ def create_entry(
     }
     if agent:
         meta["agent"] = agent
+    # Session identity (ADR-012)
+    resolved_instance = instance or _resolve_instance()
+    if resolved_instance:
+        meta["instance"] = resolved_instance
     if tags:
         meta["tags"] = tags
     if title:
         meta["title"] = title
     if project:
         meta["project"] = project
+
+    # Task-specific fields (only for type: task)
+    if entry_type == "task":
+        meta["status"] = validate_status(status) or "open"
+        if priority:
+            meta["priority"] = validate_priority(priority)
+        if assignee:
+            meta["assignee"] = assignee
+        if due_date:
+            meta["due_date"] = due_date
 
     fm = _to_yaml_simple(meta)
     return f"---\n{fm}\n---\n\n{body}\n"

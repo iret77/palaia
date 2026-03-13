@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 from palaia.config import load_config
 from palaia.decay import classify_tier, days_since, decay_score
-from palaia.entry import content_hash, create_entry, parse_entry, serialize_entry, update_access
+from palaia.entry import (
+    content_hash,
+    create_entry,
+    parse_entry,
+    serialize_entry,
+    update_access,
+    validate_entry_type,
+    validate_priority,
+    validate_status,
+)
 from palaia.index import EmbeddingCache
 from palaia.lock import PalaiaLock
 from palaia.scope import can_access, normalize_scope
@@ -42,6 +52,12 @@ class Store:
         tags: list[str] | None = None,
         title: str | None = None,
         project: str | None = None,
+        entry_type: str | None = None,
+        status: str | None = None,
+        priority: str | None = None,
+        assignee: str | None = None,
+        due_date: str | None = None,
+        instance: str | None = None,
     ) -> str:
         """Write a new memory entry. Returns the entry ID.
 
@@ -74,7 +90,20 @@ class Store:
         if existing:
             return existing  # Already stored, return existing ID
 
-        entry_text = create_entry(body, scope, agent, tags, title, project)
+        entry_text = create_entry(
+            body,
+            scope,
+            agent,
+            tags,
+            title,
+            project,
+            entry_type=entry_type,
+            status=status,
+            priority=priority,
+            assignee=assignee,
+            due_date=due_date,
+            instance=instance,
+        )
         meta, _ = parse_entry(entry_text)
         entry_id = meta["id"]
         filename = f"{entry_id}.md"
@@ -100,6 +129,102 @@ class Store:
         self.embedding_cache.invalidate(entry_id)
 
         return entry_id
+
+    def edit(
+        self,
+        entry_id: str,
+        body: str | None = None,
+        agent: str | None = None,
+        tags: list[str] | None = None,
+        title: str | None = None,
+        status: str | None = None,
+        priority: str | None = None,
+        assignee: str | None = None,
+        due_date: str | None = None,
+        entry_type: str | None = None,
+    ) -> dict:
+        """Edit an existing entry. Returns updated metadata.
+
+        Enforces scope: agent in narrower scope cannot edit broader-scope entries.
+        WAL-backed for crash safety.
+        """
+        path = self._find_entry(entry_id)
+        if path is None:
+            raise ValueError(f"Entry not found: {entry_id}")
+
+        text = path.read_text(encoding="utf-8")
+        meta, old_body = parse_entry(text)
+
+        # Scope enforcement: agent must be able to access the entry
+        entry_scope = meta.get("scope", "team")
+        entry_agent = meta.get("agent")
+
+        if not can_access(entry_scope, agent, entry_agent):
+            raise PermissionError(
+                f"Scope violation: agent '{agent}' cannot edit entry with scope '{entry_scope}' "
+                f"(owned by '{entry_agent}')"
+            )
+
+        # Private entries: only the owning agent can edit
+        if entry_scope == "private" and agent != entry_agent:
+            raise PermissionError(
+                f"Scope violation: agent '{agent}' cannot edit private entry owned by '{entry_agent}'"
+            )
+
+        # Apply changes
+        content_changed = False
+
+        if body is not None:
+            old_body = body
+            meta["content_hash"] = content_hash(body)
+            content_changed = True
+
+        if tags is not None:
+            meta["tags"] = tags
+
+        if title is not None:
+            meta["title"] = title
+
+        if entry_type is not None:
+            meta["type"] = validate_entry_type(entry_type)
+
+        # Task-specific field updates
+        if status is not None:
+            validate_status(status)
+            meta["status"] = status
+
+        if priority is not None:
+            validate_priority(priority)
+            meta["priority"] = priority
+
+        if assignee is not None:
+            meta["assignee"] = assignee
+
+        if due_date is not None:
+            meta["due_date"] = due_date
+
+        # Update access metadata
+        meta["accessed"] = datetime.now(timezone.utc).isoformat()
+
+        new_text = serialize_entry(meta, old_body)
+        relative = str(path.relative_to(self.root))
+
+        with self.lock:
+            wal_entry = WALEntry(
+                operation="write",
+                target=relative,
+                payload_hash=meta.get("content_hash", ""),
+                payload=new_text,
+            )
+            self.wal.log(wal_entry)
+            self.write_raw(relative, new_text)
+            self.wal.commit(wal_entry)
+
+        # Re-index embeddings if content changed
+        if content_changed:
+            self.embedding_cache.invalidate(entry_id)
+
+        return meta
 
     def write_raw(self, target: str, content: str) -> None:
         """Write content to a target path (relative to palaia root). Used by WAL recovery."""
