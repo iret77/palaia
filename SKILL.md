@@ -1,5 +1,6 @@
 ---
 name: palaia
+version: "1.5.1"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   Replaces built-in memory-core with semantic search, projects, and scope-based access control.
@@ -19,7 +20,7 @@ metadata:
       - command: "palaia init"
         label: "Initialize Palaia store"
     postUpdate:
-      - command: "pip install --upgrade palaia && palaia doctor --fix"
+      - command: "python3 -m pip install --upgrade palaia && palaia doctor --fix"
         label: "Upgrade Palaia and run health checks"
     plugin:
       slot: memory
@@ -50,7 +51,7 @@ Example pacing:
 
 ### Step 1: Install and initialize
 ```bash
-pip install git+https://github.com/iret77/palaia.git
+python3 -m pip install git+https://github.com/iret77/palaia.git
 palaia init
 ```
 
@@ -190,6 +191,38 @@ Check if `HEARTBEAT.md` exists in the workspace (`~/.openclaw/workspace/HEARTBEA
 
 Tell the user: "I've added a Palaia maintenance task to your heartbeat schedule. This keeps your memory organized automatically — nothing you need to do."
 
+## Troubleshooting: pip Not Found
+
+On some hosts, `pip` is not available as a standalone command. Use these fallbacks in order:
+
+```bash
+# Option 1: python3 -m pip (most reliable)
+python3 -m pip install --upgrade palaia
+
+# Option 2: pipx (if installed)
+pipx install palaia
+
+# Option 3: Bootstrap pip first
+python3 -m ensurepip --upgrade
+python3 -m pip install --upgrade palaia
+
+# Option 4: Install from git directly
+python3 -m pip install git+https://github.com/iret77/palaia.git
+```
+
+After upgrading, always run `palaia doctor --fix` to verify providers and update the store.
+
+**Important:** If you had sentence-transformers or fastembed installed before upgrading,
+verify they are still available after the upgrade:
+```bash
+palaia detect
+```
+If a provider is missing, reinstall it:
+```bash
+python3 -m pip install "palaia[sentence-transformers]"
+palaia warmup
+```
+
 ## Plugin Activation (OpenClaw Memory Backend)
 
 After installing palaia, activate it as your memory backend:
@@ -200,6 +233,12 @@ npm install -g @byte5ai/palaia
 ```
 
 ### 2. Configure OpenClaw
+
+**Config path:** `plugins.entries.palaia.config` in your OpenClaw config (`openclaw.json`).
+
+> **Warning:** Do NOT use `plugins.config.palaia` — that path does not exist.
+> The correct structure is `plugins.entries.palaia.config`.
+
 Patch your OpenClaw config (`openclaw.json`) to load and activate the plugin:
 
 ```json
@@ -213,13 +252,24 @@ Patch your OpenClaw config (`openclaw.json`) to load and activate the plugin:
       "memory": "palaia"
     },
     "entries": {
-      "palaia": { "enabled": true }
+      "palaia": {
+        "enabled": true,
+        "config": {
+          "workspace": "/path/to/.openclaw/workspace"
+        }
+      }
     }
   }
 }
 ```
 
 Find your npm global path with: `npm root -g`
+
+**Plugin config keys** (under `plugins.entries.palaia.config`):
+
+| Key | Description |
+|-----|-------------|
+| `workspace` | Path to the OpenClaw workspace (where `.palaia/` lives) |
 
 ### 3. Restart OpenClaw Gateway
 The config change requires a gateway restart to take effect.

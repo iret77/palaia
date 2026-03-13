@@ -80,18 +80,57 @@ class TestCheckEmbeddingChain:
         result = _check_embedding_chain(None)
         assert result["status"] == "error"
 
-    def test_chain_ok(self, palaia_root):
+    def test_chain_ok(self, palaia_root, monkeypatch):
         """Chain with openai AND local model → status ok."""
         config = json.loads((palaia_root / "config.json").read_text())
         config["embedding_chain"] = ["openai", "sentence-transformers", "bm25"]
         (palaia_root / "config.json").write_text(json.dumps(config))
 
+        # Mock detect_providers to report all providers as available
+        monkeypatch.setattr(
+            "palaia.embeddings.detect_providers",
+            lambda: [
+                {"name": "openai", "available": True},
+                {"name": "sentence-transformers", "available": True},
+                {"name": "bm25", "available": True},
+            ],
+        )
+
         result = _check_embedding_chain(palaia_root)
         assert result["status"] == "ok"
         assert "openai → sentence-transformers → bm25" in result["message"]
 
-    def test_chain_warn_no_local_fallback(self, palaia_root):
+    def test_chain_missing_provider(self, palaia_root, monkeypatch):
+        """Chain with a provider that is no longer installed → status warn."""
+        config = json.loads((palaia_root / "config.json").read_text())
+        config["embedding_chain"] = ["openai", "sentence-transformers", "bm25"]
+        (palaia_root / "config.json").write_text(json.dumps(config))
+
+        # sentence-transformers not available
+        monkeypatch.setattr(
+            "palaia.embeddings.detect_providers",
+            lambda: [
+                {"name": "openai", "available": True},
+                {"name": "sentence-transformers", "available": False},
+                {"name": "bm25", "available": True},
+            ],
+        )
+
+        result = _check_embedding_chain(palaia_root)
+        assert result["status"] == "warn"
+        assert "MISSING" in result["message"]
+        assert result.get("fixable") is True
+
+    def test_chain_warn_no_local_fallback(self, palaia_root, monkeypatch):
         """Chain with openai ONLY (no local model) → status warn."""
+        # Mock detect_providers: openai available, no local missing from chain
+        monkeypatch.setattr(
+            "palaia.embeddings.detect_providers",
+            lambda: [
+                {"name": "openai", "available": True},
+                {"name": "bm25", "available": True},
+            ],
+        )
         result = _check_embedding_chain(palaia_root)
         assert result["status"] == "warn"
         assert "openai → bm25" in result["message"]

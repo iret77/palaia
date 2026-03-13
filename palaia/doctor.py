@@ -34,7 +34,7 @@ def _check_palaia_init(palaia_root: Path | None) -> dict[str, Any]:
 
 
 def _check_embedding_chain(palaia_root: Path | None) -> dict[str, Any]:
-    """Check configured embedding chain."""
+    """Check configured embedding chain and verify providers are actually installed."""
     if palaia_root is None:
         return {
             "name": "embedding_chain",
@@ -44,6 +44,7 @@ def _check_embedding_chain(palaia_root: Path | None) -> dict[str, Any]:
         }
 
     from palaia.config import load_config
+    from palaia.embeddings import detect_providers
 
     config = load_config(palaia_root)
     chain = config.get("embedding_chain")
@@ -53,6 +54,35 @@ def _check_embedding_chain(palaia_root: Path | None) -> dict[str, Any]:
         chain_str = " → ".join(chain)
         has_local = any(p in chain for p in ("sentence-transformers", "fastembed", "ollama"))
         has_openai = "openai" in chain
+
+        # Verify that non-bm25 providers in the chain are actually available
+        detected = {p["name"]: p["available"] for p in detect_providers()}
+        missing = [p for p in chain if p != "bm25" and not detected.get(p, False)]
+
+        if missing:
+            missing_str = ", ".join(missing)
+            fix_hints = []
+            for m in missing:
+                if m == "sentence-transformers":
+                    fix_hints.append('pip install "palaia[sentence-transformers]"')
+                elif m == "fastembed":
+                    fix_hints.append('pip install "palaia[fastembed]"')
+                elif m == "ollama":
+                    fix_hints.append("ollama serve && ollama pull nomic-embed-text")
+                elif m == "openai":
+                    fix_hints.append("Set OPENAI_API_KEY environment variable")
+            return {
+                "name": "embedding_chain",
+                "label": "Embedding chain",
+                "status": "warn",
+                "message": f"{chain_str} — MISSING: {missing_str}",
+                "fix": "Reinstall missing providers:\n  "
+                + "\n  ".join(fix_hints)
+                + "\nOr re-detect and update chain: palaia detect",
+                "fixable": True,
+                "details": {"chain": chain, "missing": missing},
+            }
+
         if has_openai and not has_local:
             return {
                 "name": "embedding_chain",
@@ -84,6 +114,7 @@ def _check_embedding_chain(palaia_root: Path | None) -> dict[str, Any]:
             "status": "warn",
             "message": "No chain configured (using auto-detect)",
             "fix": "Run: palaia detect && palaia config set-chain <providers> bm25",
+            "fixable": True,
         }
 
 
@@ -455,6 +486,48 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_wal_health(palaia_root),
     ]
     return results
+
+
+def apply_fixes(palaia_root: Path | None, results: list[dict[str, Any]]) -> list[str]:
+    """Apply automatic fixes for fixable warnings. Returns list of actions taken."""
+    actions: list[str] = []
+    if palaia_root is None:
+        return actions
+
+    from palaia.config import load_config, save_config
+    from palaia.embeddings import detect_providers
+
+    config = load_config(palaia_root)
+
+    for r in results:
+        if r.get("status") != "warn":
+            continue
+
+        # Fix: embedding chain has missing providers → re-detect and rebuild chain
+        if r.get("name") == "embedding_chain" and r.get("fixable"):
+            detected = detect_providers()
+            detected_map = {p["name"]: p["available"] for p in detected}
+            old_chain = config.get("embedding_chain", [])
+
+            # Strategy: keep providers that are available, drop missing ones
+            new_chain = [p for p in old_chain if p == "bm25" or detected_map.get(p, False)]
+
+            # If chain is empty or only bm25, auto-detect available providers
+            if not new_chain or new_chain == ["bm25"]:
+                new_chain = []
+                for p in detected:
+                    if p["available"] and p["name"] not in ("voyage",):
+                        new_chain.append(p["name"])
+                new_chain.append("bm25")
+
+            if "bm25" not in new_chain:
+                new_chain.append("bm25")
+
+            config["embedding_chain"] = new_chain
+            save_config(palaia_root, config)
+            actions.append(f"Updated embedding chain: {' → '.join(new_chain)}")
+
+    return actions
 
 
 def format_doctor_report(results: list[dict[str, Any]], show_fix: bool = False) -> str:

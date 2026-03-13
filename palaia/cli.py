@@ -9,7 +9,7 @@ from pathlib import Path
 
 from palaia import __version__
 from palaia.config import DEFAULT_CONFIG, find_palaia_root, get_root, load_config, save_config
-from palaia.doctor import format_doctor_report, run_doctor
+from palaia.doctor import apply_fixes, format_doctor_report, run_doctor
 from palaia.ingest import DocumentIngestor, format_rag_output
 from palaia.migrate import format_result, migrate
 from palaia.project import ProjectManager
@@ -839,12 +839,27 @@ def cmd_doctor(args):
     palaia_root = find_palaia_root()
 
     results = run_doctor(palaia_root)
+    show_fix = getattr(args, "fix", False)
 
-    if _json_out({"checks": results}, args):
+    # Apply automatic fixes when --fix is passed
+    fix_actions: list[str] = []
+    if show_fix and palaia_root:
+        fix_actions = apply_fixes(palaia_root, results)
+        if fix_actions:
+            # Re-run checks after fixes to show updated state
+            results = run_doctor(palaia_root)
+
+    if _json_out({"checks": results, "fixes_applied": fix_actions}, args):
         return 0
 
-    show_fix = getattr(args, "fix", False)
     print(format_doctor_report(results, show_fix=show_fix))
+
+    if fix_actions:
+        print("\nFixes applied:")
+        for action in fix_actions:
+            print(f"  ✓ {action}")
+        print()
+
     return 0
 
 
