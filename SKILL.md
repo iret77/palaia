@@ -20,7 +20,7 @@ metadata:
       - command: "palaia init"
         label: "Initialize Palaia store"
     postUpdate:
-      - command: "python3 -m pip install --upgrade palaia && palaia doctor --fix"
+      - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && palaia doctor --fix"
         label: "Upgrade Palaia and run health checks"
     plugin:
       slot: memory
@@ -50,8 +50,22 @@ Example pacing:
 ## Setup Flow (follow this exactly)
 
 ### Step 1: Install and initialize
+
+**Choose your package manager** (use whichever is available on your system):
 ```bash
+# pip (most common)
 python3 -m pip install "palaia[fastembed]"
+
+# uv (if pip is not available)
+uv tool install "palaia[fastembed]"
+
+# pipx (alternative)
+pipx install "palaia[fastembed]"
+```
+
+> **Important (uv users):** Always include the `[fastembed]` extra. `uv tool install palaia` without extras will remove previously installed embedding providers (fastembed, sentence-transformers) on upgrade. This is by design — `uv` strictly manages dependencies. Always use `uv tool install "palaia[fastembed]"` for both install and upgrade.
+
+```bash
 palaia init
 ```
 
@@ -184,10 +198,11 @@ palaia config set-chain <provider1> [provider2] bm25
 
 If only BM25 is shown and you want semantic search:
 ```bash
-pip install sentence-transformers   # Recommended for most systems
-palaia warmup                       # pre-load model
+# fastembed — lightweight, no GPU needed, recommended for most systems
+python3 -m pip install fastembed    # or: uv pip install fastembed
+palaia warmup                       # pre-load model + build index
 ```
-If sentence-transformers fails or requires CUDA: use fastembed instead (`pip install fastembed`) — lighter, no GPU needed.
+If fastembed is unavailable, sentence-transformers works too (`python3 -m pip install sentence-transformers`) but is heavier and slower on CPU-only systems.
 
 ### Step 4b: Warm up models
 ```bash
@@ -246,16 +261,21 @@ On some hosts, `pip` is not available as a standalone command. Use these fallbac
 # Option 1: python3 -m pip (most reliable)
 python3 -m pip install --upgrade "palaia[fastembed]"
 
-# Option 2: pipx (if installed)
+# Option 2: uv (modern Python package manager)
+uv tool install "palaia[fastembed]"
+
+# Option 3: pipx (if installed)
 pipx install "palaia[fastembed]"
 
-# Option 3: Bootstrap pip first
+# Option 4: Bootstrap pip first
 python3 -m ensurepip --upgrade
 python3 -m pip install --upgrade "palaia[fastembed]"
 
-# Option 4: Install from git directly
+# Option 5: Install from git directly
 python3 -m pip install "palaia[fastembed] @ git+https://github.com/iret77/palaia.git"
 ```
+
+> **uv users:** When upgrading with `uv tool install`, always include `[fastembed]` — `uv` removes packages not in the dependency spec on upgrade. Running `uv tool install palaia` without extras will silently uninstall fastembed.
 
 ## Troubleshooting: Debian/Ubuntu (PEP 668)
 
@@ -683,7 +703,13 @@ When sending memos to other agents, use a two-layer approach for reliable delive
 Always run `palaia doctor` after updating. It checks your store for compatibility, suggests new features (like projects or embedding chain improvements), and handles version stamping. If the installed version differs from the store version, Palaia will warn you automatically on every CLI call until you run `palaia doctor`.
 
 ```bash
-pip install --upgrade palaia
+# pip
+python3 -m pip install --upgrade "palaia[fastembed]"
+
+# uv (always include [fastembed] — uv removes unlisted extras on upgrade)
+uv tool install "palaia[fastembed]"
+
+# Then always:
 palaia doctor --fix
 ```
 
