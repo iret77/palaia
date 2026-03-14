@@ -28,7 +28,16 @@ def palaia_root(tmp_path):
     return root
 
 
-def _write_entry(root: Path, tier: str, entry_id: str, title: str, body: str, tags: list[str] | None = None):
+def _write_entry(
+    root: Path,
+    tier: str,
+    entry_id: str,
+    title: str,
+    body: str,
+    tags: list[str] | None = None,
+    scope: str = "team",
+    agent: str = "test",
+):
     """Write a test entry to the store."""
     tags = tags or []
     tags_str = ", ".join(tags)
@@ -36,8 +45,8 @@ def _write_entry(root: Path, tier: str, entry_id: str, title: str, body: str, ta
 id: {entry_id}
 title: {title}
 tags: [{tags_str}]
-scope: team
-agent: test
+scope: {scope}
+agent: {agent}
 created: 2026-01-01T00:00:00+00:00
 accessed: 2026-01-01T00:00:00+00:00
 access_count: 1
@@ -180,3 +189,70 @@ def test_reindex_uses_title_tags_body(palaia_root):
     assert "tag1" in text
     assert "tag2" in text
     assert "Body text here" in text
+
+
+def test_reindex_includes_private_entries(palaia_root):
+    """Warmup indexes private-scope entries (fix #60)."""
+    _write_entry(palaia_root, "hot", "aaaa-1111", "Team Entry", "team content", scope="team")
+    _write_entry(palaia_root, "hot", "aaaa-2222", "Private Entry", "private content", scope="private", agent="alice")
+    _write_entry(palaia_root, "hot", "aaaa-3333", "Another Private", "secret stuff", scope="private", agent="bob")
+
+    config = json.loads((palaia_root / "config.json").read_text())
+    with patch("palaia.embeddings.auto_detect_provider", return_value=FakeProvider()):
+        stats = _reindex_entries(palaia_root, config, FakeArgs())
+
+    assert stats["indexed"] == 3
+    assert stats["new"] == 3
+
+    store = Store(palaia_root)
+    for eid in ("aaaa-1111", "aaaa-2222", "aaaa-3333"):
+        assert store.embedding_cache.get_cached(eid) is not None
+
+
+def test_reindex_includes_shared_entries(palaia_root):
+    """Warmup indexes shared-scope entries (fix #60)."""
+    _write_entry(palaia_root, "hot", "aaaa-1111", "Team Entry", "team content", scope="team")
+    _write_entry(palaia_root, "hot", "aaaa-2222", "Shared Palaia", "shared palaia", scope="shared:palaia")
+    _write_entry(palaia_root, "hot", "aaaa-3333", "Shared Kemia", "shared kemia", scope="shared:kemia")
+    _write_entry(palaia_root, "warm", "aaaa-4444", "Shared Clawsy", "shared clawsy", scope="shared:clawsy")
+
+    config = json.loads((palaia_root / "config.json").read_text())
+    with patch("palaia.embeddings.auto_detect_provider", return_value=FakeProvider()):
+        stats = _reindex_entries(palaia_root, config, FakeArgs())
+
+    assert stats["indexed"] == 4
+    assert stats["new"] == 4
+
+    store = Store(palaia_root)
+    for eid in ("aaaa-1111", "aaaa-2222", "aaaa-3333", "aaaa-4444"):
+        assert store.embedding_cache.get_cached(eid) is not None
+
+
+def test_reindex_mixed_scopes_all_indexed(palaia_root):
+    """Warmup indexes ALL scope types: team, private, shared, public (fix #60)."""
+    _write_entry(palaia_root, "hot", "aaaa-1111", "Team", "t", scope="team")
+    _write_entry(palaia_root, "hot", "aaaa-2222", "Private", "p", scope="private", agent="alice")
+    _write_entry(palaia_root, "hot", "aaaa-3333", "Shared", "s", scope="shared:project1")
+    _write_entry(palaia_root, "hot", "aaaa-4444", "Public", "pub", scope="public")
+
+    config = json.loads((palaia_root / "config.json").read_text())
+    with patch("palaia.embeddings.auto_detect_provider", return_value=FakeProvider()):
+        stats = _reindex_entries(palaia_root, config, FakeArgs())
+
+    assert stats["indexed"] == 4
+    assert stats["new"] == 4
+
+
+def test_all_entries_unfiltered_returns_all_scopes(palaia_root):
+    """Store.all_entries_unfiltered returns entries regardless of scope."""
+    _write_entry(palaia_root, "hot", "aaaa-1111", "Team", "t", scope="team")
+    _write_entry(palaia_root, "hot", "aaaa-2222", "Private", "p", scope="private", agent="alice")
+    _write_entry(palaia_root, "hot", "aaaa-3333", "Shared", "s", scope="shared:proj")
+    _write_entry(palaia_root, "warm", "aaaa-4444", "Public", "pub", scope="public")
+
+    store = Store(palaia_root)
+    entries = store.all_entries_unfiltered(include_cold=False)
+    assert len(entries) == 4
+
+    scopes = {meta["scope"] for meta, _, _ in entries}
+    assert scopes == {"team", "private", "shared:proj", "public"}

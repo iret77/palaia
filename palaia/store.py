@@ -316,6 +316,30 @@ class Store:
                 results.append((meta, body, tier))
         return results
 
+    def all_entries_unfiltered(self, include_cold: bool = False) -> list[tuple[dict, str, str]]:
+        """Get ALL entries across tiers WITHOUT scope filtering.
+
+        Used for indexing/warmup where every entry needs an embedding
+        regardless of scope. Scope filtering happens at query time, not
+        at index time.
+
+        Returns list of (meta, body, tier).
+        """
+        tiers = ["hot", "warm"] + (["cold"] if include_cold else [])
+        results = []
+        for tier in tiers:
+            tier_dir = self.root / tier
+            if not tier_dir.exists():
+                continue
+            for p in sorted(tier_dir.glob("*.md")):
+                try:
+                    text = p.read_text(encoding="utf-8")
+                    meta, body = parse_entry(text)
+                    results.append((meta, body, tier))
+                except (OSError, UnicodeDecodeError):
+                    continue
+        return results
+
     def gc(self) -> dict:
         """Garbage collect: rotate tiers based on decay scores."""
         moves = {"hot_to_warm": 0, "warm_to_cold": 0, "cold_to_warm": 0, "warm_to_hot": 0}

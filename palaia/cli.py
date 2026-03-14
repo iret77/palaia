@@ -1685,7 +1685,7 @@ def _reindex_entries(root, config, args) -> dict:
     if isinstance(provider, BM25Provider):
         return {"indexed": 0, "new": 0, "cached": 0}
 
-    entries = store.all_entries(include_cold=False)
+    entries = store.all_entries_unfiltered(include_cold=False)
     total = len(entries)
     if total == 0:
         return {"indexed": 0, "new": 0, "cached": 0}
