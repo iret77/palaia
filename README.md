@@ -99,7 +99,8 @@ Palaia finds things by meaning, not just keywords. Available providers:
 |----------|------|----------|
 | `fastembed` | Local | Most systems — lightweight, fast, no GPU needed |
 | `sentence-transformers` | Local | GPU systems — heavier but accurate |
-| `openai` | Cloud | When you have an API key |
+| `gemini` | Cloud | Google Gemini API — no local compute needed |
+| `openai` | Cloud | When you have an OpenAI API key |
 | `ollama` | Local | When you run Ollama already |
 | `bm25` | Built-in | Always works — keyword fallback |
 
@@ -183,7 +184,7 @@ pip install -e ".[dev]"
 pytest
 ```
 
-550+ tests. Contributions welcome.
+640+ tests. Contributions welcome.
 
 ## Links
 

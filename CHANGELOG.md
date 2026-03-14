@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.9.0] — 2026-03-14
+
+### Features
+- **Gemini embedding provider** — `gemini-embedding-exp-03-07` via REST API, no SDK dependency. Cloud-based embeddings with local fallback support. (#34)
+- **Exact filtering for `palaia list`** — `--status`, `--tag`, `--priority` now use exact matching instead of embedding search. (#37)
+- **Doctor checks for unread memos** — `palaia doctor` warns when unread memos are waiting. (#42)
+- **Doctor checks for newer Palaia version on PyPI** — `palaia doctor` now detects when a newer version is available. (#45)
+- **Improved OpenClaw config auto-detection** — Better detection on VPS installs where config paths differ from standard setups. (#51)
+- **Concurrent write safety validated** — 5 thread-based tests confirm WAL + file locking handles parallel writes correctly. (#52)
+
+### Bug Fixes
+- **Warmup/indexing now includes private and shared-scope entries** — Previously, warmup only indexed team-scope entries. (#60)
+- **`doctor --fix` respects explicit user embedding config** — No longer overwrites user-configured embedding chains during auto-fix. (#57)
+- **postUpdate npm graceful fallback** — npm upgrade step in postUpdate hook no longer fails if npm is not available.
+
+### Security
+- **Scope enforcement audit** — All read/write operations verified for correct scope enforcement. (#39)
+
+### Documentation
+- Rewrote README with sales-pitch-first approach
+- Added Agent Field Guide with production lessons
+- Added Gemini provider to SKILL.md provider table
+- Documented concurrent write safety guarantees
+
 ## [1.8.1] — 2026-03-13
 
 ### Fixed
