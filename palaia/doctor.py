@@ -169,6 +169,7 @@ def _check_openclaw_plugin() -> dict[str, Any]:
     config_candidates = [
         Path.home() / ".openclaw" / "config.json",
         Path.home() / ".openclaw" / "config.yaml",
+        Path.home() / ".openclaw" / "openclaw.json",
     ]
 
     # Also check $OPENCLAW_CONFIG env var
@@ -851,6 +852,36 @@ def apply_fixes(palaia_root: Path | None, results: list[dict[str, Any]]) -> list
         if r.get("name") == "embedding_chain" and r.get("fixable"):
             missing = r.get("details", {}).get("missing", [])
             old_chain = config.get("embedding_chain", [])
+
+            # Guard: respect explicit user embedding config (#57)
+            # If embedding_provider is explicitly set (not "auto") and the
+            # provider is still available, do NOT touch the chain or provider.
+            explicit_provider = config.get("embedding_provider", "auto")
+            if explicit_provider and explicit_provider != "auto":
+                detected_guard = detect_providers()
+                detected_guard_map = {p["name"]: p["available"] for p in detected_guard}
+                if detected_guard_map.get(explicit_provider, False):
+                    # Explicit provider is still functional — preserve config.
+                    # Only remove broken providers from chain, keep the rest.
+                    new_chain = [p for p in old_chain if p == "bm25" or detected_guard_map.get(p, False)]
+                    if not new_chain or new_chain == ["bm25"]:
+                        # At minimum, keep the explicit provider + bm25
+                        new_chain = [explicit_provider, "bm25"]
+                    elif "bm25" not in new_chain:
+                        new_chain.append("bm25")
+
+                    if new_chain != old_chain:
+                        config["embedding_chain"] = new_chain
+                        save_config(palaia_root, config)
+                        chain_str = " → ".join(new_chain)
+                        actions.append(f"Cleaned chain (kept explicit provider {explicit_provider}): {chain_str}")
+                    else:
+                        actions.append(f"Explicit provider {explicit_provider} is available — config unchanged")
+                    # Still need warmup if semantic providers present
+                    if any(p != "bm25" for p in new_chain):
+                        ran_warmup = True
+                    continue
+
             installed_providers: list[str] = []
 
             # Step 1: Try to install missing providers via pip
@@ -871,10 +902,11 @@ def apply_fixes(palaia_root: Path | None, results: list[dict[str, Any]]) -> list
             detected_map = {p["name"]: p["available"] for p in detected}
 
             # Step 3: Build new chain — keep available providers from old chain
+            # preserving original order (user's preference)
             new_chain = [p for p in old_chain if p == "bm25" or detected_map.get(p, False)]
 
             # If chain is empty or only bm25, build best available chain
-            # Prefer semantic providers over bm25-only
+            # _build_best_chain() only as last resort when NO valid chain exists
             if not new_chain or new_chain == ["bm25"]:
                 new_chain = _build_best_chain(detected)
 
@@ -900,8 +932,16 @@ def apply_fixes(palaia_root: Path | None, results: list[dict[str, Any]]) -> list
 
         # Fix: no chain configured → auto-detect and set
         if r.get("name") == "embedding_chain" and r.get("fixable") and not r.get("details", {}).get("missing"):
+            # Guard: if explicit provider is set and available, build chain around it
+            explicit_provider = config.get("embedding_provider", "auto")
             detected = detect_providers()
-            new_chain = _build_best_chain(detected)
+            detected_map = {p["name"]: p["available"] for p in detected}
+
+            if explicit_provider and explicit_provider != "auto" and detected_map.get(explicit_provider, False):
+                new_chain = [explicit_provider, "bm25"]
+            else:
+                new_chain = _build_best_chain(detected)
+
             config["embedding_chain"] = new_chain
             save_config(palaia_root, config)
             actions.append(f"Auto-configured chain: {' → '.join(new_chain)}")

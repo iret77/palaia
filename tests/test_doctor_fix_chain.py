@@ -77,6 +77,213 @@ class TestBuildBestChain:
         assert chain == ["fastembed", "bm25"]
 
 
+class TestExplicitProviderGuard:
+    """Tests for #57: doctor --fix should not override explicit user embedding config."""
+
+    def test_explicit_provider_preserved_when_available(self, palaia_root, monkeypatch):
+        """If embedding_provider is explicitly set and available, chain is NOT rebuilt."""
+        config = json.loads((palaia_root / "config.json").read_text())
+        config["embedding_provider"] = "fastembed"
+        config["embedding_chain"] = ["fastembed", "bm25"]
+        (palaia_root / "config.json").write_text(json.dumps(config))
+
+        monkeypatch.setattr(
+            "palaia.embeddings.detect_providers",
+            lambda: [
+                {"name": "sentence-transformers", "available": True},
+                {"name": "fastembed", "available": True},
+                {"name": "openai", "available": False},
+                {"name": "ollama", "available": False},
+                {"name": "bm25", "available": True},
+            ],
+        )
+
+        # Simulate warning with openai missing from a chain that had it
+        results = [
+            {
+                "name": "embedding_chain",
+                "label": "Embedding chain",
+                "status": "warn",
+                "message": "fastembed -> openai -> bm25 — MISSING: openai",
+                "fixable": True,
+                "details": {
+                    "chain": ["fastembed", "openai", "bm25"],
+                    "missing": ["openai"],
+                },
+            }
+        ]
+
+        apply_fixes(palaia_root, results)
+
+        config = json.loads((palaia_root / "config.json").read_text())
+        assert config["embedding_provider"] == "fastembed"
+        chain = config["embedding_chain"]
+        assert chain[0] == "fastembed"
+        assert "openai" not in chain
+        assert "bm25" in chain
+
+    def test_explicit_provider_no_change_when_chain_healthy(self, palaia_root, monkeypatch):
+        """If explicit provider is set and chain is fine, config stays untouched."""
+        config = json.loads((palaia_root / "config.json").read_text())
+        config["embedding_provider"] = "fastembed"
+        config["embedding_chain"] = ["fastembed", "bm25"]
+        (palaia_root / "config.json").write_text(json.dumps(config))
+
+        monkeypatch.setattr(
+            "palaia.embeddings.detect_providers",
+            lambda: [
+                {"name": "sentence-transformers", "available": True},
+                {"name": "fastembed", "available": True},
+                {"name": "openai", "available": False},
+                {"name": "ollama", "available": False},
+                {"name": "bm25", "available": True},
+            ],
+        )
+
+        results = [
+            {
+                "name": "embedding_chain",
+                "label": "Embedding chain",
+                "status": "warn",
+                "message": "fastembed -> bm25 — MISSING: openai",
+                "fixable": True,
+                "details": {
+                    "chain": ["fastembed", "bm25"],
+                    "missing": ["openai"],
+                },
+            }
+        ]
+
+        actions = apply_fixes(palaia_root, results)
+
+        config = json.loads((palaia_root / "config.json").read_text())
+        assert config["embedding_chain"] == ["fastembed", "bm25"]
+        assert any("unchanged" in a for a in actions)
+
+    def test_explicit_provider_broken_falls_back(self, palaia_root, monkeypatch):
+        """If explicit provider is set but NOT available, normal rebuild happens."""
+        config = json.loads((palaia_root / "config.json").read_text())
+        config["embedding_provider"] = "fastembed"
+        config["embedding_chain"] = ["fastembed", "bm25"]
+        (palaia_root / "config.json").write_text(json.dumps(config))
+
+        monkeypatch.setattr(
+            "palaia.embeddings.detect_providers",
+            lambda: [
+                {"name": "sentence-transformers", "available": True},
+                {"name": "fastembed", "available": False},
+                {"name": "openai", "available": False},
+                {"name": "ollama", "available": False},
+                {"name": "bm25", "available": True},
+            ],
+        )
+        monkeypatch.setattr("palaia.doctor._try_pip_install", lambda cmd: False)
+        monkeypatch.setattr(
+            "palaia.embeddings.warmup_providers",
+            lambda cfg: [{"name": "sentence-transformers", "status": "ready", "message": "ok"}],
+        )
+
+        results = [
+            {
+                "name": "embedding_chain",
+                "label": "Embedding chain",
+                "status": "warn",
+                "message": "fastembed -> bm25 — MISSING: fastembed",
+                "fixable": True,
+                "details": {
+                    "chain": ["fastembed", "bm25"],
+                    "missing": ["fastembed"],
+                },
+            }
+        ]
+
+        apply_fixes(palaia_root, results)
+
+        config = json.loads((palaia_root / "config.json").read_text())
+        chain = config["embedding_chain"]
+        assert "sentence-transformers" in chain
+        assert "bm25" in chain
+
+    def test_auto_provider_allows_full_rebuild(self, palaia_root, monkeypatch):
+        """With embedding_provider='auto', _build_best_chain() runs as before."""
+        config = json.loads((palaia_root / "config.json").read_text())
+        config["embedding_provider"] = "auto"
+        config["embedding_chain"] = ["fastembed", "bm25"]
+        (palaia_root / "config.json").write_text(json.dumps(config))
+
+        monkeypatch.setattr(
+            "palaia.embeddings.detect_providers",
+            lambda: [
+                {"name": "sentence-transformers", "available": True},
+                {"name": "fastembed", "available": False},
+                {"name": "openai", "available": False},
+                {"name": "ollama", "available": False},
+                {"name": "bm25", "available": True},
+            ],
+        )
+        monkeypatch.setattr("palaia.doctor._try_pip_install", lambda cmd: False)
+        monkeypatch.setattr(
+            "palaia.embeddings.warmup_providers",
+            lambda cfg: [{"name": "sentence-transformers", "status": "ready", "message": "ok"}],
+        )
+
+        results = [
+            {
+                "name": "embedding_chain",
+                "label": "Embedding chain",
+                "status": "warn",
+                "message": "fastembed -> bm25 — MISSING: fastembed",
+                "fixable": True,
+                "details": {
+                    "chain": ["fastembed", "bm25"],
+                    "missing": ["fastembed"],
+                },
+            }
+        ]
+
+        apply_fixes(palaia_root, results)
+
+        config = json.loads((palaia_root / "config.json").read_text())
+        chain = config["embedding_chain"]
+        assert "sentence-transformers" in chain
+
+    def test_no_chain_configured_respects_explicit_provider(self, palaia_root, monkeypatch):
+        """When no chain is configured but provider is explicit, chain uses that provider."""
+        config = json.loads((palaia_root / "config.json").read_text())
+        config["embedding_provider"] = "fastembed"
+        if "embedding_chain" in config:
+            del config["embedding_chain"]
+        (palaia_root / "config.json").write_text(json.dumps(config))
+
+        monkeypatch.setattr(
+            "palaia.embeddings.detect_providers",
+            lambda: [
+                {"name": "sentence-transformers", "available": True},
+                {"name": "fastembed", "available": True},
+                {"name": "openai", "available": True},
+                {"name": "ollama", "available": False},
+                {"name": "bm25", "available": True},
+            ],
+        )
+
+        results = [
+            {
+                "name": "embedding_chain",
+                "label": "Embedding chain",
+                "status": "warn",
+                "message": "No chain configured (using auto-detect)",
+                "fixable": True,
+            }
+        ]
+
+        apply_fixes(palaia_root, results)
+
+        config = json.loads((palaia_root / "config.json").read_text())
+        chain = config["embedding_chain"]
+        assert chain[0] == "fastembed"
+        assert "bm25" in chain
+
+
 class TestApplyFixesMissingProviders:
     def test_fix_rebuilds_chain_on_missing(self, palaia_root, monkeypatch):
         """When a provider is missing and can't be installed, chain is rebuilt."""
