@@ -761,6 +761,15 @@ If your session crashes, the knowledge survives. If you write at the end, it doe
 ### Use processes for anything repeatable
 Release checklists, deployment steps, review procedures — write them as `--type process`. Palaia will automatically surface relevant processes when you write or query related topics (Process Nudge). This only works if the process exists in Palaia, not in a markdown file.
 
+### Parallel writes are safe
+Palaia uses kernel-level file locking (`fcntl.flock`) with a Write-Ahead Log (WAL) to ensure data integrity. Multiple concurrent `palaia write` calls — such as those from OpenClaw's parallel tool calling — are safe:
+- Each write acquires an exclusive lock before touching the store
+- The WAL guarantees crash recovery even if a write is interrupted mid-operation
+- No entry loss, no corruption, no cross-contamination between parallel writes
+- Lock timeout is 5 seconds (configurable via `lock_timeout_seconds`); stale locks (>60s) are auto-detected and overridden
+
+This means agents can safely issue multiple `palaia write` commands in parallel without coordination.
+
 ### Tags are your future self's search terms
 Pick tags that your future self (or another agent) would search for. Good tags: `decision`, `learning`, `blocker`, `adr`, `release`, `config`. Bad tags: `important`, `note`, `misc`. Use `--project` consistently — it's the primary filter for all multi-project setups.
 
