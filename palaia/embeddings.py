@@ -242,9 +242,7 @@ class GeminiProvider:
         results = []
         # Gemini embedContent accepts one text at a time; batch via batchEmbedContents
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:batchEmbedContents?key={self.api_key}"
-        requests_body = [
-            {"model": f"models/{self.model_name}", "content": {"parts": [{"text": t}]}} for t in texts
-        ]
+        requests_body = [{"model": f"models/{self.model_name}", "content": {"parts": [{"text": t}]}} for t in texts]
         data = json.dumps({"requests": requests_body}).encode()
         req = urllib.request.Request(
             url,

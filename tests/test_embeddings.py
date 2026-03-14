@@ -299,8 +299,9 @@ def test_detect_providers_ollama_only(mock_voyage, mock_openai, mock_spec, mock_
 @patch("palaia.embeddings._check_ollama_available", return_value=(False, None, []))
 @patch("palaia.embeddings.importlib.util.find_spec", return_value=None)
 @patch("palaia.embeddings._check_openai_key", return_value=None)
+@patch("palaia.embeddings._check_gemini_key", return_value=None)
 @patch("palaia.embeddings._check_voyage_key", return_value=None)
-def test_detect_providers_nothing_available(mock_voyage, mock_openai, mock_spec, mock_ollama):
+def test_detect_providers_nothing_available(mock_voyage, mock_gemini, mock_openai, mock_spec, mock_ollama):
     providers = detect_providers()
     for p in providers:
         assert p["available"] is False
