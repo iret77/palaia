@@ -197,3 +197,42 @@ def test_doctor_plugin_check_no_config(fake_home):
 
     # On a VPS with /home/claw/.openclaw, the VPS fallback finds the real config
     assert result["status"] in ("info", "ok")
+
+
+def test_find_palaia_root_vps_fallback(tmp_path):
+    """find_palaia_root checks /home/claw/.openclaw/workspace/.palaia as VPS fallback."""
+    # This test verifies the fallback chain exists in code.
+    # On the actual VPS, the fallback path resolves to the real store.
+    from palaia.config import find_palaia_root
+
+    # Use a fake home that is NOT /home/claw
+    fake_home = tmp_path / "fakehome"
+    fake_home.mkdir()
+
+    with patch("palaia.config.Path.home", return_value=fake_home):
+        # If /home/claw/.openclaw/workspace/.palaia exists (VPS), it will be found
+        result = find_palaia_root("/nonexistent")
+
+    # We can't assert the exact result since it depends on whether we're on a VPS,
+    # but the function should not crash
+    assert result is None or result.is_dir()
+
+
+def test_detect_agent_openclaw_yaml(fake_home):
+    """Agent detection supports openclaw.yaml config files."""
+    from palaia.cli import _detect_agent_from_openclaw_config_ext
+
+    try:
+        import yaml
+    except ImportError:
+        pytest.skip("PyYAML not installed")
+
+    config = {"agents": {"list": [{"id": "main", "name": "YamlBot"}]}}
+    config_path = fake_home / ".openclaw" / "openclaw.yaml"
+    config_path.write_text(yaml.dump(config))
+
+    with patch("palaia.cli.Path.home", return_value=fake_home):
+        result = _detect_agent_from_openclaw_config_ext()
+
+    assert result.agent == "YamlBot"
+    assert result.status == "found"

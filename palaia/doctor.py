@@ -165,12 +165,27 @@ def _check_openclaw_plugin() -> dict[str, Any]:
     """Check which OpenClaw memory plugin is active."""
     import os as _os
 
-    # Build list of config candidates
-    config_candidates = [
-        Path.home() / ".openclaw" / "config.json",
-        Path.home() / ".openclaw" / "config.yaml",
-        Path.home() / ".openclaw" / "openclaw.json",
-    ]
+    # Build list of config candidates — standard OpenClaw paths + VPS fallback (#51)
+    from palaia.config import VPS_OPENCLAW_BASE
+
+    _home = Path.home()
+    _base_dirs = [_home / ".openclaw"]
+    # Add VPS standard path as fallback when home dir differs
+    if VPS_OPENCLAW_BASE != _home / ".openclaw" and VPS_OPENCLAW_BASE.is_dir():
+        _base_dirs.append(VPS_OPENCLAW_BASE)
+
+    config_candidates: list[Path] = []
+    for base in _base_dirs:
+        config_candidates.extend(
+            [
+                base / "openclaw.json",
+                base / "openclaw.yaml",
+                base / "openclaw.yml",
+                base / "config.json",
+                base / "config.yaml",
+                base / "config.yml",
+            ]
+        )
 
     # Also check $OPENCLAW_CONFIG env var
     env_config = _os.environ.get("OPENCLAW_CONFIG")

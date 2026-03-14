@@ -6,6 +6,10 @@ import json
 import os
 from pathlib import Path
 
+# Standard VPS installation path — checked as fallback when Path.home() differs.
+# Mockable in tests via monkeypatch on palaia.config.VPS_OPENCLAW_BASE.
+VPS_OPENCLAW_BASE = Path("/home/claw/.openclaw")
+
 DEFAULT_CONFIG = {
     "version": 1,
     "decay_lambda": 0.1,
@@ -63,6 +67,11 @@ def find_palaia_root(start: str = ".") -> Path | None:
     openclaw_palaia = Path.home() / ".openclaw" / "workspace" / ".palaia"
     if openclaw_palaia.is_dir():
         return openclaw_palaia
+
+    # 5. VPS standard path fallback (#51)
+    vps_palaia = VPS_OPENCLAW_BASE / "workspace" / ".palaia"
+    if vps_palaia != openclaw_palaia and vps_palaia.is_dir():
+        return vps_palaia
 
     return None
 
