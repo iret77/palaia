@@ -684,6 +684,71 @@ def _check_default_agent_alias(palaia_root: Path | None) -> dict[str, Any]:
     }
 
 
+def _check_version_available(palaia_root: Path | None) -> dict[str, Any]:
+    """Check if a newer Palaia version is available on PyPI."""
+    from palaia import __version__
+
+    try:
+        import urllib.request
+
+        url = "https://pypi.org/pypi/palaia/json"
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            import json as _json
+
+            data = _json.loads(resp.read())
+            latest = data.get("info", {}).get("version", "")
+
+        if not latest:
+            return {
+                "name": "version_check",
+                "label": "Version check",
+                "status": "ok",
+                "message": f"v{__version__} (could not determine latest)",
+            }
+
+        if latest == __version__:
+            return {
+                "name": "version_check",
+                "label": "Version check",
+                "status": "ok",
+                "message": f"v{__version__} (latest)",
+                "details": {"installed": __version__, "latest": latest},
+            }
+
+        # Compare versions
+        from packaging.version import InvalidVersion, Version
+
+        try:
+            if Version(latest) > Version(__version__):
+                return {
+                    "name": "version_check",
+                    "label": "Version check",
+                    "status": "warn",
+                    "message": f"Update available: v{__version__} -> v{latest}",
+                    "fix": "Run: pip install --upgrade palaia && palaia doctor --fix",
+                    "details": {"installed": __version__, "latest": latest},
+                }
+        except InvalidVersion:
+            pass
+
+        return {
+            "name": "version_check",
+            "label": "Version check",
+            "status": "ok",
+            "message": f"v{__version__} (latest: v{latest})",
+            "details": {"installed": __version__, "latest": latest},
+        }
+    except Exception:
+        # Network failure, timeout, etc. — don't block doctor
+        return {
+            "name": "version_check",
+            "label": "Version check",
+            "status": "ok",
+            "message": f"v{__version__} (offline — could not check PyPI)",
+        }
+
+
 def _check_unread_memos(palaia_root: Path | None) -> dict[str, Any]:
     """Check for unread memos addressed to the current agent."""
     if palaia_root is None:
@@ -750,6 +815,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_palaia_init(palaia_root),
         _check_agent_identity(palaia_root),
         _check_store_version(palaia_root),
+        _check_version_available(palaia_root),
         _check_embedding_chain(palaia_root),
         _check_entry_classes(palaia_root),
         _check_projects_usage(palaia_root),
@@ -984,7 +1050,5 @@ def format_doctor_report(results: list[dict[str, Any]], show_fix: bool = False) 
         lines.append(f"\nAction required: {warnings} warning(s){suffix}")
     else:
         lines.append("\nAll clear. Palaia is healthy.")
-
-    lines.append("\nTo check for updates: pip install --upgrade palaia")
 
     return "\n".join(lines)
