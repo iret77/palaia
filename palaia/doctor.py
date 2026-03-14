@@ -684,6 +684,66 @@ def _check_default_agent_alias(palaia_root: Path | None) -> dict[str, Any]:
     }
 
 
+def _check_unread_memos(palaia_root: Path | None) -> dict[str, Any]:
+    """Check for unread memos addressed to the current agent."""
+    if palaia_root is None:
+        return {
+            "name": "unread_memos",
+            "label": "Unread memos",
+            "status": "ok",
+            "message": "Not initialized",
+        }
+
+    try:
+        from palaia.config import get_agent, get_aliases
+        from palaia.memo import MemoManager
+
+        agent = get_agent(palaia_root)
+        if not agent:
+            agent = "default"
+
+        mm = MemoManager(palaia_root)
+        try:
+            aliases = get_aliases(palaia_root)
+        except Exception:
+            aliases = None
+
+        unread = mm.inbox(agent=agent, include_read=False, aliases=aliases or None)
+        count = len(unread)
+
+        if count == 0:
+            return {
+                "name": "unread_memos",
+                "label": "Unread memos",
+                "status": "ok",
+                "message": "No unread memos",
+            }
+
+        # Collect preview of unread memos for --fix display
+        previews = []
+        for meta, body in unread:
+            sender = meta.get("from", "?")
+            prio = " [high]" if meta.get("priority") == "high" else ""
+            first_line = body.split("\n")[0][:60] if body else ""
+            previews.append(f"From {sender}{prio}: {first_line}")
+
+        return {
+            "name": "unread_memos",
+            "label": "Unread memos",
+            "status": "warn",
+            "message": f"{count} unread memo(s)",
+            "fix": "Run: palaia memo inbox",
+            "details": {"count": count, "previews": previews},
+        }
+    except Exception:
+        return {
+            "name": "unread_memos",
+            "label": "Unread memos",
+            "status": "ok",
+            "message": "Could not check memos",
+        }
+
+
 def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
     """Run all doctor checks. Returns list of check results."""
     results = [
@@ -695,6 +755,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_projects_usage(palaia_root),
         _check_deprecated_config(palaia_root),
         _check_default_agent_alias(palaia_root),
+        _check_unread_memos(palaia_root),
         _check_openclaw_plugin(),
         _check_smart_memory_skill(),
         _check_legacy_memory_files(),
