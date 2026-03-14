@@ -741,7 +741,9 @@ If queries are slow, check:
 ### Provider choice matters on CPU systems
 - **fastembed**: ~0.3s per embedding, lightweight, no GPU needed — **recommended for most systems**
 - **sentence-transformers**: ~16s per embedding on CPU (loads PyTorch) — only use if you have a GPU
+- **gemini**: Cloud-based via Gemini API (`GEMINI_API_KEY` required). Model: `gemini-embedding-exp-03-07` (default) or `text-embedding-004`. No local compute needed.
 - If both are installed, set the chain explicitly: `palaia config set-chain fastembed bm25`
+- Cloud providers (openai, gemini) can be combined with local fallback: `palaia config set-chain gemini fastembed bm25`
 - Switching providers invalidates the embedding cache — run `palaia warmup` after any chain change
 
 ### Write incrementally, not at session end

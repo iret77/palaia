@@ -4,8 +4,9 @@ Providers are detected automatically in this order:
 1. ollama (local server with nomic-embed-text)
 2. sentence-transformers (pure Python)
 3. fastembed (lightweight)
-4. OpenAI API (cloud, needs key)
-5. BM25 (always available, keyword-based fallback)
+4. OpenAI API (cloud, needs OPENAI_API_KEY)
+5. Gemini API (cloud, needs GEMINI_API_KEY)
+6. BM25 (always available, keyword-based fallback)
 
 Embedding Chain:
   A configurable fallback chain lets you define a priority list of providers.
@@ -221,6 +222,45 @@ class OpenAIProvider:
         return [d["embedding"] for d in result["data"]]
 
 
+class GeminiProvider:
+    """Embedding via Google Gemini API."""
+
+    name = "gemini"
+    default_model = "gemini-embedding-exp-03-07"
+
+    def __init__(self, model: str | None = None, api_key: str | None = None):
+        self.model_name = model or self.default_model
+        self.api_key = api_key or os.environ.get("GEMINI_API_KEY", "")
+        if not self.api_key:
+            raise ValueError("GEMINI_API_KEY not set")
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        """Embed texts via Gemini REST API."""
+        import json
+        import urllib.request
+
+        results = []
+        # Gemini embedContent accepts one text at a time; batch via batchEmbedContents
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:batchEmbedContents?key={self.api_key}"
+        requests_body = [
+            {"model": f"models/{self.model_name}", "content": {"parts": [{"text": t}]}} for t in texts
+        ]
+        data = json.dumps({"requests": requests_body}).encode()
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read())
+        for emb in result.get("embeddings", []):
+            results.append(emb.get("values", []))
+        return results
+
+    def embed_query(self, text: str) -> list[float]:
+        return self.embed([text])[0]
+
+
 class BM25Provider:
     """Keyword-based search provider. Always available, no vectors."""
 
@@ -349,6 +389,11 @@ def _check_openai_key() -> str | None:
     return None
 
 
+def _check_gemini_key() -> str | None:
+    """Check for Gemini API key in env."""
+    return os.environ.get("GEMINI_API_KEY")
+
+
 def _check_voyage_key() -> str | None:
     """Check for Voyage API key in env."""
     return os.environ.get("VOYAGE_API_KEY")
@@ -425,7 +470,18 @@ def detect_providers() -> list[dict]:
         }
     )
 
-    # 5. Voyage
+    # 5. Gemini
+    gemini_key = _check_gemini_key()
+    providers.append(
+        {
+            "name": "gemini",
+            "available": gemini_key is not None,
+            "version": None,
+            "install_hint": None if gemini_key else "Set GEMINI_API_KEY environment variable",
+        }
+    )
+
+    # 6. Voyage
     voyage_key = _check_voyage_key()
     providers.append(
         {
@@ -538,10 +594,11 @@ class EmbeddingChain:
                     "sentence-transformers": SentenceTransformersProvider.default_model,
                     "fastembed": FastEmbedProvider.default_model,
                     "ollama": OllamaProvider.default_model,
+                    "gemini": GeminiProvider.default_model,
                 }
                 model = defaults.get(name)
             available = info.get("available", False)
-            if name == "openai":
+            if name in ("openai", "gemini"):
                 status = "API key found" if available else "no key found"
             elif name == "ollama":
                 if info.get("server_running"):
@@ -679,6 +736,8 @@ def _create_provider(name: str, model: str | None = None) -> EmbeddingProvider |
         return FastEmbedProvider(model=model)
     elif name == "openai":
         return OpenAIProvider(model=model)
+    elif name == "gemini":
+        return GeminiProvider(model=model)
     elif name == "bm25" or name == "none":
         return BM25Provider()
     else:
@@ -706,7 +765,7 @@ def warmup_providers(config: dict) -> list[dict]:
             if provider_name == "auto":
                 detected = detect_providers()
                 provider_names = [
-                    p["name"] for p in detected if p["available"] and p["name"] not in ("voyage", "openai")
+                    p["name"] for p in detected if p["available"] and p["name"] not in ("voyage", "openai", "gemini")
                 ]
             else:
                 provider_names = []
@@ -788,6 +847,26 @@ def warmup_providers(config: dict) -> list[dict]:
                             "name": name,
                             "status": "action_needed",
                             "message": "No API key found. Set OPENAI_API_KEY environment variable.",
+                        }
+                    )
+            elif name == "gemini":
+                # Cloud provider — no model to download
+                key = _check_gemini_key()
+                if key:
+                    model_name = model_override or GeminiProvider.default_model
+                    results.append(
+                        {
+                            "name": name,
+                            "status": "skipped",
+                            "message": f"Cloud provider — no local model to pre-load. API key found. Model: {model_name}",
+                        }
+                    )
+                else:
+                    results.append(
+                        {
+                            "name": name,
+                            "status": "action_needed",
+                            "message": "No API key found. Set GEMINI_API_KEY environment variable.",
                         }
                     )
             else:
