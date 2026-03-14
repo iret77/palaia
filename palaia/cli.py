@@ -804,11 +804,14 @@ def cmd_edit(args):
     body = getattr(args, "text", None)
     tags = args.tags.split(",") if getattr(args, "tags", None) else None
 
+    # Scope enforcement: resolve agent from config (#39)
+    agent = _resolve_agent(args)
+
     try:
         meta = store.edit(
             entry_id=entry_id,
             body=body,
-            agent=getattr(args, "agent", None),
+            agent=agent,
             tags=tags,
             title=getattr(args, "title", None),
             status=getattr(args, "status", None),
@@ -952,7 +955,9 @@ def cmd_get(args):
         # Extract ID from path
         entry_id = entry_id.split("/")[-1].replace(".md", "")
 
-    entry = store.read(entry_id, agent=getattr(args, "agent", None))
+    # Scope enforcement: resolve agent from config (#39)
+    agent = _resolve_agent(args)
+    entry = store.read(entry_id, agent=agent)
     if entry is None:
         if _json_out({"error": "not_found", "id": entry_id}, args):
             return 1
@@ -1099,16 +1104,17 @@ def cmd_list(args):
     store.recover()
 
     list_all = getattr(args, "all", False)
-    agent_arg = getattr(args, "agent", None)
+    # Scope enforcement: resolve agent from config for access control (#39)
+    scope_agent = _resolve_agent(args)
 
     if list_all:
         # List across all tiers — returns (meta, body, tier) tuples
-        raw_entries = store.all_entries(include_cold=True, agent=agent_arg)
+        raw_entries = store.all_entries(include_cold=True, agent=scope_agent)
         entries_with_tier = [(meta, body, tier) for meta, body, tier in raw_entries]
         tier_label = "all tiers"
     else:
         tier = args.tier or "hot"
-        raw = store.list_entries(tier, agent=agent_arg)
+        raw = store.list_entries(tier, agent=scope_agent)
         entries_with_tier = [(meta, body, tier) for meta, body in raw]
         tier_label = tier
 
@@ -1116,7 +1122,7 @@ def cmd_list(args):
     project_filter = getattr(args, "project", None)
     tag_filters = getattr(args, "tag", None)  # list or None (--tag is append)
     scope_filter = getattr(args, "scope", None)
-    agent_filter = agent_arg
+    agent_filter = getattr(args, "agent", None)  # explicit --agent flag for filtering
     type_filter = getattr(args, "type", None)
     status_filter = getattr(args, "status", None)
     priority_filter = getattr(args, "priority", None)
@@ -1813,11 +1819,13 @@ def cmd_doctor(args):
 
 def cmd_export(args):
     """Export public entries."""
+    # Scope enforcement: resolve agent from config (#39)
+    agent = _resolve_agent(args)
     result = export_entries(
         remote=args.remote,
         branch=args.branch,
         output_dir=args.output,
-        agent=getattr(args, "agent", None),
+        agent=agent,
     )
 
     if _json_out(result, args):
