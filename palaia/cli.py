@@ -1092,20 +1092,31 @@ def cmd_recover(args):
 
 
 def cmd_list(args):
-    """List memories in a tier."""
+    """List memories in a tier or across all tiers."""
     check_version_nag()
     root = get_root()
     store = Store(root)
     store.recover()
 
-    tier = args.tier or "hot"
-    entries = store.list_entries(tier, agent=getattr(args, "agent", None))
+    list_all = getattr(args, "all", False)
+    agent_arg = getattr(args, "agent", None)
 
-    # Apply filters (#12, #40)
+    if list_all:
+        # List across all tiers — returns (meta, body, tier) tuples
+        raw_entries = store.all_entries(include_cold=True, agent=agent_arg)
+        entries_with_tier = [(meta, body, tier) for meta, body, tier in raw_entries]
+        tier_label = "all tiers"
+    else:
+        tier = args.tier or "hot"
+        raw = store.list_entries(tier, agent=agent_arg)
+        entries_with_tier = [(meta, body, tier) for meta, body in raw]
+        tier_label = tier
+
+    # Apply filters (#37)
     project_filter = getattr(args, "project", None)
-    tag_filter = getattr(args, "tag", None)
+    tag_filters = getattr(args, "tag", None)  # list or None (--tag is append)
     scope_filter = getattr(args, "scope", None)
-    agent_filter = getattr(args, "agent", None)
+    agent_filter = agent_arg
     type_filter = getattr(args, "type", None)
     status_filter = getattr(args, "status", None)
     priority_filter = getattr(args, "priority", None)
@@ -1113,28 +1124,30 @@ def cmd_list(args):
     instance_filter = getattr(args, "instance", None)
 
     if project_filter:
-        entries = [(meta, body) for meta, body in entries if meta.get("project") == project_filter]
-    if tag_filter:
-        entries = [(meta, body) for meta, body in entries if tag_filter in (meta.get("tags") or [])]
+        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("project") == project_filter]
+    if tag_filters:
+        # AND logic: entry must have ALL specified tags
+        for tag in tag_filters:
+            entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if tag in (m.get("tags") or [])]
     if scope_filter:
-        entries = [(meta, body) for meta, body in entries if meta.get("scope") == scope_filter]
+        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("scope") == scope_filter]
     if agent_filter:
         agent_names = _resolve_agent_names(agent_filter)
-        entries = [(meta, body) for meta, body in entries if meta.get("agent") in agent_names]
+        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("agent") in agent_names]
     if type_filter:
-        entries = [(meta, body) for meta, body in entries if meta.get("type", "memory") == type_filter]
+        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("type", "memory") == type_filter]
     if status_filter:
-        entries = [(meta, body) for meta, body in entries if meta.get("status") == status_filter]
+        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("status") == status_filter]
     if priority_filter:
-        entries = [(meta, body) for meta, body in entries if meta.get("priority") == priority_filter]
+        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("priority") == priority_filter]
     if assignee_filter:
-        entries = [(meta, body) for meta, body in entries if meta.get("assignee") == assignee_filter]
+        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("assignee") == assignee_filter]
     if instance_filter:
-        entries = [(meta, body) for meta, body in entries if meta.get("instance") == instance_filter]
+        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("instance") == instance_filter]
 
     if _json_out(
         {
-            "tier": tier,
+            "tier": "all" if list_all else tier_label,
             "entries": [
                 {
                     "id": meta.get("id", "?"),
@@ -1149,41 +1162,54 @@ def cmd_list(args):
                     "priority": meta.get("priority", ""),
                     "assignee": meta.get("assignee", ""),
                     "due_date": meta.get("due_date", ""),
+                    "tier": t,
                     "decay_score": meta.get("decay_score", 0),
                     "preview": body[:80].replace("\n", " "),
                 }
-                for meta, body in entries
+                for meta, body, t in entries_with_tier
             ],
         },
         args,
     ):
         return 0
 
-    if not entries:
+    if not entries_with_tier:
         print_header()
-        print(f"\nNo entries in {tier}.")
+        print(f"\nNo entries in {tier_label}.")
         return 0
 
     print_header()
-    print(section(f"Entries ({tier})"))
+    print(section(f"Entries ({tier_label})"))
 
     rows = []
-    for meta, body in entries:
+    for meta, body, t in entries_with_tier:
         title = meta.get("title", "(untitled)")
         entry_id = meta.get("id", "?")[:8]
         scope = meta.get("scope", "team")
         age = relative_time(meta.get("created", ""))
-        rows.append((entry_id, scope, title, age))
+        if list_all:
+            rows.append((entry_id, t, scope, title, age))
+        else:
+            rows.append((entry_id, scope, title, age))
 
-    print(
-        table_multi(
-            headers=("ID", "Scope", "Title", "Age"),
-            rows=rows,
-            min_widths=(8, 6, 20, 8),
+    if list_all:
+        print(
+            table_multi(
+                headers=("ID", "Tier", "Scope", "Title", "Age"),
+                rows=rows,
+                min_widths=(8, 4, 6, 16, 8),
+            )
         )
-    )
+    else:
+        print(
+            table_multi(
+                headers=("ID", "Scope", "Title", "Age"),
+                rows=rows,
+                min_widths=(8, 6, 20, 8),
+            )
+        )
 
-    print(f"\n{len(entries)} entries in {tier}.")
+    print(f"\n{len(entries_with_tier)} entries in {tier_label}.")
     return 0
 
 
@@ -2727,9 +2753,10 @@ def main():
 
     # list
     p_list = sub.add_parser("list", help="List entries in a tier")
-    p_list.add_argument("--tier", default="hot", choices=["hot", "warm", "cold"])
+    p_list.add_argument("--tier", default=None, choices=["hot", "warm", "cold"], help="Tier to list (default: hot)")
+    p_list.add_argument("--all", action="store_true", help="List across all tiers (hot+warm+cold)")
     p_list.add_argument("--project", default=None, help="Filter by project")
-    p_list.add_argument("--tag", default=None, help="Filter by tag")
+    p_list.add_argument("--tag", default=None, action="append", help="Filter by tag (repeatable, AND logic)")
     p_list.add_argument("--scope", default=None, help="Filter by scope")
     p_list.add_argument("--agent", default=None, help="Filter by agent")
     p_list.add_argument("--type", default=None, choices=["memory", "process", "task"], help="Filter by entry class")
