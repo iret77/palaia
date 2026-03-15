@@ -18,6 +18,9 @@ DEFAULT_TYPE = "memory"
 VALID_STATUSES = {"open", "in-progress", "done", "wontfix"}
 VALID_PRIORITIES = {"critical", "high", "medium", "low"}
 
+# Significance tags (Issue #33)
+VALID_SIGNIFICANCE = {"decision", "surprise", "human", "lesson", "identity"}
+
 
 def _parse_yaml_simple(text: str) -> dict:
     """Minimal YAML-like parser for frontmatter. No dependency needed.
@@ -117,6 +120,22 @@ def validate_status(status: str | None) -> str | None:
     return status
 
 
+def validate_significance(significance: list[str] | None) -> list[str] | None:
+    """Validate significance tags. Returns validated list or None."""
+    if significance is None:
+        return None
+    validated = []
+    for tag in significance:
+        tag = tag.strip().lower()
+        if tag not in VALID_SIGNIFICANCE:
+            raise ValueError(
+                f"Invalid significance tag: '{tag}'. Valid: {', '.join(sorted(VALID_SIGNIFICANCE))}"
+            )
+        if tag not in validated:
+            validated.append(tag)
+    return validated if validated else None
+
+
 def validate_priority(priority: str | None) -> str | None:
     """Validate task priority."""
     if priority is None:
@@ -149,6 +168,7 @@ def create_entry(
     assignee: str | None = None,
     due_date: str | None = None,
     instance: str | None = None,
+    significance: list[str] | None = None,
 ) -> str:
     """Create a full memory entry string with frontmatter."""
     now = datetime.now(timezone.utc).isoformat()
@@ -172,6 +192,10 @@ def create_entry(
         meta["instance"] = resolved_instance
     if tags:
         meta["tags"] = tags
+    # Significance tags (Issue #33)
+    validated_sig = validate_significance(significance)
+    if validated_sig:
+        meta["significance"] = validated_sig
     # Auto-extract title from content if not explicitly provided
     effective_title = title if title else extract_title_from_content(body)
     if effective_title:

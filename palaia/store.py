@@ -17,6 +17,7 @@ from palaia.entry import (
     update_access,
     validate_entry_type,
     validate_priority,
+    validate_significance,
     validate_status,
 )
 from palaia.index import EmbeddingCache
@@ -68,6 +69,7 @@ class Store:
         assignee: str | None = None,
         due_date: str | None = None,
         instance: str | None = None,
+        significance: list[str] | None = None,
     ) -> str:
         """Write a new memory entry. Returns the entry ID.
 
@@ -113,6 +115,7 @@ class Store:
             assignee=assignee,
             due_date=due_date,
             instance=instance,
+            significance=significance,
         )
         meta, _ = parse_entry(entry_text)
         entry_id = meta["id"]
@@ -152,6 +155,7 @@ class Store:
         assignee: str | None = None,
         due_date: str | None = None,
         entry_type: str | None = None,
+        significance: list[str] | None = None,
     ) -> dict:
         """Edit an existing entry. Returns updated metadata.
 
@@ -219,6 +223,13 @@ class Store:
 
         if due_date is not None:
             meta["due_date"] = due_date
+
+        if significance is not None:
+            validated_sig = validate_significance(significance)
+            if validated_sig:
+                meta["significance"] = validated_sig
+            else:
+                meta.pop("significance", None)
 
         # Update access metadata
         meta["accessed"] = datetime.now(timezone.utc).isoformat()
@@ -363,7 +374,13 @@ class Store:
 
                     d = days_since(accessed)
                     ac = meta.get("access_count", 1)
-                    score = decay_score(d, ac, config["decay_lambda"])
+                    sig = meta.get("significance")
+                    rc = meta.get("recall_count", 0)
+                    score = decay_score(
+                        d, ac, config["decay_lambda"],
+                        significance=sig,
+                        recall_count=rc,
+                    )
                     meta["decay_score"] = score
 
                     new_tier = classify_tier(
