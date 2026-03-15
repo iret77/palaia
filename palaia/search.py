@@ -172,6 +172,7 @@ class SearchEngine:
         priority: str | None = None,
         assignee: str | None = None,
         instance: str | None = None,
+        significance: str | None = None,
     ) -> list[dict]:
         """Search memories using hybrid ranking (BM25 + embeddings when available).
 
@@ -201,8 +202,14 @@ class SearchEngine:
             docs_with_meta = [
                 (did, text, meta) for did, text, meta in docs_with_meta if meta.get("instance") == instance
             ]
+        if significance:
+            docs_with_meta = [
+                (did, text, meta)
+                for did, text, meta in docs_with_meta
+                if significance in (meta.get("significance") or [])
+            ]
 
-        if project or entry_type or status or priority or assignee or instance:
+        if project or entry_type or status or priority or assignee or instance or significance:
             # Rebuild BM25 index with filtered docs
             self.bm25.index([(did, text) for did, text, meta in docs_with_meta])
 
@@ -264,12 +271,14 @@ class SearchEngine:
         # Sort by combined score
         ranked = sorted(combined.items(), key=lambda x: x[1], reverse=True)[:top_k]
 
-        # Build output
+        # Build output + retrieval-hit tracking (Issue #33)
         output = []
         for doc_id, score in ranked:
             entry = self.store.read(doc_id)
             if entry:
                 meta, body = entry
+                # Update recall tracking
+                self._track_recall(doc_id, meta, body)
                 result_entry = {
                     "id": doc_id,
                     "score": round(score, 4),
@@ -292,8 +301,30 @@ class SearchEngine:
                     result_entry["due_date"] = meta["due_date"]
                 if meta.get("instance"):
                     result_entry["instance"] = meta["instance"]
+                if meta.get("significance"):
+                    result_entry["significance"] = meta["significance"]
+                if meta.get("recall_count"):
+                    result_entry["recall_count"] = meta["recall_count"]
                 output.append(result_entry)
         return output
+
+    def _track_recall(self, entry_id: str, meta: dict, body: str) -> None:
+        """Update recall_count and last_recalled in entry frontmatter (Issue #33)."""
+        from datetime import datetime, timezone
+
+        from palaia.entry import serialize_entry
+
+        meta["recall_count"] = meta.get("recall_count", 0) + 1
+        meta["last_recalled"] = datetime.now(timezone.utc).isoformat()
+
+        new_text = serialize_entry(meta, body)
+        path = self.store._find_entry(entry_id)
+        if path:
+            relative = str(path.relative_to(self.store.root))
+            try:
+                self.store.write_raw(relative, new_text)
+            except OSError:
+                pass  # Non-critical — don't block query on write failure
 
     def _get_tier(self, entry_id: str) -> str:
         """Determine which tier an entry is in."""

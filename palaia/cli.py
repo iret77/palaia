@@ -734,6 +734,9 @@ def cmd_write(args):
     instance = _resolve_instance_for_write(args)
 
     entry_type = getattr(args, "type", None)
+    significance_raw = getattr(args, "significance", None)
+    significance = significance_raw.split(",") if significance_raw else None
+
     entry_id = store.write(
         body=args.text,
         scope=args.scope,
@@ -747,6 +750,7 @@ def cmd_write(args):
         assignee=getattr(args, "assignee", None),
         due_date=getattr(args, "due_date", None),
         instance=instance,
+        significance=significance,
     )
 
     # Check if this was a dedup (existing entry returned)
@@ -820,6 +824,9 @@ def cmd_edit(args):
     # Scope enforcement: resolve agent from config (#39)
     agent = _resolve_agent(args)
 
+    significance_raw = getattr(args, "significance", None)
+    significance = significance_raw.split(",") if significance_raw else None
+
     try:
         meta = store.edit(
             entry_id=entry_id,
@@ -832,6 +839,7 @@ def cmd_edit(args):
             assignee=getattr(args, "assignee", None),
             due_date=getattr(args, "due_date", None),
             entry_type=getattr(args, "type", None),
+            significance=significance,
         )
     except (ValueError, PermissionError) as e:
         if _json_out({"error": str(e)}, args):
@@ -890,6 +898,7 @@ def cmd_query(args):
         priority=getattr(args, "priority", None),
         assignee=getattr(args, "assignee", None),
         instance=getattr(args, "instance", None),
+        significance=getattr(args, "significance", None),
     )
 
     if _json_out({"results": results}, args):
@@ -1141,6 +1150,7 @@ def cmd_list(args):
     priority_filter = getattr(args, "priority", None)
     assignee_filter = getattr(args, "assignee", None)
     instance_filter = getattr(args, "instance", None)
+    significance_filter = getattr(args, "significance", None)
 
     if project_filter:
         entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("project") == project_filter]
@@ -1163,6 +1173,12 @@ def cmd_list(args):
         entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("assignee") == assignee_filter]
     if instance_filter:
         entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("instance") == instance_filter]
+    if significance_filter:
+        entries_with_tier = [
+            (m, b, t)
+            for m, b, t in entries_with_tier
+            if significance_filter in (m.get("significance") or [])
+        ]
 
     if _json_out(
         {
@@ -1181,6 +1197,8 @@ def cmd_list(args):
                     "priority": meta.get("priority", ""),
                     "assignee": meta.get("assignee", ""),
                     "due_date": meta.get("due_date", ""),
+                    "significance": meta.get("significance", []),
+                    "recall_count": meta.get("recall_count", 0),
                     "tier": t,
                     "decay_score": meta.get("decay_score", 0),
                     "preview": body[:80].replace("\n", " "),
@@ -1201,32 +1219,59 @@ def cmd_list(args):
     print(section(f"Entries ({tier_label})"))
 
     rows = []
+    # Check if any entry has significance to decide column visibility
+    has_significance = any(meta.get("significance") for meta, _, _ in entries_with_tier)
     for meta, body, t in entries_with_tier:
         title = meta.get("title", "(untitled)")
         entry_id = meta.get("id", "?")[:8]
         scope = meta.get("scope", "team")
         age = relative_time(meta.get("created", ""))
+        sig_str = ",".join(meta.get("significance", [])) if meta.get("significance") else ""
         if list_all:
-            rows.append((entry_id, t, scope, title, age))
+            if has_significance:
+                rows.append((entry_id, t, scope, title, sig_str, age))
+            else:
+                rows.append((entry_id, t, scope, title, age))
         else:
-            rows.append((entry_id, scope, title, age))
+            if has_significance:
+                rows.append((entry_id, scope, title, sig_str, age))
+            else:
+                rows.append((entry_id, scope, title, age))
 
     if list_all:
-        print(
-            table_multi(
-                headers=("ID", "Tier", "Scope", "Title", "Age"),
-                rows=rows,
-                min_widths=(8, 4, 6, 16, 8),
+        if has_significance:
+            print(
+                table_multi(
+                    headers=("ID", "Tier", "Scope", "Title", "Significance", "Age"),
+                    rows=rows,
+                    min_widths=(8, 4, 6, 16, 12, 8),
+                )
             )
-        )
+        else:
+            print(
+                table_multi(
+                    headers=("ID", "Tier", "Scope", "Title", "Age"),
+                    rows=rows,
+                    min_widths=(8, 4, 6, 16, 8),
+                )
+            )
     else:
-        print(
-            table_multi(
-                headers=("ID", "Scope", "Title", "Age"),
-                rows=rows,
-                min_widths=(8, 6, 20, 8),
+        if has_significance:
+            print(
+                table_multi(
+                    headers=("ID", "Scope", "Title", "Significance", "Age"),
+                    rows=rows,
+                    min_widths=(8, 6, 20, 12, 8),
+                )
             )
-        )
+        else:
+            print(
+                table_multi(
+                    headers=("ID", "Scope", "Title", "Age"),
+                    rows=rows,
+                    min_widths=(8, 6, 20, 8),
+                )
+            )
 
     print(f"\n{len(entries_with_tier)} entries in {tier_label}.")
     return 0
@@ -1371,6 +1416,40 @@ def cmd_status(args):
 
     print(section("Embeddings"))
     print(table_kv(embed_rows))
+
+    # Top-5 most recalled entries (Issue #33)
+    recalled_entries = []
+    for tier_name in ("hot", "warm", "cold"):
+        tier_dir = root / tier_name
+        if not tier_dir.exists():
+            continue
+        for p in tier_dir.glob("*.md"):
+            try:
+                from palaia.entry import parse_entry as _pe2
+
+                text = p.read_text(encoding="utf-8")
+                meta, _ = _pe2(text)
+                rc = meta.get("recall_count", 0)
+                if rc > 0:
+                    recalled_entries.append(
+                        (rc, meta.get("id", "?")[:8], meta.get("title", "(untitled)"), tier_name)
+                    )
+            except Exception:
+                continue
+    if recalled_entries:
+        recalled_entries.sort(key=lambda x: x[0], reverse=True)
+        top_recalled = recalled_entries[:5]
+        print(section("Most Recalled"))
+        recall_rows = []
+        for rc, eid, title, tier_name in top_recalled:
+            recall_rows.append((eid, tier_name, str(rc), truncate(title, 40)))
+        print(
+            table_multi(
+                headers=("ID", "Tier", "Recalls", "Title"),
+                rows=recall_rows,
+                min_widths=(8, 4, 8, 20),
+            )
+        )
 
     # Index hint (warmup guidance)
     if info.get("index_hint"):
@@ -2708,6 +2787,11 @@ def main():
     p_write.add_argument("--assignee", default=None, help="Task assignee")
     p_write.add_argument("--due-date", default=None, dest="due_date", help="Task due date (ISO-8601)")
     p_write.add_argument("--instance", default=None, help="Session identity name")
+    p_write.add_argument(
+        "--significance",
+        default=None,
+        help="Comma-separated significance tags: decision,surprise,human,lesson,identity",
+    )
     p_write.add_argument("--json", action="store_true", help="Output as JSON")
 
     # edit
@@ -2726,6 +2810,11 @@ def main():
     )
     p_edit.add_argument("--assignee", default=None, help="Set task assignee")
     p_edit.add_argument("--due-date", default=None, dest="due_date", help="Set task due date (ISO-8601)")
+    p_edit.add_argument(
+        "--significance",
+        default=None,
+        help="Comma-separated significance tags: decision,surprise,human,lesson,identity",
+    )
     p_edit.add_argument("--json", action="store_true", help="Output as JSON")
 
     # query
@@ -2744,6 +2833,11 @@ def main():
     )
     p_query.add_argument("--assignee", default=None, help="Filter by assignee")
     p_query.add_argument("--instance", default=None, help="Filter by session identity")
+    p_query.add_argument(
+        "--significance",
+        default=None,
+        help="Filter by significance tag: decision|surprise|human|lesson|identity",
+    )
     p_query.add_argument("--rag", action="store_true", help="Output as RAG context block")
     p_query.add_argument("--json", action="store_true", help="Output as JSON")
 
@@ -2789,6 +2883,11 @@ def main():
     )
     p_list.add_argument("--assignee", default=None, help="Filter by assignee")
     p_list.add_argument("--instance", default=None, help="Filter by session identity")
+    p_list.add_argument(
+        "--significance",
+        default=None,
+        help="Filter by significance tag: decision|surprise|human|lesson|identity",
+    )
     p_list.add_argument("--json", action="store_true", help="Output as JSON")
 
     # status
