@@ -22,6 +22,11 @@ metadata:
     postUpdate:
       - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && (npm install -g @byte5ai/palaia@latest 2>/dev/null || true) && palaia doctor --fix && palaia warmup"
         label: "Upgrade Palaia (pip + npm plugin if available) and run health checks"
+    postUpdateMessage: >
+      Palaia has been updated to v2.0. New features: Auto-Capture (on by default),
+      Query-based Recall, optimized defaults for zero-config UX.
+      Recommendation: Run `palaia doctor --fix` to upgrade your config to the new defaults.
+      Custom values you've set will NOT be touched.
     plugin:
       slot: memory
       package: "@byte5ai/palaia"
@@ -32,6 +37,21 @@ metadata:
 ## Auto-Check (run every time this skill is loaded)
 
 **[INSTRUCTION for LLM]:** Before doing anything else with Palaia, run `palaia doctor` silently. If it reports ANY warnings (version mismatch, missing providers, legacy patterns, incomplete setup), address them immediately by following `palaia doctor --fix` recommendations. Do not proceed with other Palaia tasks until doctor reports no issues. This ensures the memory system is always up-to-date and correctly configured.
+
+## Zero-Config: It Just Works
+
+**Palaia works out of the box after installation. No config edits needed.**
+
+After `pip install "palaia[fastembed]"` and activating the OpenClaw plugin, Palaia immediately:
+- **Injects relevant memories** into every agent prompt (`memoryInject: true`)
+- **Auto-captures significant exchanges** as searchable memories (`autoCapture: true`)
+- **Uses semantic recall** to find context-relevant memories (`recallMode: query`)
+
+No settings to tweak. No README to study. Install it and it works.
+
+**For power users:** All defaults can be customized via `openclaw.json` plugin config or `palaia init --capture-level`. See the Configuration section below.
+
+**Upgrading from v1.x?** Run `palaia doctor --fix` — it detects old defaults and upgrades them. Custom values you've set are preserved.
 
 ## Communication During Setup
 
@@ -360,7 +380,9 @@ Find your npm global path with: `npm root -g`
 | Key | Description |
 |-----|-------------|
 | `workspace` | Path to the OpenClaw workspace (where `.palaia/` lives) |
-| `autoCapture` | Enable automatic memory capture after agent exchanges (default: false) |
+| `memoryInject` | Inject memories into agent context (default: `true`) |
+| `maxInjectedChars` | Max characters for injected context (default: `8000`) |
+| `autoCapture` | Capture significant exchanges automatically (default: `true`) |
 | `captureFrequency` | `"every"` or `"significant"` (default: `"significant"`) |
 | `captureMinTurns` | Minimum exchange turns before capture (default: 2) |
 | `captureModel` | Model override for LLM extraction (e.g. `"anthropic/claude-haiku-3"`, `"cheap"`) |

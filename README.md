@@ -10,7 +10,7 @@
 
 ---
 
-## Install
+## Install — Zero Config
 
 ```bash
 pip install "palaia[fastembed]"
@@ -26,6 +26,10 @@ OpenClaw plugin (3 lines in your config):
   }
 }
 ```
+
+**That's it.** Palaia works immediately — memories are injected into every prompt, significant exchanges are captured automatically, and semantic recall finds what's relevant. No config edits needed.
+
+**Upgrading from v1.x?** Run `palaia doctor --fix` to get the new optimized defaults.
 
 ## Quick Start
 
@@ -106,7 +110,9 @@ Set in `openclaw.json` under `plugins.entries.palaia.config`:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `autoCapture` | `false` | Capture significant exchanges automatically |
+| `memoryInject` | `true` | Inject relevant memories into agent context |
+| `maxInjectedChars` | `8000` | Max characters for injected memory context |
+| `autoCapture` | `true` | Capture significant exchanges automatically |
 | `captureFrequency` | `"significant"` | `"every"` or `"significant"` |
 | `captureMinTurns` | `2` | Minimum turns before capture |
 | `captureModel` | auto | Model for LLM extraction (e.g. `"anthropic/claude-haiku-3"`) |
