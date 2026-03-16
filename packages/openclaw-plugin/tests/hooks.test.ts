@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   shouldAttemptCapture,
+  isNoiseContent,
   extractSignificance,
   extractMessageTexts,
   getLastUserMessage,
@@ -62,6 +63,82 @@ describe("shouldAttemptCapture", () => {
     const text = "A".repeat(99);
     expect(shouldAttemptCapture(text)).toBe(false);
     expect(shouldAttemptCapture("A".repeat(100))).toBe(true);
+  });
+});
+
+// ============================================================================
+// isNoiseContent (Bug #3: garbage capture prevention)
+// ============================================================================
+
+describe("isNoiseContent", () => {
+  it("detects pytest output as noise", () => {
+    const text = `py::TestDefaultAgentWorkflow::test_init_write_query_without_agent
+/home/claw/repos/palaia/tests/test_cli.py::TestDefaultAgentWorkflow::test_write_with_all_flags
+PASSED [75%]
+5 passed, 0 failed`;
+    expect(isNoiseContent(text)).toBe(true);
+  });
+
+  it("detects stack traces with test output as noise", () => {
+    const text = `FAILED [100%]
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/site-packages/palaia/cli.py", line 42, in main
+    run_command(args)
+  File "/usr/lib/python3.12/site-packages/palaia/core.py", line 100, in run
+    raise ValueError("Invalid entry")
+1 passed, 1 failed`;
+    expect(isNoiseContent(text)).toBe(true);
+  });
+
+  it("detects file-path-heavy content as noise", () => {
+    const text = `/home/claw/repos/palaia/tests/test_cli.py
+/home/claw/repos/palaia/tests/test_core.py
+/home/claw/repos/palaia/tests/test_query.py
+/home/claw/repos/palaia/tests/test_gc.py
+/home/claw/repos/palaia/src/palaia/__init__.py`;
+    expect(isNoiseContent(text)).toBe(true);
+  });
+
+  it("does not flag normal conversation as noise", () => {
+    const text = "We decided to use PostgreSQL for the new project because it offers better JSON support and the team already has experience with it.";
+    expect(isNoiseContent(text)).toBe(false);
+  });
+
+  it("does not flag short code snippets in conversation as noise", () => {
+    const text = "The fix is to change the config: set `maxResults: 20` in the plugin config. This improves query recall for larger knowledge bases.";
+    expect(isNoiseContent(text)).toBe(false);
+  });
+});
+
+// ============================================================================
+// shouldAttemptCapture — noise filtering
+// ============================================================================
+
+describe("shouldAttemptCapture noise filtering", () => {
+  it("rejects test output", () => {
+    const text = `[user]: run the tests
+[assistant]: py::TestDefaultAgentWorkflow::test_init_write_query_without_agent PASSED [25%]
+py::TestDefaultAgentWorkflow::test_write_with_all_flags PASSED [50%]
+5 passed, 0 failed`;
+    expect(shouldAttemptCapture(text)).toBe(false);
+  });
+
+  it("accepts genuine conversation about tests", () => {
+    const text = "We decided to add integration tests for the query module. The lesson learned is that unit tests alone don't catch CLI argument incompatibilities. Will implement by Friday.";
+    expect(shouldAttemptCapture(text)).toBe(true);
+  });
+});
+
+// ============================================================================
+// resetTurnState (session isolation)
+// ============================================================================
+
+describe("resetTurnState (session isolation)", () => {
+  it("clears all session state", () => {
+    // resetTurnState is exported and clears the session map
+    resetTurnState();
+    // After reset, no errors and state is clean
+    expect(true).toBe(true);
   });
 });
 

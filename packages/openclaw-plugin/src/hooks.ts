@@ -17,18 +17,59 @@ import type { PalaiaPluginConfig, RecallTypeWeights } from "./config.js";
 // ============================================================================
 // Turn-level State (Issue #87: Transparency Features)
 // ============================================================================
-// Shared between hooks within one turn. Reset after use in message_sending.
+// Session-scoped state to prevent cross-session leakage (Issue #XX).
+// Each agent session gets its own TurnState, keyed by sessionKey.
 
-/** Entries injected by before_prompt_build for footnote attribution. */
-let _lastInjectedEntries: Array<{ title: string; date: string }> = [];
+interface TurnState {
+  /** Entries injected by before_prompt_build for footnote attribution. */
+  lastInjectedEntries: Array<{ title: string; date: string }>;
+  /** Summaries of auto-captured content from agent_end for confirmation display. */
+  lastCapturedSummaries: string[];
+}
 
-/** Summaries of auto-captured content from agent_end for confirmation display. */
-let _lastCapturedSummaries: string[] = [];
+function emptyTurnState(): TurnState {
+  return { lastInjectedEntries: [], lastCapturedSummaries: [] };
+}
 
-/** Reset turn state (for testing). */
+/** Session-scoped turn state map. Key = sessionKey or "__default__". */
+const _sessionTurnState = new Map<string, TurnState>();
+
+const DEFAULT_SESSION_KEY = "__default__";
+
+/** Get turn state for a session (creates if absent). */
+function getTurnState(sessionKey?: string): TurnState {
+  const key = sessionKey || DEFAULT_SESSION_KEY;
+  let state = _sessionTurnState.get(key);
+  if (!state) {
+    state = emptyTurnState();
+    _sessionTurnState.set(key, state);
+  }
+  return state;
+}
+
+/**
+ * Extract session key from event or context.
+ * Tries event.sessionKey, ctx.sessionKey, event.session?.key, ctx.session?.key.
+ */
+function resolveSessionKey(event?: Record<string, unknown>, ctx?: Record<string, unknown>): string {
+  if (event) {
+    if (typeof event.sessionKey === "string" && event.sessionKey) return event.sessionKey;
+    if (event.session && typeof event.session === "object" && typeof (event.session as Record<string, unknown>).key === "string") {
+      return (event.session as Record<string, unknown>).key as string;
+    }
+  }
+  if (ctx) {
+    if (typeof ctx.sessionKey === "string" && ctx.sessionKey) return ctx.sessionKey;
+    if (ctx.session && typeof ctx.session === "object" && typeof (ctx.session as Record<string, unknown>).key === "string") {
+      return (ctx.session as Record<string, unknown>).key as string;
+    }
+  }
+  return DEFAULT_SESSION_KEY;
+}
+
+/** Reset turn state for all sessions (for testing). */
 export function resetTurnState(): void {
-  _lastInjectedEntries = [];
-  _lastCapturedSummaries = [];
+  _sessionTurnState.clear();
 }
 
 // ============================================================================
@@ -602,8 +643,52 @@ const SIGNIFICANCE_RULES: Array<{
 ];
 
 /**
+ * Patterns that indicate machine/tool output rather than human knowledge.
+ * Content matching these should not be captured as significant.
+ */
+const NOISE_PATTERNS: RegExp[] = [
+  // Test output (pytest, vitest, jest, etc.)
+  /(?:PASSED|FAILED|ERROR)\s+\[?\d+%\]?/i,
+  /(?:test_\w+|tests?\/\w+\.(?:py|ts|js))\s*::/,
+  /(?:pytest|vitest|jest|mocha)\s+(?:run|--)/i,
+  /\d+ passed,?\s*\d* (?:failed|error|warning)/i,
+  /^(?:=+\s*(?:test session|ERRORS|FAILURES|short test summary))/m,
+  // Stack traces
+  /(?:Traceback \(most recent call last\)|^\s+File ".*", line \d+)/m,
+  /^\s+at\s+\S+\s+\(.*:\d+:\d+\)/m,
+  // CLI output / file paths as main content
+  /^(?:\/[\w/.-]+){3,}\s*$/m,
+  // Build/CI output
+  /(?:npm\s+(?:ERR|WARN)|pip\s+install|cargo\s+build)/i,
+  /^(?:warning|error)\[?\w*\]?:\s/m,
+];
+
+/**
+ * Check if text is predominantly machine/tool output (test results, stack traces, etc.).
+ * Returns true if the text appears to be noise rather than human knowledge.
+ */
+export function isNoiseContent(text: string): boolean {
+  let matchCount = 0;
+  for (const pattern of NOISE_PATTERNS) {
+    if (pattern.test(text)) {
+      matchCount++;
+      if (matchCount >= 2) return true; // 2+ noise signals = definitely noise
+    }
+  }
+
+  // Also check: if >50% of lines look like file paths, it's noise
+  const lines = text.split("\n").filter((l) => l.trim().length > 0);
+  if (lines.length > 3) {
+    const pathLines = lines.filter((l) => /^\s*(?:\/[\w/.-]+){2,}/.test(l.trim()));
+    if (pathLines.length / lines.length > 0.5) return true;
+  }
+
+  return false;
+}
+
+/**
  * Pre-filter: Should this exchange even be considered for capture?
- * Returns false for trivial, too-short, or system-generated content.
+ * Returns false for trivial, too-short, system-generated, or noise content.
  */
 export function shouldAttemptCapture(
   exchangeText: string,
@@ -623,6 +708,9 @@ export function shouldAttemptCapture(
   // Skip system-generated / injected content
   if (trimmed.includes("<relevant-memories>")) return false;
   if (trimmed.startsWith("<") && trimmed.includes("</")) return false;
+
+  // Skip machine/tool output (test results, stack traces, CI logs)
+  if (isNoiseContent(trimmed)) return false;
 
   return true;
 }
@@ -805,10 +893,12 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
 
           if (userMessage && userMessage.length >= 5) {
             try {
-              const result = await runJson<QueryResult>(
-                ["query", userMessage, "--tier", config.tier || "hot", "--limit", String(limit)],
-                opts,
-              );
+              // palaia query supports --limit but NOT --tier; use --all for tier=all
+              const queryArgs: string[] = ["query", userMessage, "--limit", String(limit)];
+              if (config.tier === "all") {
+                queryArgs.push("--all");
+              }
+              const result = await runJson<QueryResult>(queryArgs, opts);
               if (result && Array.isArray(result.results)) {
                 entries = result.results;
               }
@@ -820,12 +910,16 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         }
 
         // Fallback: list mode (original behavior)
+        // palaia list supports --tier but NOT --limit; use --all for tier=all
         if (entries.length === 0) {
           try {
-            const result = await runJson<QueryResult>(
-              ["list", "--tier", config.tier || "hot", "--limit", String(limit)],
-              opts,
-            );
+            const listArgs: string[] = ["list"];
+            if (config.tier === "all") {
+              listArgs.push("--all");
+            } else {
+              listArgs.push("--tier", config.tier || "hot");
+            }
+            const result = await runJson<QueryResult>(listArgs, opts);
             if (result && Array.isArray(result.results)) {
               entries = result.results;
             }
@@ -852,7 +946,10 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         }
 
         // Track injected entries for footnote generation (Issue #87)
-        _lastInjectedEntries = ranked.map((e) => {
+        // Session-scoped to prevent cross-session leakage
+        const sessionKey = resolveSessionKey(event, _ctx);
+        const turnState = getTurnState(sessionKey);
+        turnState.lastInjectedEntries = ranked.map((e) => {
           // Find original entry to get created date
           const orig = entries.find((o) => o.id === e.id);
           return {
@@ -905,20 +1002,24 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
     }
 
     // Step 2: Memory source footnotes (Issue #87)
-    if (config.showMemorySources && _lastInjectedEntries.length > 0) {
-      const footnote = buildFootnote(_lastInjectedEntries, result);
+    // Session-scoped state to prevent cross-session leakage
+    const sessionKey = resolveSessionKey(_event, _ctx);
+    const turnState = getTurnState(sessionKey);
+
+    if (config.showMemorySources && turnState.lastInjectedEntries.length > 0) {
+      const footnote = buildFootnote(turnState.lastInjectedEntries, result);
       if (footnote) {
         result += footnote;
       }
-      _lastInjectedEntries = [];
+      turnState.lastInjectedEntries = [];
     }
 
     // Step 3: Capture confirmations (Issue #87)
-    if (config.showCaptureConfirm && _lastCapturedSummaries.length > 0) {
-      for (const summary of _lastCapturedSummaries) {
+    if (config.showCaptureConfirm && turnState.lastCapturedSummaries.length > 0) {
+      for (const summary of turnState.lastCapturedSummaries) {
         result += `\n💾 Saved: "${summary}"`;
       }
-      _lastCapturedSummaries = [];
+      turnState.lastCapturedSummaries = [];
     }
 
     if (result !== content) {
@@ -1027,8 +1128,10 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
                 effectiveScope,
               );
               await run(args, opts);
-              // Track for capture confirm (Issue #87)
-              _lastCapturedSummaries.push(r.content.slice(0, 80));
+              // Track for capture confirm (Issue #87) — session-scoped
+              const captureSessionKey = resolveSessionKey(event, _ctx);
+              const captureTurnState = getTurnState(captureSessionKey);
+              captureTurnState.lastCapturedSummaries.push(r.content.slice(0, 80));
               console.log(
                 `[palaia] LLM auto-captured: type=${r.type}, significance=${r.significance}, tags=${r.tags.join(",")}, project=${effectiveProject || "none"}, scope=${effectiveScope || "team"}`
               );
@@ -1071,8 +1174,10 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           );
 
           await run(args, opts);
-          // Track for capture confirm (Issue #87)
-          _lastCapturedSummaries.push(captureData.summary.slice(0, 80));
+          // Track for capture confirm (Issue #87) — session-scoped
+          const fallbackSessionKey = resolveSessionKey(event, _ctx);
+          const fallbackTurnState = getTurnState(fallbackSessionKey);
+          fallbackTurnState.lastCapturedSummaries.push(captureData.summary.slice(0, 80));
           console.log(
             `[palaia] Rule-based auto-captured: type=${captureData.type}, tags=${captureData.tags.join(",")}`
           );
