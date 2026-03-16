@@ -44,6 +44,7 @@ from palaia.config import (  # noqa: E402
 from palaia.doctor import apply_fixes, format_doctor_report, run_doctor  # noqa: E402
 from palaia.ingest import DocumentIngestor, format_rag_output  # noqa: E402
 from palaia.migrate import format_result, migrate  # noqa: E402
+from palaia.packages import PackageManager  # noqa: E402
 from palaia.project import ProjectManager  # noqa: E402
 from palaia.search import SearchEngine  # noqa: E402
 from palaia.store import Store  # noqa: E402
@@ -116,6 +117,7 @@ GATED_COMMANDS = frozenset(
         "status",
         "project",
         "process",
+        "package",
         "lock",
         "unlock",
         "setup",
@@ -1034,6 +1036,9 @@ def cmd_query(args):
         priority=getattr(args, "priority", None),
         assignee=getattr(args, "assignee", None),
         instance=getattr(args, "instance", None),
+        before=getattr(args, "before", None),
+        after=getattr(args, "after", None),
+        cross_project=getattr(args, "cross_project", False),
     )
 
     # --- Adaptive Nudging for query (Issue #68) ---
@@ -1325,7 +1330,8 @@ def cmd_list(args):
     assignee_filter = getattr(args, "assignee", None)
     instance_filter = getattr(args, "instance", None)
 
-    if project_filter:
+    cross_project = getattr(args, "cross_project", False)
+    if project_filter and not cross_project:
         entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("project") == project_filter]
     if tag_filters:
         # AND logic: entry must have ALL specified tags
@@ -1346,6 +1352,17 @@ def cmd_list(args):
         entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("assignee") == assignee_filter]
     if instance_filter:
         entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("instance") == instance_filter]
+
+    # Temporal filters (Issue #74)
+    before_filter = getattr(args, "before", None)
+    after_filter = getattr(args, "after", None)
+    if before_filter:
+        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("created", "") < before_filter]
+    if after_filter:
+        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("created", "") > after_filter]
+
+    # Cross-project: if set, don't filter by project (Issue #38)
+    # (project_filter is already applied above, but cross_project skips it via argparse logic)
 
     if _json_out(
         {
@@ -2981,6 +2998,72 @@ def cmd_process(args):
         return 1
 
 
+def cmd_package(args):
+    """Manage knowledge packages (Issue #73)."""
+    root = get_root()
+    store = Store(root)
+    store.recover()
+
+    action = args.package_action
+
+    if action == "export":
+        pm_pkg = PackageManager(store)
+        types_filter = None
+        if getattr(args, "types", None):
+            types_filter = [t.strip() for t in args.types.split(",")]
+        result = pm_pkg.export_package(
+            project=args.project,
+            output_path=getattr(args, "output", None),
+            include_types=types_filter,
+        )
+        if _json_out(result, args):
+            return 0
+        print(f"Exported {result['entry_count']} entries from project '{result['project']}'")
+        print(f"  Package: {result['path']}")
+        return 0
+
+    elif action == "import":
+        pm_pkg = PackageManager(store)
+        result = pm_pkg.import_package(
+            input_path=args.file,
+            target_project=getattr(args, "project", None),
+            merge_strategy=getattr(args, "merge", "skip"),
+        )
+        if _json_out(result, args):
+            return 0
+        print(f"Imported {result['imported']} entries into project '{result['project']}'")
+        if result["skipped"]:
+            print(f"  Skipped (duplicates): {result['skipped']}")
+        if result.get("overwritten"):
+            print(f"  Overwritten: {result['overwritten']}")
+        return 0
+
+    elif action == "info":
+        pm_pkg = PackageManager(store)
+        try:
+            info = pm_pkg.package_info(args.file)
+        except (FileNotFoundError, ValueError) as e:
+            if _json_out({"error": str(e)}, args):
+                return 1
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if _json_out(info, args):
+            return 0
+        print(f"Package: {args.file}")
+        print(f"  Format: v{info['palaia_package']}")
+        print(f"  Palaia version: {info['palaia_version']}")
+        print(f"  Project: {info['project']}")
+        print(f"  Exported: {info['exported_at']}")
+        print(f"  Entries: {info['entry_count']}")
+        if info.get("type_breakdown"):
+            types_str = ", ".join(f"{v} {k}" for k, v in info["type_breakdown"].items())
+            print(f"  Types: {types_str}")
+        return 0
+
+    print("Unknown package action. Use: export, import, info", file=sys.stderr)
+    return 1
+
+
 def cmd_skill(args):
     """Print the embedded SKILL.md documentation."""
     skill_path = Path(__file__).parent / "SKILL.md"
@@ -3091,6 +3174,11 @@ def main():
     )
     p_query.add_argument("--assignee", default=None, help="Filter by assignee")
     p_query.add_argument("--instance", default=None, help="Filter by session identity")
+    p_query.add_argument("--before", default=None, help="Only entries created before this ISO timestamp")
+    p_query.add_argument("--after", default=None, help="Only entries created after this ISO timestamp")
+    p_query.add_argument(
+        "--cross-project", action="store_true", dest="cross_project", help="Search across all projects"
+    )
     p_query.add_argument("--rag", action="store_true", help="Output as RAG context block")
     p_query.add_argument("--json", action="store_true", help="Output as JSON")
 
@@ -3136,6 +3224,9 @@ def main():
     )
     p_list.add_argument("--assignee", default=None, help="Filter by assignee")
     p_list.add_argument("--instance", default=None, help="Filter by session identity")
+    p_list.add_argument("--before", default=None, help="Only entries created before this ISO timestamp")
+    p_list.add_argument("--after", default=None, help="Only entries created after this ISO timestamp")
+    p_list.add_argument("--cross-project", action="store_true", dest="cross_project", help="List across all projects")
     p_list.add_argument("--json", action="store_true", help="Output as JSON")
 
     # status
@@ -3339,6 +3430,26 @@ def main():
     p_proc_list = process_sub.add_parser("list", help="List active process runs")
     p_proc_list.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # package (Issue #73)
+    p_package = sub.add_parser("package", help="Export/import knowledge packages")
+    package_sub = p_package.add_subparsers(dest="package_action")
+
+    p_pkg_export = package_sub.add_parser("export", help="Export project knowledge as package")
+    p_pkg_export.add_argument("project", help="Project name to export")
+    p_pkg_export.add_argument("--output", default=None, help="Output file path")
+    p_pkg_export.add_argument("--types", default=None, help="Comma-separated entry types to include")
+    p_pkg_export.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_pkg_import = package_sub.add_parser("import", help="Import knowledge package")
+    p_pkg_import.add_argument("file", help="Package file path")
+    p_pkg_import.add_argument("--project", default=None, help="Override target project")
+    p_pkg_import.add_argument("--merge", default="skip", choices=["skip", "overwrite", "append"], help="Merge strategy")
+    p_pkg_import.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_pkg_info = package_sub.add_parser("info", help="Show package metadata")
+    p_pkg_info.add_argument("file", help="Package file path")
+    p_pkg_info.add_argument("--json", action="store_true", help="Output as JSON")
+
     # skill
     p_skill = sub.add_parser("skill", help="Print the SKILL.md agent documentation")
     p_skill.add_argument("--json", action="store_true", help="Output as JSON")
@@ -3388,6 +3499,7 @@ def main():
         "warmup": cmd_warmup,
         "project": cmd_project,
         "process": cmd_process,
+        "package": cmd_package,
         "memo": cmd_memo,
         "lock": cmd_lock,
         "unlock": cmd_unlock,
