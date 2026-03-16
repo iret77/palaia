@@ -15,6 +15,95 @@ import { run, runJson, recover, type RunnerOpts } from "./runner.js";
 import type { PalaiaPluginConfig, RecallTypeWeights } from "./config.js";
 
 // ============================================================================
+// Capture Hints (Issue #81)
+// ============================================================================
+
+/** Parsed palaia-hint tag attributes */
+export interface PalaiaHint {
+  project?: string;
+  scope?: string;
+  type?: string;
+  tags?: string[];
+}
+
+/**
+ * Parse `<palaia-hint ... />` tags from text.
+ * Returns extracted hints and cleaned text with hints removed.
+ */
+export function parsePalaiaHints(text: string): { hints: PalaiaHint[]; cleanedText: string } {
+  const hints: PalaiaHint[] = [];
+  const regex = /<palaia-hint\s+([^/]*)\s*\/>/gi;
+
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const attrs = match[1];
+    const hint: PalaiaHint = {};
+
+    const projectMatch = attrs.match(/project\s*=\s*"([^"]*)"/i);
+    if (projectMatch) hint.project = projectMatch[1];
+
+    const scopeMatch = attrs.match(/scope\s*=\s*"([^"]*)"/i);
+    if (scopeMatch) hint.scope = scopeMatch[1];
+
+    const typeMatch = attrs.match(/type\s*=\s*"([^"]*)"/i);
+    if (typeMatch) hint.type = typeMatch[1];
+
+    const tagsMatch = attrs.match(/tags\s*=\s*"([^"]*)"/i);
+    if (tagsMatch) hint.tags = tagsMatch[1].split(",").map((t) => t.trim()).filter(Boolean);
+
+    hints.push(hint);
+  }
+
+  const cleanedText = text.replace(/<palaia-hint\s+[^/]*\s*\/>/gi, "").trim();
+  return { hints, cleanedText };
+}
+
+// ============================================================================
+// Project Cache (Issue #81)
+// ============================================================================
+
+interface CachedProject {
+  name: string;
+  description?: string;
+}
+
+let _cachedProjects: CachedProject[] | null = null;
+let _projectCacheTime = 0;
+const PROJECT_CACHE_TTL_MS = 60_000; // 1 minute
+
+/** Reset project cache (for testing). */
+export function resetProjectCache(): void {
+  _cachedProjects = null;
+  _projectCacheTime = 0;
+}
+
+/**
+ * Load known projects from CLI, with caching.
+ */
+async function loadProjects(opts: import("./runner.js").RunnerOpts): Promise<CachedProject[]> {
+  const now = Date.now();
+  if (_cachedProjects && (now - _projectCacheTime) < PROJECT_CACHE_TTL_MS) {
+    return _cachedProjects;
+  }
+
+  try {
+    const result = await runJson<{ projects: Array<{ name: string; description?: string }> }>(
+      ["project", "list"],
+      opts,
+    );
+    _cachedProjects = (result.projects || []).map((p) => ({
+      name: p.name,
+      description: p.description,
+    }));
+    _projectCacheTime = now;
+    return _cachedProjects;
+  } catch {
+    // Non-fatal: return empty if project list fails
+    return _cachedProjects || [];
+  }
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -49,6 +138,8 @@ export interface ExtractionResult {
   type: "memory" | "process" | "task";
   tags: string[];
   significance: number;
+  project?: string | null;
+  scope?: string | null;
 }
 
 type RunEmbeddedPiAgentFn = (params: Record<string, unknown>) => Promise<unknown>;
@@ -97,17 +188,30 @@ export function resetEmbeddedPiAgentLoader(): void {
   _embeddedPiAgentLoader = null;
 }
 
-const EXTRACTION_SYSTEM_PROMPT = `You are a knowledge extraction engine. Analyze the following conversation exchange and identify information worth remembering long-term.
+const EXTRACTION_SYSTEM_PROMPT_BASE = `You are a knowledge extraction engine. Analyze the following conversation exchange and identify information worth remembering long-term.
 
 For each piece of knowledge, return a JSON array of objects:
 - "content": concise summary of the knowledge (1-3 sentences)
 - "type": "memory" (facts, decisions, preferences), "process" (workflows, procedures, steps), or "task" (action items, todos, commitments)
 - "tags": array of significance tags from: ["decision", "lesson", "surprise", "commitment", "correction", "preference", "fact"]
 - "significance": 0.0-1.0 how important this is for long-term recall
+- "project": which project this belongs to (from known projects list, or null if unclear)
+- "scope": "private" (personal preference, agent-specific), "team" (shared knowledge), or "public" (documentation)
 
 Only extract genuinely significant knowledge. Skip small talk, acknowledgments, routine exchanges.
 Return empty array [] if nothing is worth remembering.
 Return ONLY valid JSON, no markdown fences.`;
+
+/**
+ * Build the full extraction prompt, including known projects if available.
+ */
+function buildExtractionPrompt(projects: CachedProject[]): string {
+  if (projects.length === 0) return EXTRACTION_SYSTEM_PROMPT_BASE;
+  const projectList = projects
+    .map((p) => `${p.name}${p.description ? ` (${p.description})` : ""}`)
+    .join(", ");
+  return `${EXTRACTION_SYSTEM_PROMPT_BASE}\n\nKnown projects: ${projectList}`;
+}
 
 /** Known cheap models per provider */
 const CHEAP_MODELS: Record<string, string> = {
@@ -190,6 +294,7 @@ export async function extractWithLLM(
   messages: unknown[],
   config: any,
   pluginConfig?: { captureModel?: string },
+  knownProjects?: CachedProject[],
 ): Promise<ExtractionResult[]> {
   const runEmbeddedPiAgent = await getEmbeddedPiAgent();
 
@@ -209,7 +314,8 @@ export async function extractWithLLM(
     return [];
   }
 
-  const prompt = `${EXTRACTION_SYSTEM_PROMPT}\n\n--- CONVERSATION ---\n${exchangeText}\n--- END ---`;
+  const systemPrompt = buildExtractionPrompt(knownProjects || []);
+  const prompt = `${systemPrompt}\n\n--- CONVERSATION ---\n${exchangeText}\n--- END ---`;
 
   let tmpDir: string | null = null;
   try {
@@ -268,7 +374,16 @@ export async function extractWithLLM(
         ? Math.max(0, Math.min(1, item.significance))
         : 0.5;
 
-      results.push({ content, type, tags, significance });
+      const project = typeof item.project === "string" && item.project.trim()
+        ? item.project.trim()
+        : null;
+
+      const validScopes = new Set(["private", "team", "public"]);
+      const scope = typeof item.scope === "string" && validScopes.has(item.scope)
+        ? item.scope
+        : null;
+
+      results.push({ content, type, tags, significance, project, scope });
     }
 
     return results;
@@ -578,9 +693,23 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
     });
   }
 
-  // ── agent_end (Issue #64: Auto-Capture) ────────────────────────
+  // ── message_sending (Issue #81: Strip capture hints) ─────────
+  // Removes <palaia-hint ... /> tags from outgoing messages so they
+  // don't appear in the final output sent to the user.
+  api.on("message_sending", (_event: any, _ctx: any) => {
+    const content = _event?.content;
+    if (typeof content !== "string") return;
+
+    const { hints, cleanedText } = parsePalaiaHints(content);
+    if (hints.length > 0 && cleanedText !== content) {
+      return { content: cleanedText };
+    }
+  });
+
+  // ── agent_end (Issue #64 + #81: Auto-Capture with Metadata) ───
   // Analyzes completed exchanges and captures significant content via palaia CLI.
   // Strategy: LLM-based extraction first, rule-based fallback if LLM unavailable.
+  // Issue #81 adds: agent attribution, project/scope detection, capture hints.
   if (config.autoCapture) {
     api.on("agent_end", async (event: any, _ctx: any) => {
       if (!event.success || !event.messages || event.messages.length === 0) {
@@ -588,17 +717,29 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
       }
 
       try {
+        // Resolve agent name from environment
+        const agentName = process.env.PALAIA_AGENT || undefined;
+
         const allTexts = extractMessageTexts(event.messages);
 
         // Check minimum turns requirement
         const userTurns = allTexts.filter((t) => t.role === "user").length;
         if (userTurns < config.captureMinTurns) return;
 
+        // ── Parse capture hints from all messages (Issue #81) ────
+        const collectedHints: PalaiaHint[] = [];
+        for (const t of allTexts) {
+          const { hints } = parsePalaiaHints(t.text);
+          collectedHints.push(...hints);
+        }
+
         // Build exchange text from user + assistant messages
         const exchangeParts: string[] = [];
         for (const t of allTexts) {
           if (t.role === "user" || t.role === "assistant") {
-            exchangeParts.push(`[${t.role}]: ${t.text}`);
+            // Strip hints from exchange text for LLM analysis
+            const { cleanedText } = parsePalaiaHints(t.text);
+            exchangeParts.push(`[${t.role}]: ${cleanedText}`);
           }
         }
         const exchangeText = exchangeParts.join("\n");
@@ -606,25 +747,68 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         // Pre-filter: skip trivial exchanges (fast, free)
         if (!shouldAttemptCapture(exchangeText)) return;
 
+        // Load known projects for LLM context
+        const knownProjects = await loadProjects(opts);
+
+        // Helper: build CLI args with metadata (agent, project, scope)
+        const buildWriteArgs = (
+          content: string,
+          type: string,
+          tags: string[],
+          itemProject?: string | null,
+          itemScope?: string | null,
+        ): string[] => {
+          const args: string[] = [
+            "write",
+            content,
+            "--type", type,
+            "--tags", tags.join(",") || "auto-capture",
+          ];
+
+          // Scope priority: config override > hint > LLM > "team" default
+          const scope = config.captureScope || itemScope || "team";
+          args.push("--scope", scope);
+
+          // Project priority: config override > hint > LLM
+          const project = config.captureProject || itemProject;
+          if (project) {
+            args.push("--project", project);
+          }
+
+          // Agent attribution from env
+          if (agentName) {
+            args.push("--agent", agentName);
+          }
+
+          return args;
+        };
+
         // ── LLM-based extraction (primary) ───────────────────────
         let llmHandled = false;
         try {
           const results = await extractWithLLM(event.messages, api.config, {
             captureModel: config.captureModel,
-          });
+          }, knownProjects);
 
           for (const r of results) {
             if (r.significance >= config.captureMinSignificance) {
-              const args: string[] = [
-                "write",
+              // Apply hint overrides: hints take priority over LLM results
+              const hintForProject = collectedHints.find((h) => h.project);
+              const hintForScope = collectedHints.find((h) => h.scope);
+
+              const effectiveProject = hintForProject?.project || r.project;
+              const effectiveScope = hintForScope?.scope || r.scope;
+
+              const args = buildWriteArgs(
                 r.content,
-                "--type", r.type,
-                "--tags", r.tags.join(",") || "auto-capture",
-                "--scope", "team",
-              ];
+                r.type,
+                r.tags,
+                effectiveProject,
+                effectiveScope,
+              );
               await run(args, opts);
               console.log(
-                `[palaia] LLM auto-captured: type=${r.type}, significance=${r.significance}, tags=${r.tags.join(",")}`
+                `[palaia] LLM auto-captured: type=${r.type}, significance=${r.significance}, tags=${r.tags.join(",")}, project=${effectiveProject || "none"}, scope=${effectiveScope || "team"}`
               );
             }
           }
@@ -652,13 +836,17 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
             captureData = { tags: ["auto-capture"], type: "memory", summary };
           }
 
-          const args: string[] = [
-            "write",
+          // Hint overrides for fallback (no LLM project detection)
+          const hintForProject = collectedHints.find((h) => h.project);
+          const hintForScope = collectedHints.find((h) => h.scope);
+
+          const args = buildWriteArgs(
             captureData.summary,
-            "--type", captureData.type,
-            "--tags", captureData.tags.join(","),
-            "--scope", "team",
-          ];
+            captureData.type,
+            captureData.tags,
+            hintForProject?.project,
+            hintForScope?.scope,
+          );
 
           await run(args, opts);
           console.log(

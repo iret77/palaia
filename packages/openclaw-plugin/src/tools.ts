@@ -84,6 +84,11 @@ export function registerTools(api: any, config: PalaiaPluginConfig): void {
           description: "Filter by scope: private|team|shared:X|public",
         })
       ),
+      type: Type.Optional(
+        Type.String({
+          description: "Filter by entry type: memory|process|task",
+        })
+      ),
     }),
     async execute(
       _id: string,
@@ -92,6 +97,7 @@ export function registerTools(api: any, config: PalaiaPluginConfig): void {
         maxResults?: number;
         tier?: string;
         scope?: string;
+        type?: string;
       }
     ) {
       const limit = params.maxResults || config.maxResults || 5;
@@ -100,6 +106,11 @@ export function registerTools(api: any, config: PalaiaPluginConfig): void {
       // --all flag includes cold tier
       if (params.tier === "all" || config.tier === "all") {
         args.push("--all");
+      }
+
+      // Type filter (Issue #82)
+      if (params.type) {
+        args.push("--type", params.type);
       }
 
       const result = await runJson<QueryResult>(args, opts);
@@ -190,10 +201,32 @@ export function registerTools(api: any, config: PalaiaPluginConfig): void {
             description: "Tags for categorization",
           })
         ),
+        type: Type.Optional(
+          Type.String({
+            description: "Entry type: memory|process|task (default: memory)",
+          })
+        ),
+        project: Type.Optional(
+          Type.String({
+            description: "Project name to associate this entry with",
+          })
+        ),
+        title: Type.Optional(
+          Type.String({
+            description: "Title for the entry",
+          })
+        ),
       }),
       async execute(
         _id: string,
-        params: { content: string; scope?: string; tags?: string[] }
+        params: {
+          content: string;
+          scope?: string;
+          tags?: string[];
+          type?: string;
+          project?: string;
+          title?: string;
+        }
       ) {
         const args: string[] = ["write", params.content];
         if (params.scope) {
@@ -201,6 +234,15 @@ export function registerTools(api: any, config: PalaiaPluginConfig): void {
         }
         if (params.tags && params.tags.length > 0) {
           args.push("--tags", params.tags.join(","));
+        }
+        if (params.type) {
+          args.push("--type", params.type);
+        }
+        if (params.project) {
+          args.push("--project", params.project);
+        }
+        if (params.title) {
+          args.push("--title", params.title);
         }
 
         const result = await runJson<WriteResult>(args, opts);

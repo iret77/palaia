@@ -12,7 +12,10 @@ import {
   extractWithLLM,
   resolveCaptureModel,
   resetEmbeddedPiAgentLoader,
+  parsePalaiaHints,
+  resetProjectCache,
   type ExtractionResult,
+  type PalaiaHint,
 } from "../src/hooks.js";
 import { DEFAULT_RECALL_TYPE_WEIGHTS } from "../src/config.js";
 
@@ -468,5 +471,101 @@ describe("ExtractionResult validation", () => {
       significance: 0.5,
     };
     expect(result.tags).toHaveLength(7);
+  });
+});
+
+// ============================================================================
+// parsePalaiaHints (Issue #81)
+// ============================================================================
+
+describe("parsePalaiaHints", () => {
+  it("parses a single hint with all attributes", () => {
+    const text = 'Some text <palaia-hint project="myapp" scope="private" type="memory" tags="decision,adr" /> more text';
+    const { hints, cleanedText } = parsePalaiaHints(text);
+    expect(hints).toHaveLength(1);
+    expect(hints[0].project).toBe("myapp");
+    expect(hints[0].scope).toBe("private");
+    expect(hints[0].type).toBe("memory");
+    expect(hints[0].tags).toEqual(["decision", "adr"]);
+    expect(cleanedText).toBe("Some text  more text");
+  });
+
+  it("parses multiple hints", () => {
+    const text = '<palaia-hint project="a" /> text <palaia-hint project="b" scope="team" />';
+    const { hints, cleanedText } = parsePalaiaHints(text);
+    expect(hints).toHaveLength(2);
+    expect(hints[0].project).toBe("a");
+    expect(hints[1].project).toBe("b");
+    expect(hints[1].scope).toBe("team");
+    expect(cleanedText).toBe("text");
+  });
+
+  it("returns empty hints for text without hints", () => {
+    const text = "Just regular text without any hints.";
+    const { hints, cleanedText } = parsePalaiaHints(text);
+    expect(hints).toHaveLength(0);
+    expect(cleanedText).toBe(text);
+  });
+
+  it("handles partial attributes", () => {
+    const text = '<palaia-hint project="only-project" />';
+    const { hints } = parsePalaiaHints(text);
+    expect(hints).toHaveLength(1);
+    expect(hints[0].project).toBe("only-project");
+    expect(hints[0].scope).toBeUndefined();
+    expect(hints[0].type).toBeUndefined();
+    expect(hints[0].tags).toBeUndefined();
+  });
+
+  it("is case-insensitive for tag name", () => {
+    const text = '<PALAIA-HINT project="test" />';
+    const { hints } = parsePalaiaHints(text);
+    expect(hints).toHaveLength(1);
+    expect(hints[0].project).toBe("test");
+  });
+
+  it("strips hint from multiline text", () => {
+    const text = "Line 1\n<palaia-hint project=\"x\" />\nLine 3";
+    const { hints, cleanedText } = parsePalaiaHints(text);
+    expect(hints).toHaveLength(1);
+    expect(cleanedText).toBe("Line 1\n\nLine 3");
+  });
+
+  it("filters empty tags", () => {
+    const text = '<palaia-hint tags="a,,b, ,c" />';
+    const { hints } = parsePalaiaHints(text);
+    expect(hints[0].tags).toEqual(["a", "b", "c"]);
+  });
+});
+
+// ============================================================================
+// ExtractionResult with project/scope (Issue #81)
+// ============================================================================
+
+describe("ExtractionResult with metadata", () => {
+  it("supports project and scope fields", () => {
+    const result: ExtractionResult = {
+      content: "Test",
+      type: "memory",
+      tags: ["decision"],
+      significance: 0.8,
+      project: "myapp",
+      scope: "team",
+    };
+    expect(result.project).toBe("myapp");
+    expect(result.scope).toBe("team");
+  });
+
+  it("supports null project and scope", () => {
+    const result: ExtractionResult = {
+      content: "Test",
+      type: "memory",
+      tags: [],
+      significance: 0.5,
+      project: null,
+      scope: null,
+    };
+    expect(result.project).toBeNull();
+    expect(result.scope).toBeNull();
   });
 });

@@ -190,3 +190,64 @@ class TestPackageInfo:
         pm = PackageManager(populated_store)
         with pytest.raises(ValueError):
             pm.package_info(str(bad_file))
+
+
+class TestImportAgentAttribution:
+    """Tests for Issue #85: agent attribution on package import."""
+
+    def test_import_with_agent(self, store, tmp_path):
+        """Importing with --agent should attribute all entries to that agent."""
+        # Create a standalone package with unique content (avoids store-level dedup)
+        package = {
+            "palaia_package": "1.0",
+            "palaia_version": "2.0.0",
+            "project": "agent-test",
+            "exported_at": "2026-03-16",
+            "entry_count": 2,
+            "entries": [
+                {"content": "Unique entry for agent test one", "type": "memory", "tags": ["test"]},
+                {"content": "Unique entry for agent test two", "type": "process", "tags": ["test"]},
+            ],
+        }
+        pkg_file = tmp_path / "agent-test.palaia-pkg.json"
+        pkg_file.write_text(json.dumps(package))
+
+        pm = PackageManager(store)
+        result = pm.import_package(
+            str(pkg_file),
+            target_project="agent-test",
+            merge_strategy="append",
+            agent="Elliot",
+        )
+        assert result["imported"] == 2
+
+        # Verify entries have the agent set
+        all_entries = store.all_entries_unfiltered(include_cold=True)
+        agent_entries = [
+            meta for meta, body, tier in all_entries
+            if meta.get("project") == "agent-test" and meta.get("agent") == "Elliot"
+        ]
+        assert len(agent_entries) == 2
+
+    def test_import_without_agent(self, store, tmp_path):
+        """Importing without --agent should not set agent field."""
+        package = {
+            "palaia_package": "1.0",
+            "palaia_version": "2.0.0",
+            "project": "noagent-test",
+            "exported_at": "2026-03-16",
+            "entry_count": 1,
+            "entries": [
+                {"content": "Unique entry without agent attribution", "type": "memory"},
+            ],
+        }
+        pkg_file = tmp_path / "noagent-test.palaia-pkg.json"
+        pkg_file.write_text(json.dumps(package))
+
+        pm = PackageManager(store)
+        result = pm.import_package(
+            str(pkg_file),
+            target_project="noagent-test",
+            merge_strategy="append",
+        )
+        assert result["imported"] == 1

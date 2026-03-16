@@ -89,6 +89,7 @@ class PackageManager:
         input_path: str,
         target_project: str | None = None,
         merge_strategy: str = "skip",
+        agent: str | None = None,
     ) -> dict:
         """Import entries from a knowledge package.
 
@@ -165,6 +166,7 @@ class PackageManager:
                 title=title,
                 project=project,
                 entry_type=entry_type,
+                agent=agent,
             )
             imported += 1
 

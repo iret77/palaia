@@ -89,6 +89,70 @@ class TestPluginDefaultsUpgradeCheck:
         result = _check_plugin_defaults_upgrade(None)
         assert result["status"] == "ok"
 
+    def test_memoryInject_false_detected(self, palaia_root):
+        """memoryInject=false → warn (v1.x default)."""
+        config = json.loads((palaia_root / "config.json").read_text())
+        config["plugin_config"] = {"memoryInject": False}
+        (palaia_root / "config.json").write_text(json.dumps(config))
+
+        from palaia.doctor import _check_plugin_defaults_upgrade
+
+        result = _check_plugin_defaults_upgrade(palaia_root)
+        assert result["status"] == "warn"
+        assert "memoryInject" in result["message"]
+
+    def test_maxInjectedChars_4000_detected(self, palaia_root):
+        """maxInjectedChars=4000 → warn (v1.x default)."""
+        config = json.loads((palaia_root / "config.json").read_text())
+        config["plugin_config"] = {"maxInjectedChars": 4000}
+        (palaia_root / "config.json").write_text(json.dumps(config))
+
+        from palaia.doctor import _check_plugin_defaults_upgrade
+
+        result = _check_plugin_defaults_upgrade(palaia_root)
+        assert result["status"] == "warn"
+        assert "maxInjectedChars" in result["message"]
+
+    def test_recallMode_list_detected(self, palaia_root):
+        """recallMode=list → warn (v1.x default)."""
+        config = json.loads((palaia_root / "config.json").read_text())
+        config["plugin_config"] = {"recallMode": "list"}
+        (palaia_root / "config.json").write_text(json.dumps(config))
+
+        from palaia.doctor import _check_plugin_defaults_upgrade
+
+        result = _check_plugin_defaults_upgrade(palaia_root)
+        assert result["status"] == "warn"
+        assert "recallMode" in result["message"]
+
+    def test_custom_maxInjectedChars_not_flagged(self, palaia_root):
+        """maxInjectedChars=6000 (custom) → not flagged."""
+        config = json.loads((palaia_root / "config.json").read_text())
+        config["plugin_config"] = {"maxInjectedChars": 6000}
+        (palaia_root / "config.json").write_text(json.dumps(config))
+
+        from palaia.doctor import _check_plugin_defaults_upgrade
+
+        result = _check_plugin_defaults_upgrade(palaia_root)
+        assert result["status"] == "ok"
+
+    def test_all_v1_defaults_detected(self, palaia_root):
+        """All v1.x defaults together → all flagged."""
+        config = json.loads((palaia_root / "config.json").read_text())
+        config["plugin_config"] = {
+            "autoCapture": False,
+            "memoryInject": False,
+            "maxInjectedChars": 4000,
+            "recallMode": "list",
+        }
+        (palaia_root / "config.json").write_text(json.dumps(config))
+
+        from palaia.doctor import _check_plugin_defaults_upgrade
+
+        result = _check_plugin_defaults_upgrade(palaia_root)
+        assert result["status"] == "warn"
+        assert len(result["details"]["upgradeable"]) == 4
+
 
 class TestPluginDefaultsUpgradeFix:
     """Test apply_fixes upgrades v1.x defaults correctly."""
@@ -166,3 +230,47 @@ class TestPluginDefaultsUpgradeFix:
         assert pc["autoCapture"] is True  # upgraded
         assert pc["captureFrequency"] == "every"  # preserved
         assert pc["captureMinTurns"] == 10  # preserved
+
+    def test_fix_upgrades_all_v1_defaults(self, palaia_root):
+        """--fix should upgrade all v1.x defaults: memoryInject, maxInjectedChars, recallMode."""
+        config = json.loads((palaia_root / "config.json").read_text())
+        config["plugin_config"] = {
+            "autoCapture": False,
+            "memoryInject": False,
+            "maxInjectedChars": 4000,
+            "recallMode": "list",
+        }
+        (palaia_root / "config.json").write_text(json.dumps(config))
+
+        from palaia.doctor import _check_plugin_defaults_upgrade, apply_fixes
+
+        results = [_check_plugin_defaults_upgrade(palaia_root)]
+        actions = apply_fixes(palaia_root, results)
+
+        assert any("v2.0" in a for a in actions)
+
+        updated = json.loads((palaia_root / "config.json").read_text())
+        pc = updated["plugin_config"]
+        assert pc["autoCapture"] is True
+        assert pc["memoryInject"] is True
+        assert pc["maxInjectedChars"] == 8000
+        assert pc["recallMode"] == "query"
+
+    def test_fix_preserves_custom_maxInjectedChars(self, palaia_root):
+        """--fix should NOT touch custom maxInjectedChars=6000."""
+        config = json.loads((palaia_root / "config.json").read_text())
+        config["plugin_config"] = {
+            "autoCapture": False,
+            "maxInjectedChars": 6000,  # custom → should NOT touch
+        }
+        (palaia_root / "config.json").write_text(json.dumps(config))
+
+        from palaia.doctor import _check_plugin_defaults_upgrade, apply_fixes
+
+        results = [_check_plugin_defaults_upgrade(palaia_root)]
+        apply_fixes(palaia_root, results)  # return value unused; just verify side effects
+
+        updated = json.loads((palaia_root / "config.json").read_text())
+        pc = updated["plugin_config"]
+        assert pc["autoCapture"] is True  # upgraded
+        assert pc["maxInjectedChars"] == 6000  # preserved (custom)

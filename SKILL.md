@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "1.9.0"
+version: "2.0.0"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   Replaces built-in memory-core with semantic search, projects, and scope-based access control.
@@ -419,6 +419,157 @@ The config change requires a gateway restart to take effect.
 - `memory_search` and `memory_get` tools now search the Palaia store instead of MEMORY.md files
 - MEMORY.md and workspace files continue to be loaded as project context (unchanged)
 - All Palaia features (projects, scopes, tiering, semantic search) are available through the standard memory tools
+
+## Auto-Capture and Capture Hints
+
+### How Auto-Capture Works
+
+Auto-capture runs automatically after every agent turn (when `autoCapture: true`, which is the default). It:
+
+1. Collects all messages from the completed exchange
+2. Filters out trivial exchanges (short, system content, acknowledgments)
+3. Uses LLM-based extraction to identify significant knowledge: decisions, lessons, processes, commitments, preferences
+4. Writes extracted items to Palaia with appropriate type, tags, scope, and project attribution
+5. Falls back to rule-based extraction if LLM is unavailable
+
+**Agent attribution:** If `PALAIA_AGENT` is set in the environment, all auto-captured entries are attributed to that agent via `--agent`. Otherwise, the CLI uses the configured default.
+
+**Project detection:** Auto-capture passes the list of known projects to the LLM, which assigns entries to the most relevant project (or none if unclear).
+
+**Scope detection:** The LLM also determines scope per item: `private` (personal preference), `team` (shared knowledge), or `public` (documentation).
+
+### When to Use Manual Write vs Auto-Capture
+
+**Auto-capture replaces routine captures.** It runs automatically — you don't need to explicitly save every decision or learning. It handles the 80% case.
+
+**Manual `palaia write` remains valuable for:**
+- Conscious decisions (ADRs): `palaia write "We decided..." --type memory --tags decision`
+- Processes and checklists: `palaia write "Deploy steps: 1. ... 2. ..." --type process`
+- Deliberate knowledge structuring with explicit tags and scopes
+- Entries that MUST belong to a specific project/scope (auto-capture may misassign)
+
+### Capture Hints
+
+When you want to guide auto-capture without writing manually, use `<palaia-hint />` tags in your message:
+
+```
+<palaia-hint project="myapp" scope="private" />
+```
+
+Hints are parsed from all messages in the exchange and used as overrides:
+- **Priority:** Hint > LLM detection > Config override > Default
+- **Attributes:** `project`, `scope`, `type`, `tags` (comma-separated)
+- **Stripping:** Hints are automatically removed from outgoing messages — the user never sees them
+
+Multiple hints are supported (e.g., for different projects in the same turn):
+```
+<palaia-hint project="frontend" scope="team" tags="decision" />
+<palaia-hint project="backend" type="process" />
+```
+
+### Static Config Overrides
+
+For setups where every entry should go to the same project/scope, set in plugin config:
+- `captureScope`: Static scope override (e.g., `"team"`)
+- `captureProject`: Static project override (e.g., `"myapp"`)
+
+These override LLM detection but are overridden by capture hints.
+
+## Knowledge Packages
+
+Export and import project knowledge as portable package files.
+
+```bash
+# Export all entries from a project
+palaia package export <project> [--output file.palaia-pkg.json] [--types memory,process]
+
+# Import a knowledge package
+palaia package import <file> [--project target] [--merge skip|overwrite|append] [--agent name]
+
+# View package metadata without importing
+palaia package info <file>
+```
+
+The `--agent` flag on import attributes all imported entries to a specific agent name.
+
+## Process Runner
+
+Run stored process entries as interactive checklists:
+
+```bash
+# List all stored processes
+palaia process list [--project NAME]
+
+# Run a process interactively
+palaia process run <id>
+```
+
+## Temporal Queries
+
+Filter entries by time with `--before` and `--after`:
+
+```bash
+palaia query "deploy" --after 2026-03-01 --before 2026-03-15
+palaia list --after 2026-03-01
+```
+
+Dates are in ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS).
+
+## Cross-Project Search
+
+Search across all projects at once:
+
+```bash
+palaia query "authentication" --cross-project
+```
+
+Without `--cross-project`, queries only search entries in the active project context.
+
+## Bounded Memory and Garbage Collection
+
+Palaia supports budgeted garbage collection to keep the store lean:
+
+```bash
+# Preview what would be collected
+palaia gc --dry-run
+
+# Collect with a target budget (max entries to keep)
+palaia gc --budget 200
+
+# Aggressive collection — also clears COLD tier
+palaia gc --aggressive
+```
+
+GC rotates entries through tiers: HOT (active, <7 days) -> WARM (recent, <30 days) -> COLD (archived).
+
+## Significance Tagging
+
+Auto-capture automatically detects and tags entries with significance markers:
+
+| Tag | Meaning | Example |
+|-----|---------|---------|
+| `decision` | A choice was made | "We decided to use PostgreSQL" |
+| `lesson` | Something was learned | "I learned that caching needs invalidation on deploy" |
+| `surprise` | Unexpected discovery | "The API returns 200 even on errors" |
+| `commitment` | Promise or action item | "I will refactor auth by Friday" |
+| `correction` | Error was corrected | "Actually, the limit is 100, not 50" |
+| `preference` | User/agent preference | "I prefer tabs over spaces" |
+| `fact` | Important factual information | "The prod DB is on port 5433" |
+
+These tags enable targeted queries: `palaia query "decisions" --tags decision`
+
+## Adaptive Nudging
+
+Palaia includes a graduation system that adapts to agent behavior:
+
+**What it does:** When the agent writes an entry that relates to an existing process, Palaia nudges: "Related process found: [title]. Consider following it."
+
+**How it learns:** The nudging system tracks whether agents follow stored processes. Over time:
+- Agents that consistently follow processes see fewer nudges (graduated)
+- Agents that frequently skip processes continue to receive nudges
+- New processes always trigger nudges until a pattern is established
+
+**Important:** SKILL.md documentation is the primary source for agent behavior. Nudging is the safety net for when agents don't read the docs — not a replacement for good documentation.
 
 ## Commands Reference
 
