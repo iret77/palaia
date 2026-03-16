@@ -3028,6 +3028,7 @@ def cmd_package(args):
             input_path=args.file,
             target_project=getattr(args, "project", None),
             merge_strategy=getattr(args, "merge", "skip"),
+            agent=getattr(args, "agent", None),
         )
         if _json_out(result, args):
             return 0
@@ -3444,6 +3445,7 @@ def main():
     p_pkg_import.add_argument("file", help="Package file path")
     p_pkg_import.add_argument("--project", default=None, help="Override target project")
     p_pkg_import.add_argument("--merge", default="skip", choices=["skip", "overwrite", "append"], help="Merge strategy")
+    p_pkg_import.add_argument("--agent", default=None, help="Agent name to attribute imported entries to")
     p_pkg_import.add_argument("--json", action="store_true", help="Output as JSON")
 
     p_pkg_info = package_sub.add_parser("info", help="Show package metadata")
