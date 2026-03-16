@@ -3,9 +3,14 @@
  *
  * - before_prompt_build: Query-based contextual recall (Issue #65).
  * - agent_end: Auto-capture of significant exchanges (Issue #64).
+ *   Now with LLM-based extraction via OpenClaw's runEmbeddedPiAgent,
+ *   falling back to rule-based extraction if the LLM is unavailable.
  * - palaia-recovery service: Replays WAL on startup.
  */
 
+import fs from "node:fs/promises";
+import path from "node:path";
+import os from "node:os";
 import { run, runJson, recover, type RunnerOpts } from "./runner.js";
 import type { PalaiaPluginConfig, RecallTypeWeights } from "./config.js";
 
@@ -32,6 +37,246 @@ interface QueryResult {
 interface Message {
   role?: string;
   content?: string | Array<{ type?: string; text?: string }>;
+}
+
+// ============================================================================
+// LLM-based Extraction (Issue #64 upgrade)
+// ============================================================================
+
+/** Result from LLM-based knowledge extraction */
+export interface ExtractionResult {
+  content: string;
+  type: "memory" | "process" | "task";
+  tags: string[];
+  significance: number;
+}
+
+type RunEmbeddedPiAgentFn = (params: Record<string, unknown>) => Promise<unknown>;
+
+/** Cached loader result (null = not yet attempted, Error = load failed) */
+let _embeddedPiAgentLoader: Promise<RunEmbeddedPiAgentFn> | null = null;
+
+/**
+ * Load runEmbeddedPiAgent from OpenClaw internals.
+ * Mirrors the import pattern used by the llm-task extension.
+ */
+async function loadRunEmbeddedPiAgent(): Promise<RunEmbeddedPiAgentFn> {
+  // Source checkout (tests/dev)
+  try {
+    const mod = await import("../../../src/agents/pi-embedded-runner.js");
+    if (typeof (mod as any).runEmbeddedPiAgent === "function") {
+      return (mod as any).runEmbeddedPiAgent;
+    }
+  } catch {
+    // ignore — not in source tree
+  }
+
+  // Bundled install
+  const distPath = "../../../dist/extensionAPI.js";
+  const mod = (await import(distPath)) as { runEmbeddedPiAgent?: unknown };
+  const fn = (mod as any).runEmbeddedPiAgent;
+  if (typeof fn !== "function") {
+    throw new Error("runEmbeddedPiAgent not available in this OpenClaw installation");
+  }
+  return fn as RunEmbeddedPiAgentFn;
+}
+
+/**
+ * Get a cached reference to runEmbeddedPiAgent.
+ * Returns the function or throws if unavailable.
+ */
+export function getEmbeddedPiAgent(): Promise<RunEmbeddedPiAgentFn> {
+  if (!_embeddedPiAgentLoader) {
+    _embeddedPiAgentLoader = loadRunEmbeddedPiAgent();
+  }
+  return _embeddedPiAgentLoader;
+}
+
+/** Reset cached loader (for testing). */
+export function resetEmbeddedPiAgentLoader(): void {
+  _embeddedPiAgentLoader = null;
+}
+
+const EXTRACTION_SYSTEM_PROMPT = `You are a knowledge extraction engine. Analyze the following conversation exchange and identify information worth remembering long-term.
+
+For each piece of knowledge, return a JSON array of objects:
+- "content": concise summary of the knowledge (1-3 sentences)
+- "type": "memory" (facts, decisions, preferences), "process" (workflows, procedures, steps), or "task" (action items, todos, commitments)
+- "tags": array of significance tags from: ["decision", "lesson", "surprise", "commitment", "correction", "preference", "fact"]
+- "significance": 0.0-1.0 how important this is for long-term recall
+
+Only extract genuinely significant knowledge. Skip small talk, acknowledgments, routine exchanges.
+Return empty array [] if nothing is worth remembering.
+Return ONLY valid JSON, no markdown fences.`;
+
+/** Known cheap models per provider */
+const CHEAP_MODELS: Record<string, string> = {
+  anthropic: "claude-haiku-4",
+  openai: "gpt-4.1-mini",
+  google: "gemini-2.0-flash",
+};
+
+/**
+ * Resolve the model to use for extraction based on config.
+ * Returns { provider, model } or undefined if no model can be resolved.
+ */
+export function resolveCaptureModel(
+  config: any,
+  captureModel?: string,
+): { provider: string; model: string } | undefined {
+  // 1. Explicit captureModel in plugin config
+  if (captureModel && captureModel !== "cheap") {
+    const parts = captureModel.split("/");
+    if (parts.length >= 2) {
+      return { provider: parts[0], model: parts.slice(1).join("/") };
+    }
+    // If no slash, treat as model name — need provider from defaults
+    const defaultsModel = config?.agents?.defaults?.model;
+    const primary = typeof defaultsModel === "string"
+      ? defaultsModel.trim()
+      : (defaultsModel?.primary?.trim() ?? "");
+    const defaultProvider = primary.split("/")[0];
+    if (defaultProvider) {
+      return { provider: defaultProvider, model: captureModel };
+    }
+  }
+
+  // 2. "cheap" or no captureModel: pick cheapest available model
+  const defaultsModel = config?.agents?.defaults?.model;
+  const primary = typeof defaultsModel === "string"
+    ? defaultsModel.trim()
+    : (defaultsModel?.primary?.trim() ?? "");
+  const defaultProvider = primary.split("/")[0];
+  const defaultModel = primary.split("/").slice(1).join("/");
+
+  if (defaultProvider && CHEAP_MODELS[defaultProvider]) {
+    return { provider: defaultProvider, model: CHEAP_MODELS[defaultProvider] };
+  }
+
+  // Fallback: use the default model directly
+  if (defaultProvider && defaultModel) {
+    return { provider: defaultProvider, model: defaultModel };
+  }
+
+  return undefined;
+}
+
+/**
+ * Strip markdown code fences from LLM response.
+ */
+function stripCodeFences(s: string): string {
+  const trimmed = s.trim();
+  const m = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (m) return (m[1] ?? "").trim();
+  return trimmed;
+}
+
+/**
+ * Collect text payloads from runEmbeddedPiAgent result.
+ */
+function collectText(payloads: Array<{ text?: string; isError?: boolean }> | undefined): string {
+  return (payloads ?? [])
+    .filter((p) => !p.isError && typeof p.text === "string")
+    .map((p) => p.text ?? "")
+    .join("\n")
+    .trim();
+}
+
+/**
+ * Extract knowledge from messages using LLM via runEmbeddedPiAgent.
+ * Throws if the LLM call fails (caller should fall back to rule-based).
+ */
+export async function extractWithLLM(
+  messages: unknown[],
+  config: any,
+  pluginConfig?: { captureModel?: string },
+): Promise<ExtractionResult[]> {
+  const runEmbeddedPiAgent = await getEmbeddedPiAgent();
+
+  const resolved = resolveCaptureModel(config, pluginConfig?.captureModel);
+  if (!resolved) {
+    throw new Error("No model available for LLM extraction");
+  }
+
+  // Build exchange text from messages
+  const texts = extractMessageTexts(messages);
+  const exchangeText = texts
+    .filter((t) => t.role === "user" || t.role === "assistant")
+    .map((t) => `[${t.role}]: ${t.text}`)
+    .join("\n");
+
+  if (!exchangeText.trim()) {
+    return [];
+  }
+
+  const prompt = `${EXTRACTION_SYSTEM_PROMPT}\n\n--- CONVERSATION ---\n${exchangeText}\n--- END ---`;
+
+  let tmpDir: string | null = null;
+  try {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "palaia-extract-"));
+    const sessionId = `palaia-extract-${Date.now()}`;
+    const sessionFile = path.join(tmpDir, "session.json");
+
+    const result = await runEmbeddedPiAgent({
+      sessionId,
+      sessionFile,
+      workspaceDir: config?.agents?.defaults?.workspace ?? process.cwd(),
+      config,
+      prompt,
+      timeoutMs: 15_000,
+      runId: `palaia-extract-${Date.now()}`,
+      provider: resolved.provider,
+      model: resolved.model,
+      disableTools: true,
+      streamParams: { maxTokens: 2048 },
+    });
+
+    const text = collectText((result as any).payloads);
+    if (!text) return [];
+
+    const raw = stripCodeFences(text);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error(`LLM returned invalid JSON: ${raw.slice(0, 200)}`);
+    }
+
+    if (!Array.isArray(parsed)) {
+      throw new Error(`LLM returned non-array: ${typeof parsed}`);
+    }
+
+    // Validate and normalize each result
+    const results: ExtractionResult[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") continue;
+      const content = typeof item.content === "string" ? item.content.trim() : "";
+      if (!content) continue;
+
+      const validTypes = new Set(["memory", "process", "task"]);
+      const type = validTypes.has(item.type) ? item.type : "memory";
+
+      const validTags = new Set([
+        "decision", "lesson", "surprise", "commitment",
+        "correction", "preference", "fact",
+      ]);
+      const tags = Array.isArray(item.tags)
+        ? item.tags.filter((t: unknown) => typeof t === "string" && validTags.has(t))
+        : [];
+
+      const significance = typeof item.significance === "number"
+        ? Math.max(0, Math.min(1, item.significance))
+        : 0.5;
+
+      results.push({ content, type, tags, significance });
+    }
+
+    return results;
+  } finally {
+    if (tmpDir) {
+      try { await fs.rm(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+  }
 }
 
 // ============================================================================
@@ -104,8 +349,8 @@ export function shouldAttemptCapture(
  * Extract significance from exchange text using rule-based matching.
  * Returns null if nothing significant is detected.
  *
- * TODO: Upgrade to LLM-based extraction when Plugin API supports direct LLM calls.
- * The rule-based approach covers common patterns but misses nuanced significance.
+ * NOTE: This is the rule-based fallback. Primary extraction uses extractWithLLM()
+ * via OpenClaw's runEmbeddedPiAgent. Rule-based kicks in when LLM is unavailable.
  */
 export function extractSignificance(
   exchangeText: string,
@@ -335,6 +580,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
 
   // ── agent_end (Issue #64: Auto-Capture) ────────────────────────
   // Analyzes completed exchanges and captures significant content via palaia CLI.
+  // Strategy: LLM-based extraction first, rule-based fallback if LLM unavailable.
   if (config.autoCapture) {
     api.on("agent_end", async (event: any, _ctx: any) => {
       if (!event.success || !event.messages || event.messages.length === 0) {
@@ -357,41 +603,68 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         }
         const exchangeText = exchangeParts.join("\n");
 
-        // Pre-filter: skip trivial exchanges
+        // Pre-filter: skip trivial exchanges (fast, free)
         if (!shouldAttemptCapture(exchangeText)) return;
 
-        // For "significant" mode, require rule-based significance detection
-        // For "every" mode, capture with a generic "exchange" tag
-        let captureData: { tags: string[]; type: string; summary: string };
+        // ── LLM-based extraction (primary) ───────────────────────
+        let llmHandled = false;
+        try {
+          const results = await extractWithLLM(event.messages, api.config, {
+            captureModel: config.captureModel,
+          });
 
-        if (config.captureFrequency === "significant") {
-          const significance = extractSignificance(exchangeText);
-          if (!significance) return; // Nothing significant detected
-          captureData = significance;
-        } else {
-          // "every" mode: capture a summary of the exchange
-          const summary = exchangeParts
-            .slice(-4) // Last 4 messages
-            .map((p) => p.slice(0, 200))
-            .join(" | ")
-            .slice(0, 500);
-          captureData = { tags: ["auto-capture"], type: "memory", summary };
+          for (const r of results) {
+            if (r.significance >= config.captureMinSignificance) {
+              const args: string[] = [
+                "write",
+                r.content,
+                "--type", r.type,
+                "--tags", r.tags.join(",") || "auto-capture",
+                "--scope", "team",
+              ];
+              await run(args, opts);
+              console.log(
+                `[palaia] LLM auto-captured: type=${r.type}, significance=${r.significance}, tags=${r.tags.join(",")}`
+              );
+            }
+          }
+
+          llmHandled = true;
+        } catch (llmError) {
+          console.warn(`[palaia] LLM extraction failed, using rule-based fallback: ${llmError}`);
         }
 
-        // Write to Palaia via CLI
-        const args: string[] = [
-          "write",
-          captureData.summary,
-          "--type", captureData.type,
-          "--tags", captureData.tags.join(","),
-          "--scope", "team",
-        ];
+        // ── Rule-based fallback ──────────────────────────────────
+        if (!llmHandled) {
+          let captureData: { tags: string[]; type: string; summary: string } | null = null;
 
-        await run(args, opts);
+          if (config.captureFrequency === "significant") {
+            const significance = extractSignificance(exchangeText);
+            if (!significance) return; // Nothing significant detected
+            captureData = significance;
+          } else {
+            // "every" mode: capture a summary of the exchange
+            const summary = exchangeParts
+              .slice(-4) // Last 4 messages
+              .map((p) => p.slice(0, 200))
+              .join(" | ")
+              .slice(0, 500);
+            captureData = { tags: ["auto-capture"], type: "memory", summary };
+          }
 
-        console.log(
-          `[palaia] Auto-captured: type=${captureData.type}, tags=${captureData.tags.join(",")}`
-        );
+          const args: string[] = [
+            "write",
+            captureData.summary,
+            "--type", captureData.type,
+            "--tags", captureData.tags.join(","),
+            "--scope", "team",
+          ];
+
+          await run(args, opts);
+          console.log(
+            `[palaia] Rule-based auto-captured: type=${captureData.type}, tags=${captureData.tags.join(",")}`
+          );
+        }
       } catch (error) {
         // Non-fatal: capture failure should never break the agent
         console.warn(`[palaia] Auto-capture failed: ${error}`);

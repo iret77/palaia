@@ -32,6 +32,10 @@ export interface PalaiaPluginConfig {
   captureFrequency: "every" | "significant";
   /** Minimum exchange turns before capture is attempted */
   captureMinTurns: number;
+  /** Model override for LLM-based extraction (e.g. "anthropic/claude-haiku-3", or "cheap") */
+  captureModel?: string;
+  /** Minimum significance score for LLM-extracted items (0.0-1.0, default: 0.3) */
+  captureMinSignificance: number;
 
   // ── Query-based Recall (Issue #65) ───────────────────────────
   /** Recall mode: "list" (context-independent) or "query" (context-relevant) */
@@ -55,6 +59,7 @@ export const DEFAULT_CONFIG: PalaiaPluginConfig = {
   autoCapture: false,
   captureFrequency: "significant",
   captureMinTurns: 2,
+  captureMinSignificance: 0.3,
   recallMode: "query",
   recallTypeWeight: { ...DEFAULT_RECALL_TYPE_WEIGHTS },
 };
