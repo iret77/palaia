@@ -206,5 +206,63 @@ describe("tools", () => {
         expect.any(Object)
       );
     });
+
+    it("passes --type, --project, --title params (Issue #82)", async () => {
+      mockRunJson.mockResolvedValueOnce({
+        id: "new-type-1",
+        tier: "hot",
+        scope: "team",
+        deduplicated: false,
+      });
+
+      const result = await api.tools["memory_write"].def.execute("call-82", {
+        content: "Deploy checklist",
+        type: "process",
+        project: "myapp",
+        title: "Deploy Steps",
+        scope: "team",
+        tags: ["deploy"],
+      });
+
+      expect(result.content[0].text).toContain("new-type-1");
+      expect(mockRunJson).toHaveBeenCalledWith(
+        [
+          "write", "Deploy checklist",
+          "--scope", "team",
+          "--tags", "deploy",
+          "--type", "process",
+          "--project", "myapp",
+          "--title", "Deploy Steps",
+        ],
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe("memory_search type filter (Issue #82)", () => {
+    it("passes --type filter when set", async () => {
+      mockRunJson.mockResolvedValueOnce({ results: [] });
+
+      await api.tools["memory_search"].def.execute("call-type-1", {
+        query: "tasks",
+        type: "task",
+      });
+
+      expect(mockRunJson).toHaveBeenCalledWith(
+        expect.arrayContaining(["--type", "task"]),
+        expect.any(Object)
+      );
+    });
+
+    it("omits --type when not set", async () => {
+      mockRunJson.mockResolvedValueOnce({ results: [] });
+
+      await api.tools["memory_search"].def.execute("call-type-2", {
+        query: "anything",
+      });
+
+      const callArgs = mockRunJson.mock.calls[0][0];
+      expect(callArgs).not.toContain("--type");
+    });
   });
 });
