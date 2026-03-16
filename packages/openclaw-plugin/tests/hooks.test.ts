@@ -14,6 +14,11 @@ import {
   resetEmbeddedPiAgentLoader,
   parsePalaiaHints,
   resetProjectCache,
+  resetTurnState,
+  formatShortDate,
+  isEntryRelevant,
+  buildFootnote,
+  checkNudges,
   type ExtractionResult,
   type PalaiaHint,
 } from "../src/hooks.js";
@@ -567,5 +572,229 @@ describe("ExtractionResult with metadata", () => {
     };
     expect(result.project).toBeNull();
     expect(result.scope).toBeNull();
+  });
+});
+
+// ============================================================================
+// formatShortDate (Issue #87)
+// ============================================================================
+
+describe("formatShortDate", () => {
+  it("formats ISO date to short format", () => {
+    expect(formatShortDate("2026-03-16T12:00:00Z")).toBe("Mar 16");
+  });
+
+  it("formats different months", () => {
+    expect(formatShortDate("2026-01-05T00:00:00Z")).toBe("Jan 5");
+    expect(formatShortDate("2026-12-25T00:00:00Z")).toBe("Dec 25");
+  });
+
+  it("returns empty string for invalid date", () => {
+    expect(formatShortDate("not-a-date")).toBe("");
+    expect(formatShortDate("")).toBe("");
+  });
+});
+
+// ============================================================================
+// isEntryRelevant (Issue #87)
+// ============================================================================
+
+describe("isEntryRelevant", () => {
+  it("matches when >=2 title words appear in response", () => {
+    expect(isEntryRelevant("PostgreSQL migration plan", "We followed the PostgreSQL migration steps")).toBe(true);
+  });
+
+  it("rejects when <2 title words match", () => {
+    expect(isEntryRelevant("PostgreSQL migration plan", "We used Redis for caching")).toBe(false);
+  });
+
+  it("is case-insensitive", () => {
+    expect(isEntryRelevant("Deploy Process", "the deploy process was smooth")).toBe(true);
+  });
+
+  it("skips short words (<3 chars)", () => {
+    expect(isEntryRelevant("to do it", "to do it well")).toBe(false);
+  });
+
+  it("requires only 1 match for single-word titles", () => {
+    expect(isEntryRelevant("authentication", "the authentication module was updated")).toBe(true);
+  });
+
+  it("returns false for empty title", () => {
+    expect(isEntryRelevant("", "some response text")).toBe(false);
+  });
+});
+
+// ============================================================================
+// buildFootnote (Issue #87)
+// ============================================================================
+
+describe("buildFootnote", () => {
+  it("builds footnote for relevant entries", () => {
+    const entries = [
+      { title: "PostgreSQL migration", date: "2026-03-16T12:00:00Z" },
+      { title: "Redis caching strategy", date: "2026-03-10T12:00:00Z" },
+    ];
+    const response = "We completed the PostgreSQL migration successfully";
+    const footnote = buildFootnote(entries, response);
+    expect(footnote).toContain("📎 Palaia:");
+    expect(footnote).toContain('"PostgreSQL migration" (Mar 16)');
+    expect(footnote).not.toContain("Redis");
+  });
+
+  it("returns null when no entries are relevant", () => {
+    const entries = [
+      { title: "Redis caching strategy", date: "2026-03-10T12:00:00Z" },
+    ];
+    const response = "We deployed the new frontend";
+    expect(buildFootnote(entries, response)).toBeNull();
+  });
+
+  it("limits to maxEntries", () => {
+    const entries = [
+      { title: "deploy process steps", date: "2026-03-16T12:00:00Z" },
+      { title: "deploy rollback process", date: "2026-03-15T12:00:00Z" },
+      { title: "deploy monitoring process", date: "2026-03-14T12:00:00Z" },
+      { title: "deploy scaling process", date: "2026-03-13T12:00:00Z" },
+    ];
+    const response = "The deploy process for monitoring and rollback and scaling was documented";
+    const footnote = buildFootnote(entries, response, 2);
+    expect(footnote).not.toBeNull();
+    // Count quoted entries
+    const matches = footnote!.match(/"/g);
+    // 2 entries × 2 quotes each = 4
+    expect(matches?.length).toBe(4);
+  });
+
+  it("handles entries without valid dates", () => {
+    const entries = [
+      { title: "PostgreSQL migration", date: "invalid" },
+    ];
+    const response = "The PostgreSQL migration was a success";
+    const footnote = buildFootnote(entries, response);
+    expect(footnote).toContain('"PostgreSQL migration"');
+    expect(footnote).not.toContain("(");
+  });
+});
+
+// ============================================================================
+// checkNudges (Issue #87)
+// ============================================================================
+
+describe("checkNudges", () => {
+  it("fires satisfaction nudge at 10 recalls", () => {
+    const state = {
+      successfulRecalls: 10,
+      satisfactionNudged: false,
+      transparencyNudged: false,
+      firstRecallTimestamp: new Date().toISOString(),
+    };
+    const { nudges, updated } = checkNudges(state);
+    expect(nudges).toHaveLength(1);
+    expect(nudges[0]).toContain("zufrieden");
+    expect(updated).toBe(true);
+    expect(state.satisfactionNudged).toBe(true);
+  });
+
+  it("does not fire satisfaction nudge twice", () => {
+    const state = {
+      successfulRecalls: 15,
+      satisfactionNudged: true,
+      transparencyNudged: false,
+      firstRecallTimestamp: new Date().toISOString(),
+    };
+    const { nudges } = checkNudges(state);
+    expect(nudges).toHaveLength(0);
+  });
+
+  it("does not fire satisfaction nudge below threshold", () => {
+    const state = {
+      successfulRecalls: 9,
+      satisfactionNudged: false,
+      transparencyNudged: false,
+      firstRecallTimestamp: new Date().toISOString(),
+    };
+    const { nudges } = checkNudges(state);
+    expect(nudges).toHaveLength(0);
+  });
+
+  it("fires transparency nudge at 50 recalls", () => {
+    const state = {
+      successfulRecalls: 50,
+      satisfactionNudged: true,
+      transparencyNudged: false,
+      firstRecallTimestamp: new Date().toISOString(),
+    };
+    const { nudges, updated } = checkNudges(state);
+    expect(nudges).toHaveLength(1);
+    expect(nudges[0]).toContain("Footnotes");
+    expect(updated).toBe(true);
+    expect(state.transparencyNudged).toBe(true);
+  });
+
+  it("fires transparency nudge after 7 days even with low recalls", () => {
+    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    const state = {
+      successfulRecalls: 20,
+      satisfactionNudged: true,
+      transparencyNudged: false,
+      firstRecallTimestamp: eightDaysAgo,
+    };
+    const { nudges, updated } = checkNudges(state);
+    expect(nudges).toHaveLength(1);
+    expect(nudges[0]).toContain("Footnotes");
+    expect(updated).toBe(true);
+  });
+
+  it("does not fire transparency nudge before 7 days with low recalls", () => {
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const state = {
+      successfulRecalls: 20,
+      satisfactionNudged: true,
+      transparencyNudged: false,
+      firstRecallTimestamp: threeDaysAgo,
+    };
+    const { nudges } = checkNudges(state);
+    expect(nudges).toHaveLength(0);
+  });
+
+  it("fires both nudges simultaneously if both thresholds met", () => {
+    const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    const state = {
+      successfulRecalls: 50,
+      satisfactionNudged: false,
+      transparencyNudged: false,
+      firstRecallTimestamp: eightDaysAgo,
+    };
+    const { nudges, updated } = checkNudges(state);
+    expect(nudges).toHaveLength(2);
+    expect(updated).toBe(true);
+  });
+
+  it("does not fire transparency nudge without firstRecallTimestamp", () => {
+    const state = {
+      successfulRecalls: 100,
+      satisfactionNudged: true,
+      transparencyNudged: false,
+      firstRecallTimestamp: null,
+    };
+    const { nudges } = checkNudges(state);
+    expect(nudges).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// Config defaults (Issue #87)
+// ============================================================================
+
+describe("Config defaults for transparency features", () => {
+  it("has showMemorySources defaulting to true", async () => {
+    const { DEFAULT_CONFIG } = await import("../src/config.js");
+    expect(DEFAULT_CONFIG.showMemorySources).toBe(true);
+  });
+
+  it("has showCaptureConfirm defaulting to true", async () => {
+    const { DEFAULT_CONFIG } = await import("../src/config.js");
+    expect(DEFAULT_CONFIG.showCaptureConfirm).toBe(true);
   });
 });
