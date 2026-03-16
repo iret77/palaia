@@ -1,6 +1,6 @@
 {
   "name": "@byte5ai/palaia",
-  "version": "1.8.1",
+  "version": "2.0.0",
   "description": "Palaia memory backend for OpenClaw",
   "main": "index.ts",
   "openclaw": {
