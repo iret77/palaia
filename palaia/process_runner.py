@@ -22,9 +22,18 @@ def parse_steps(content: str) -> list[dict]:
     Supports:
     - Numbered lists: "1. Do something" or "1) Do something"
     - Checkboxes: "- [ ] Do something" or "- [x] Already done"
+    - Inline numbered lists: "1. Foo 2. Bar 3. Baz" (split into separate steps)
 
     Returns list of {"index": int, "text": str, "done": bool, "done_at": None|str}.
     """
+    # Normalize inline numbered lists: "1. Foo 2. Bar" → separate lines
+    # Only apply if no newlines with numbered items already exist
+    lines = content.split("\n")
+    has_multiline_numbers = any(_NUMBERED_RE.match(ln.strip()) for ln in lines if ln.strip())
+    if not has_multiline_numbers:
+        # Try to split inline: "1. Foo 2. Bar 3. Baz"
+        content = re.sub(r"(?<!\n)\s+(\d+[.)]\s)", r"\n\1", content)
+
     steps: list[dict] = []
     for line in content.split("\n"):
         line = line.rstrip()
