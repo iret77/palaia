@@ -37,6 +37,12 @@ export interface PalaiaPluginConfig {
   /** Minimum significance score for LLM-extracted items (0.0-1.0, default: 0.3) */
   captureMinSignificance: number;
 
+  // ── Metadata Overrides (Issue #81) ─────────────────────────
+  /** Static scope override for auto-capture (default: undefined → LLM detection) */
+  captureScope?: string;
+  /** Static project override for auto-capture (default: undefined → LLM detection) */
+  captureProject?: string;
+
   // ── Query-based Recall (Issue #65) ───────────────────────────
   /** Recall mode: "list" (context-independent) or "query" (context-relevant) */
   recallMode: "list" | "query";
