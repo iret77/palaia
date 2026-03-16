@@ -817,7 +817,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
 
   // ── /palaia status command ─────────────────────────────────────
   api.registerCommand({
-    name: "palaia",
+    name: "palaia-status",
     description: "Show Palaia memory status",
     async handler(_args: string) {
       try {
