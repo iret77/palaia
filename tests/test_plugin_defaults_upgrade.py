@@ -268,7 +268,7 @@ class TestPluginDefaultsUpgradeFix:
         from palaia.doctor import _check_plugin_defaults_upgrade, apply_fixes
 
         results = [_check_plugin_defaults_upgrade(palaia_root)]
-        actions = apply_fixes(palaia_root, results)
+        apply_fixes(palaia_root, results)  # return value unused; just verify side effects
 
         updated = json.loads((palaia_root / "config.json").read_text())
         pc = updated["plugin_config"]
