@@ -707,7 +707,7 @@ describe("isEntryRelevant", () => {
 // ============================================================================
 
 describe("buildFootnote", () => {
-  it("builds footnote for relevant entries", () => {
+  it("builds footnote for all injected entries (no keyword filtering)", () => {
     const entries = [
       { title: "PostgreSQL migration", date: "2026-03-16T12:00:00Z" },
       { title: "Redis caching strategy", date: "2026-03-10T12:00:00Z" },
@@ -716,15 +716,12 @@ describe("buildFootnote", () => {
     const footnote = buildFootnote(entries, response);
     expect(footnote).toContain("📎 Palaia:");
     expect(footnote).toContain('"PostgreSQL migration" (Mar 16)');
-    expect(footnote).not.toContain("Redis");
+    // All injected entries are shown — semantic search already selected them
+    expect(footnote).toContain("Redis");
   });
 
-  it("returns null when no entries are relevant", () => {
-    const entries = [
-      { title: "Redis caching strategy", date: "2026-03-10T12:00:00Z" },
-    ];
-    const response = "We deployed the new frontend";
-    expect(buildFootnote(entries, response)).toBeNull();
+  it("returns null when entries array is empty", () => {
+    expect(buildFootnote([], "We deployed the new frontend")).toBeNull();
   });
 
   it("limits to maxEntries", () => {

@@ -160,13 +160,14 @@ export function isEntryRelevant(title: string, responseText: string): boolean {
  */
 export function buildFootnote(
   entries: Array<{ title: string; date: string }>,
-  responseText: string,
+  _responseText: string,
   maxEntries = 3,
 ): string | null {
-  const relevant = entries.filter((e) => isEntryRelevant(e.title, responseText));
-  if (relevant.length === 0) return null;
+  // All injected entries were already selected by semantic search — no additional
+  // keyword filtering needed. Show top-N as attribution footnotes.
+  if (entries.length === 0) return null;
 
-  const display = relevant.slice(0, maxEntries);
+  const display = entries.slice(0, maxEntries);
   const parts = display.map((e) => {
     const dateStr = formatShortDate(e.date);
     return dateStr ? `"${e.title}" (${dateStr})` : `"${e.title}"`;
