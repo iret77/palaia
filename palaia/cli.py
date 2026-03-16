@@ -507,6 +507,69 @@ def _detect_agent_from_openclaw_config_ext() -> _AgentDetectResult:
     return _AgentDetectResult(None, "no_config", 0)
 
 
+CAPTURE_LEVEL_MAP = {
+    "off": {
+        "autoCapture": False,
+    },
+    "sparsam": {
+        "autoCapture": True,
+        "captureFrequency": "significant",
+        "captureMinTurns": 5,
+    },
+    "normal": {
+        "autoCapture": True,
+        "captureFrequency": "significant",
+        "captureMinTurns": 2,
+    },
+    "aggressiv": {
+        "autoCapture": True,
+        "captureFrequency": "every",
+        "captureMinTurns": 1,
+    },
+}
+
+
+def _is_openclaw_environment() -> bool:
+    """Detect if we're running in an OpenClaw environment."""
+    # Check for OpenClaw workspace or config
+    openclaw_dir = Path.home() / ".openclaw"
+    if openclaw_dir.is_dir():
+        return True
+    if os.environ.get("OPENCLAW_HOME"):
+        return True
+    return False
+
+
+def _apply_capture_level(palaia_root: Path, capture_level: str | None, args) -> None:
+    """Apply capture-level configuration to .palaia/config.json.
+
+    If capture_level is None and OpenClaw environment is detected,
+    suggests setting a capture level (non-interactive in CLI context).
+    """
+    if capture_level and capture_level in CAPTURE_LEVEL_MAP:
+        config = load_config(palaia_root)
+        config["plugin_config"] = CAPTURE_LEVEL_MAP[capture_level]
+        save_config(palaia_root, config)
+        if not getattr(args, "json", False):
+            print(f"\nCapture level set to: {capture_level}")
+            level_config = CAPTURE_LEVEL_MAP[capture_level]
+            if level_config.get("autoCapture"):
+                freq = level_config.get("captureFrequency", "significant")
+                turns = level_config.get("captureMinTurns", 2)
+                print(f"  autoCapture=true, frequency={freq}, minTurns={turns}")
+            else:
+                print("  autoCapture=off (no automatic knowledge capture)")
+    elif capture_level is None and _is_openclaw_environment():
+        # Suggest capture level
+        if not getattr(args, "json", False):
+            print("\nOpenClaw environment detected.")
+            print("Configure auto-capture with: palaia init --capture-level <off|sparsam|normal|aggressiv>")
+            print("  off      — No automatic capture")
+            print("  sparsam  — Capture significant exchanges (minTurns=5)")
+            print("  normal   — Capture significant exchanges (minTurns=2) [recommended]")
+            print("  aggressiv — Capture every exchange (minTurns=1)")
+
+
 def cmd_init(args):
     """Initialize .palaia directory."""
     # Respect PALAIA_HOME if set and no explicit path given
@@ -577,8 +640,18 @@ def cmd_init(args):
         existing_chain = existing_config.get("embedding_chain")
 
         if existing_chain and len(existing_chain) > 0:
+            # Apply capture-level on re-init too (Issue #67)
+            capture_level = getattr(args, "capture_level", None)
+            if capture_level and capture_level in CAPTURE_LEVEL_MAP:
+                existing_config["plugin_config"] = CAPTURE_LEVEL_MAP[capture_level]
+
             # Chain exists, just save updated config (agent may have changed)
             save_config(target, existing_config)
+
+            if capture_level and capture_level in CAPTURE_LEVEL_MAP:
+                if not getattr(args, "json", False):
+                    print(f"Capture level set to: {capture_level}")
+
             if _json_out({"status": "updated", "path": str(target), "agent": existing_config.get("agent")}, args):
                 return 0
             print(f"Updated config: {target}")
@@ -673,6 +746,10 @@ def cmd_init(args):
         print("  - ollama: https://ollama.ai (then: palaia config set-chain ollama bm25)")
         print("  - OpenAI: set OPENAI_API_KEY env var")
         print("  Then run: palaia warmup")
+
+    # --- Capture-Level Configuration (Issue #67) ---
+    capture_level = getattr(args, "capture_level", None)
+    _apply_capture_level(target, capture_level, args)
 
     # Post-init instructions for LLM agents
     print()
@@ -2773,6 +2850,13 @@ def main():
         "--reset",
         action="store_true",
         help="Reset config to defaults (preserves entries)",
+    )
+    p_init.add_argument(
+        "--capture-level",
+        default=None,
+        dest="capture_level",
+        choices=["off", "sparsam", "normal", "aggressiv"],
+        help="Auto-capture level for OpenClaw plugin (off|sparsam|normal|aggressiv)",
     )
 
     # write

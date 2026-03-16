@@ -372,6 +372,24 @@ Find your npm global path with: `npm root -g`
 > Individual agent behavior (e.g. different capture levels) can be configured via
 > `palaia init --capture-level` which writes to `.palaia/config.json` locally.
 
+### Capture Level (Issue #67)
+
+Configure how aggressively Palaia auto-captures agent exchanges:
+
+```bash
+palaia init --capture-level <off|sparsam|normal|aggressiv>
+```
+
+| Level | autoCapture | Frequency | Min Turns | Use Case |
+|-------|-------------|-----------|-----------|----------|
+| `off` | false | — | — | Manual-only memory |
+| `sparsam` | true | significant | 5 | Low noise, long sessions |
+| `normal` | true | significant | 2 | Recommended default |
+| `aggressiv` | true | every | 1 | Maximize capture |
+
+The setting is stored in `.palaia/config.json` under `plugin_config`.
+`palaia doctor` checks if a capture level is configured and suggests setting one in OpenClaw environments.
+
 ### 3. Restart OpenClaw Gateway
 The config change requires a gateway restart to take effect.
 

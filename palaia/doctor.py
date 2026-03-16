@@ -825,6 +825,66 @@ def _check_unread_memos(palaia_root: Path | None) -> dict[str, Any]:
         }
 
 
+def _check_capture_level(palaia_root: Path | None) -> dict[str, Any]:
+    """Check if capture-level is configured in an OpenClaw environment (Issue #67)."""
+    if palaia_root is None:
+        return {
+            "name": "capture_level",
+            "label": "Capture level",
+            "status": "info",
+            "message": "Not initialized",
+        }
+
+    from palaia.config import load_config
+
+    config = load_config(palaia_root)
+    plugin_config = config.get("plugin_config")
+
+    # Only relevant in OpenClaw environments
+    import os
+
+    is_openclaw = (
+        (Path.home() / ".openclaw").is_dir()
+        or bool(os.environ.get("OPENCLAW_HOME"))
+    )
+
+    if not is_openclaw:
+        return {
+            "name": "capture_level",
+            "label": "Capture level",
+            "status": "ok",
+            "message": "Not an OpenClaw environment (skipped)",
+        }
+
+    if plugin_config and "autoCapture" in plugin_config:
+        auto = plugin_config.get("autoCapture", False)
+        if auto:
+            freq = plugin_config.get("captureFrequency", "significant")
+            turns = plugin_config.get("captureMinTurns", 2)
+            return {
+                "name": "capture_level",
+                "label": "Capture level",
+                "status": "ok",
+                "message": f"autoCapture=true, frequency={freq}, minTurns={turns}",
+            }
+        else:
+            return {
+                "name": "capture_level",
+                "label": "Capture level",
+                "status": "ok",
+                "message": "autoCapture=off",
+            }
+
+    return {
+        "name": "capture_level",
+        "label": "Capture level",
+        "status": "info",
+        "message": "No capture level configured",
+        "fix": "Set capture level with: palaia init --capture-level <off|sparsam|normal|aggressiv>\n"
+        "  Recommended: palaia init --capture-level normal",
+    }
+
+
 def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
     """Run all doctor checks. Returns list of check results."""
     results = [
@@ -838,6 +898,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_deprecated_config(palaia_root),
         _check_default_agent_alias(palaia_root),
         _check_unread_memos(palaia_root),
+        _check_capture_level(palaia_root),
         _check_openclaw_plugin(),
         _check_smart_memory_skill(),
         _check_legacy_memory_files(),
