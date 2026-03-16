@@ -1003,9 +1003,22 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
     }
 
     // Step 2: Memory source footnotes (Issue #87)
-    // Session-scoped state to prevent cross-session leakage
-    const sessionKey = resolveSessionKey(_event, _ctx);
-    const turnState = getTurnState(sessionKey);
+    // Session-scoped state to prevent cross-session leakage.
+    // Note: message_sending may not receive sessionKey in event/ctx,
+    // so we fall back to finding the session with pending entries.
+    let sessionKey = resolveSessionKey(_event, _ctx);
+    let turnState = getTurnState(sessionKey);
+
+    // Fallback: if no entries found under resolved key, find the session that has them
+    if (turnState.lastInjectedEntries.length === 0 && turnState.lastCapturedSummaries.length === 0) {
+      for (const [k, v] of _sessionTurnState.entries()) {
+        if (v.lastInjectedEntries.length > 0 || v.lastCapturedSummaries.length > 0) {
+          sessionKey = k;
+          turnState = v;
+          break;
+        }
+      }
+    }
 
     if (config.showMemorySources && turnState.lastInjectedEntries.length > 0) {
       const footnote = buildFootnote(turnState.lastInjectedEntries, result);
