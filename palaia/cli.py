@@ -763,12 +763,62 @@ def cmd_write(args):
                 tier = t
                 break
 
+    # --- Adaptive Nudging (Issue #68) ---
+    nudge_messages = []
+    try:
+        from palaia.nudge import NudgeTracker
+
+        tracker = NudgeTracker(root)
+        agent_for_nudge = _resolve_agent(args) or "default"
+
+        # Track success/failure for each pattern
+        if entry_type:
+            tracker.record_success("write_without_type", agent_for_nudge)
+        else:
+            tracker.record_failure("write_without_type", agent_for_nudge)
+            if tracker.should_nudge("write_without_type", agent_for_nudge):
+                msg = tracker.get_nudge_message("write_without_type")
+                if msg:
+                    nudge_messages.append(msg)
+                    tracker.record_nudge("write_without_type", agent_for_nudge)
+
+        if args.tags:
+            tracker.record_success("write_without_tags", agent_for_nudge)
+        else:
+            tracker.record_failure("write_without_tags", agent_for_nudge)
+            if tracker.should_nudge("write_without_tags", agent_for_nudge):
+                msg = tracker.get_nudge_message("write_without_tags")
+                if msg:
+                    nudge_messages.append(msg)
+                    tracker.record_nudge("write_without_tags", agent_for_nudge)
+
+        # write_without_project: only nudge in multi-project setups
+        project_arg = getattr(args, "project", None)
+        try:
+            pm = ProjectManager(root)
+            projects = pm.list()
+            if len(projects) > 1:
+                if project_arg:
+                    tracker.record_success("write_without_project", agent_for_nudge)
+                else:
+                    tracker.record_failure("write_without_project", agent_for_nudge)
+                    if tracker.should_nudge("write_without_project", agent_for_nudge):
+                        msg = tracker.get_nudge_message("write_without_project")
+                        if msg:
+                            nudge_messages.append(msg)
+                            tracker.record_nudge("write_without_project", agent_for_nudge)
+        except Exception:
+            pass
+    except Exception:
+        pass  # Never block normal operation with nudge errors
+
     if _json_out(
         {
             "id": entry_id,
             "tier": tier,
             "scope": scope,
             "deduplicated": deduplicated,
+            **({"nudge": nudge_messages} if nudge_messages else {}),
         },
         args,
     ):
@@ -776,13 +826,9 @@ def cmd_write(args):
 
     print(f"Written: {entry_id}")
 
-    # Agent nudging: hint about --type if not specified (ADR-011)
-    if not entry_type:
-        _nudge_hint(
-            "write_type",
-            "Use --type (memory|process|task) to classify entries. Tasks support --status, --priority, --assignee.",
-            args,
-        )
+    # Print nudge messages
+    for nudge_msg in nudge_messages:
+        print(f"\nHint: {nudge_msg}", file=sys.stderr)
 
     # Memo nudge (ADR-011)
     _memo_nudge(args)
@@ -892,7 +938,42 @@ def cmd_query(args):
         instance=getattr(args, "instance", None),
     )
 
-    if _json_out({"results": results}, args):
+    # --- Adaptive Nudging for query (Issue #68) ---
+    query_nudge_messages = []
+    try:
+        from palaia.nudge import NudgeTracker
+
+        tracker = NudgeTracker(root)
+        agent_for_nudge = agent or "default"
+        query_type = getattr(args, "type", None)
+
+        if query_type:
+            tracker.record_success("query_without_type_filter", agent_for_nudge)
+        else:
+            # Only nudge if typed entries exist in the store
+            has_typed = False
+            try:
+                all_entries = store.all_entries(include_cold=False)
+                has_typed = any(m.get("type") for m, _, _ in all_entries)
+            except Exception:
+                pass
+            if has_typed:
+                tracker.record_failure("query_without_type_filter", agent_for_nudge)
+                if tracker.should_nudge("query_without_type_filter", agent_for_nudge):
+                    msg = tracker.get_nudge_message("query_without_type_filter")
+                    if msg:
+                        query_nudge_messages.append(msg)
+                        tracker.record_nudge("query_without_type_filter", agent_for_nudge)
+    except Exception:
+        pass  # Never block normal operation
+
+    if _json_out(
+        {
+            "results": results,
+            **({"nudge": query_nudge_messages} if query_nudge_messages else {}),
+        },
+        args,
+    ):
         return 0
 
     # BM25-only note
@@ -945,6 +1026,10 @@ def cmd_query(args):
 
     search_tier = "hybrid" if engine.has_embeddings else "BM25"
     print(f"\n{len(results)} result(s) found. (Search tier: {search_tier})")
+
+    # Adaptive nudge messages (Issue #68)
+    for nudge_msg in query_nudge_messages:
+        print(f"\nHint: {nudge_msg}", file=sys.stderr)
 
     # Memo nudge (ADR-011)
     _memo_nudge(args)
