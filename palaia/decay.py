@@ -13,12 +13,18 @@ def decay_score(
 ) -> float:
     """Calculate decay score. Higher = more relevant.
 
-    score = recency_factor * log(1 + access_count)
-    recency_factor = exp(-lambda * days_since_access)
+    Formula (ADR-004, Issue #33):
+        final_score = time_decay * hit_rate_bonus
+        time_decay   = exp(-lambda * days_since_access)
+        hit_rate_bonus = 1 + log(1 + access_count)
+
+    access_count=0  → bonus 1.0  (no boost)
+    access_count=10 → bonus ~3.4
+    access_count=100 → bonus ~5.6
     """
     recency = math.exp(-lambda_val * days_since_access)
-    frequency = math.log(1 + access_count)
-    return round(recency * frequency, 6)
+    hit_rate_bonus = 1.0 + math.log(1 + access_count)
+    return round(recency * hit_rate_bonus, 6)
 
 
 def classify_tier(

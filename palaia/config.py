@@ -24,6 +24,10 @@ DEFAULT_CONFIG = {
     "embedding_provider": "auto",
     "embedding_model": "",
     "store_version": "",  # Set to palaia __version__ on init/upgrade
+    # Bounded memory (Issue #71)
+    "max_entries_per_tier": None,  # None = unlimited
+    "max_total_chars": None,  # None = unlimited
+    "gc_type_weights": {"process": 2.0, "task": 1.5, "memory": 1.0},
 }
 
 

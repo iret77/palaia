@@ -115,6 +115,7 @@ GATED_COMMANDS = frozenset(
         "recover",
         "status",
         "project",
+        "process",
         "lock",
         "unlock",
         "setup",
@@ -889,6 +890,17 @@ def cmd_write(args):
     except Exception:
         pass  # Never block normal operation with nudge errors
 
+    # --- Significance auto-detection (Issue #70) ---
+    significance_detected: list[str] = []
+    if not args.tags:
+        # Only auto-detect when user hasn't explicitly set tags
+        try:
+            from palaia.significance import detect_significance
+
+            significance_detected = detect_significance(args.text)
+        except Exception:
+            pass
+
     if _json_out(
         {
             "id": entry_id,
@@ -896,12 +908,21 @@ def cmd_write(args):
             "scope": scope,
             "deduplicated": deduplicated,
             **({"nudge": nudge_messages} if nudge_messages else {}),
+            **({"significance": significance_detected} if significance_detected else {}),
         },
         args,
     ):
         return 0
 
     print(f"Written: {entry_id}")
+
+    # Significance suggestion (Issue #70)
+    if significance_detected:
+        tags_str = ", ".join(significance_detected)
+        print(
+            f"\nDetected significance: [{tags_str}]. Use --tags to confirm.",
+            file=sys.stderr,
+        )
 
     # Print nudge messages
     for nudge_msg in nudge_messages:
@@ -1538,6 +1559,20 @@ def cmd_status(args):
     if info.get("index_hint"):
         print(info["index_hint"], file=sys.stderr)
 
+    # Budget info (Issue #71)
+    budget_info = info.get("budget")
+    if budget_info:
+        print(section("Budget"))
+        budget_rows = []
+        if "max_entries_per_tier" in budget_info:
+            budget_rows.append(("Max entries/tier", str(budget_info["max_entries_per_tier"])))
+            for t, usage in budget_info.get("tier_usage", {}).items():
+                budget_rows.append((f"  {t}", usage))
+        if "max_total_chars" in budget_info:
+            budget_rows.append(("Max total chars", str(budget_info["max_total_chars"])))
+            budget_rows.append(("  Usage", budget_info.get("chars_usage", "?")))
+        print(table_kv(budget_rows))
+
     # BM25-only warning
     has_embed = any(s["available"] and s["name"] != "bm25" for s in statuses)
     bm25_only = all(s["name"] == "bm25" for s in statuses) or not has_embed
@@ -1945,21 +1980,45 @@ def cmd_gc(args):
     store = Store(root)
     store.recover()
 
-    result = store.gc()
+    dry_run = getattr(args, "dry_run", False)
+    budget = getattr(args, "budget", False)
+
+    result = store.gc(dry_run=dry_run, budget=budget)
 
     if _json_out(result, args):
         return 0
 
-    total_moves = sum(v for k, v in result.items() if k != "wal_cleaned")
+    if dry_run:
+        candidates = result.get("candidates", [])
+        if not candidates:
+            print("No entries found.")
+            return 0
+        from palaia.ui import table_multi as _tm
+
+        rows = [(c["id"], c["title"][:30], f"{c['score']:.4f}", c["tier"], c["reason"]) for c in candidates]
+        print(
+            _tm(
+                headers=("ID", "Title", "Score", "Tier", "Reason"),
+                rows=rows,
+                min_widths=(8, 30, 8, 4, 20),
+            )
+        )
+        print(f"\n{len(candidates)} entries scored. Lowest score = first prune candidate.")
+        return 0
+
+    skip_keys = {"wal_cleaned", "pruned", "pruned_entries"}
+    total_moves = sum(v for k, v in result.items() if k not in skip_keys and isinstance(v, int))
     print("GC complete.")
     if total_moves:
         for k, v in result.items():
-            if v and k != "wal_cleaned":
+            if v and k not in skip_keys and isinstance(v, int):
                 print(f"  {k}: {v}")
     else:
         print("  No tier changes needed.")
     if result.get("wal_cleaned"):
         print(f"  WAL cleaned: {result['wal_cleaned']} old entries")
+    if result.get("pruned"):
+        print(f"  Pruned (budget): {result['pruned']} entries")
     return 0
 
 
@@ -2803,6 +2862,125 @@ def _detect_current_agent() -> str | None:
     return None
 
 
+def cmd_process(args):
+    """Manage process execution runs (Issue #72)."""
+    root = get_root()
+    store = Store(root)
+    store.recover()
+
+    action = args.process_action
+
+    if action == "run":
+        from palaia.process_runner import ProcessRunManager
+
+        prm = ProcessRunManager(root)
+        entry_id = args.entry_id
+
+        # Resolve short ID
+        if len(entry_id) < 36:
+            entry_id = _resolve_short_id(store, entry_id)
+            if entry_id is None:
+                msg = f"No entry found matching: {args.entry_id}"
+                if _json_out({"error": msg}, args):
+                    return 1
+                print(msg, file=sys.stderr)
+                return 1
+
+        # Read the entry
+        agent = _resolve_agent(args)
+        entry = store.read(entry_id, agent=agent)
+        if entry is None:
+            msg = f"Entry not found: {entry_id}"
+            if _json_out({"error": msg}, args):
+                return 1
+            print(msg, file=sys.stderr)
+            return 1
+
+        meta, body = entry
+        if meta.get("type") != "process":
+            msg = f"Entry {entry_id[:8]} is not a process (type: {meta.get('type', 'memory')})"
+            if _json_out({"error": msg}, args):
+                return 1
+            print(msg, file=sys.stderr)
+            return 1
+
+        run = prm.start(entry_id, body)
+
+        # Handle --step N --done
+        step_idx = getattr(args, "step", None)
+        if step_idx is not None:
+            if getattr(args, "done", False):
+                if not run.mark_done(step_idx):
+                    msg = f"Invalid step index: {step_idx}"
+                    if _json_out({"error": msg}, args):
+                        return 1
+                    print(msg, file=sys.stderr)
+                    return 1
+                prm.save(run)
+
+        if _json_out(run.to_dict(), args):
+            return 0
+
+        # Human-readable output
+        title = meta.get("title", "(untitled)")
+        print(f"Process: {title} ({entry_id[:8]})")
+        print(f"Progress: {run.progress_summary()}")
+        print()
+        for s in run.steps:
+            marker = "[x]" if s["done"] else "[ ]"
+            print(f"  {s['index']}. {marker} {s['text']}")
+        if run.completed:
+            print("\nAll steps completed!")
+        return 0
+
+    elif action == "list":
+        from palaia.process_runner import ProcessRunManager
+
+        prm = ProcessRunManager(root)
+        runs = prm.list_runs()
+
+        if _json_out({"runs": [r.to_dict() for r in runs]}, args):
+            return 0
+
+        if not runs:
+            print("No active process runs.")
+            return 0
+
+        rows = []
+        for r in runs:
+            # Try to get title from store
+            entry = store.read(r.entry_id)
+            title = "(unknown)"
+            if entry:
+                meta, _ = entry
+                title = meta.get("title", "(untitled)")
+            rows.append(
+                (
+                    r.entry_id[:8],
+                    title[:30],
+                    r.progress_summary(),
+                    "yes" if r.completed else "no",
+                    r.started_at[:10] if r.started_at else "?",
+                )
+            )
+
+        from palaia.ui import table_multi as _tm
+
+        print(
+            _tm(
+                headers=("ID", "Title", "Progress", "Done", "Started"),
+                rows=rows,
+                min_widths=(8, 30, 15, 4, 10),
+            )
+        )
+        print(f"\n{len(runs)} process run(s).")
+        return 0
+
+    else:
+        print("Unknown process action. Use: run, list", file=sys.stderr)
+        return 1
+
+
 def cmd_skill(args):
     """Print the embedded SKILL.md documentation."""
     skill_path = Path(__file__).parent / "SKILL.md"
@@ -2970,6 +3148,8 @@ def main():
 
     # gc
     p_gc = sub.add_parser("gc", help="Run garbage collection / tier rotation")
+    p_gc.add_argument("--dry-run", action="store_true", help="Show what would be pruned without changing anything")
+    p_gc.add_argument("--budget", action="store_true", help="Prune entries to meet configured budget limits")
     p_gc.add_argument("--json", action="store_true", help="Output as JSON")
 
     # project
@@ -3145,6 +3325,20 @@ def main():
     p_config_remove_alias.add_argument("from_name", help="Alias source name to remove")
     p_config_remove_alias.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # process (Issue #72)
+    p_process = sub.add_parser("process", help="Manage process execution runs")
+    process_sub = p_process.add_subparsers(dest="process_action")
+
+    p_proc_run = process_sub.add_parser("run", help="Run or inspect a process entry")
+    p_proc_run.add_argument("entry_id", help="Entry UUID or short prefix")
+    p_proc_run.add_argument("--step", type=int, default=None, help="Step index (0-based)")
+    p_proc_run.add_argument("--done", action="store_true", help="Mark step as done (requires --step)")
+    p_proc_run.add_argument("--agent", default=None, help="Agent name")
+    p_proc_run.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_proc_list = process_sub.add_parser("list", help="List active process runs")
+    p_proc_list.add_argument("--json", action="store_true", help="Output as JSON")
+
     # skill
     p_skill = sub.add_parser("skill", help="Print the SKILL.md agent documentation")
     p_skill.add_argument("--json", action="store_true", help="Output as JSON")
@@ -3193,6 +3387,7 @@ def main():
         "config": cmd_config,
         "warmup": cmd_warmup,
         "project": cmd_project,
+        "process": cmd_process,
         "memo": cmd_memo,
         "lock": cmd_lock,
         "unlock": cmd_unlock,
