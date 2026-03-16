@@ -340,10 +340,88 @@ class Store:
                     continue
         return results
 
-    def gc(self) -> dict:
-        """Garbage collect: rotate tiers based on decay scores."""
+    def gc_score_entry(self, meta: dict, body: str, config: dict | None = None) -> float:
+        """Calculate the holistic GC score for an entry.
+
+        Formula (Issue #33, #70, #71):
+            gc_score = decay_score * hit_rate_bonus * significance_weight * type_weight
+
+        Higher gc_score = more important = survives GC longer.
+        Lowest gc_score = first pruning candidate.
+        """
+        from palaia.significance import significance_weight as sig_weight
+
+        if config is None:
+            config = self.config
+
+        accessed = meta.get("accessed", meta.get("created", ""))
+        if not accessed:
+            return 0.0
+
+        d = days_since(accessed)
+        ac = meta.get("access_count", 1)
+        base_score = decay_score(d, ac, config["decay_lambda"])
+
+        # Significance weight from tags
+        tags = meta.get("tags", [])
+        sw = sig_weight(tags)
+
+        # Type weight
+        type_weights = config.get("gc_type_weights", {"process": 2.0, "task": 1.5, "memory": 1.0})
+        if isinstance(type_weights, dict):
+            entry_type = meta.get("type", "memory")
+            tw = type_weights.get(entry_type, 1.0)
+        else:
+            tw = 1.0
+
+        return round(base_score * sw * tw, 6)
+
+    def gc(self, dry_run: bool = False, budget: bool = False) -> dict:
+        """Garbage collect: rotate tiers based on decay scores.
+
+        Args:
+            dry_run: If True, report what would happen without changing anything.
+            budget: If True, prune entries to meet configured budget limits.
+        """
         moves = {"hot_to_warm": 0, "warm_to_cold": 0, "cold_to_warm": 0, "warm_to_hot": 0}
         config = self.config
+        pruned_entries: list[dict] = []  # For dry-run and budget reporting
+
+        if dry_run:
+            # Collect all entries with scores for dry-run report
+            candidates = []
+            for tier in TIERS:
+                tier_dir = self.root / tier
+                if not tier_dir.exists():
+                    continue
+                for p in tier_dir.glob("*.md"):
+                    try:
+                        text = p.read_text(encoding="utf-8")
+                        meta, body = parse_entry(text)
+                    except (OSError, UnicodeDecodeError):
+                        continue
+                    gc_s = self.gc_score_entry(meta, body, config)
+                    reason_parts = []
+                    if gc_s < 0.1:
+                        reason_parts.append("low decay")
+                    if meta.get("access_count", 1) <= 1:
+                        reason_parts.append("no hits")
+                    from palaia.significance import SIGNIFICANCE_TAGS
+
+                    tags = meta.get("tags", [])
+                    if not any(t in SIGNIFICANCE_TAGS for t in tags):
+                        reason_parts.append("no significance")
+                    candidates.append(
+                        {
+                            "id": meta.get("id", p.stem)[:8],
+                            "title": meta.get("title", "(untitled)"),
+                            "score": gc_s,
+                            "tier": tier,
+                            "reason": ", ".join(reason_parts) if reason_parts else "ok",
+                        }
+                    )
+            candidates.sort(key=lambda x: x["score"])
+            return {"dry_run": True, "candidates": candidates}
 
         with self.lock:
             for tier in TIERS:
@@ -365,6 +443,10 @@ class Store:
                     ac = meta.get("access_count", 1)
                     score = decay_score(d, ac, config["decay_lambda"])
                     meta["decay_score"] = score
+
+                    # Store holistic GC score as well
+                    gc_s = self.gc_score_entry(meta, body, config)
+                    meta["gc_score"] = gc_s
 
                     new_tier = classify_tier(
                         d,
@@ -397,6 +479,10 @@ class Store:
                         with open(p, "w") as f:
                             f.write(new_text)
 
+            # Budget enforcement (Issue #71)
+            if budget:
+                pruned_entries = self._enforce_budget(config)
+
         # WAL cleanup
         wal_cleaned = self.wal.cleanup(config["wal_retention_days"])
         moves["wal_cleaned"] = wal_cleaned
@@ -412,28 +498,130 @@ class Store:
         if stale:
             moves["embeddings_cleaned"] = stale
 
+        if pruned_entries:
+            moves["pruned"] = len(pruned_entries)
+            moves["pruned_entries"] = pruned_entries
+
         return moves
+
+    def _enforce_budget(self, config: dict) -> list[dict]:
+        """Prune entries to meet budget limits. Returns list of pruned entry info.
+
+        Must be called inside a lock context.
+        """
+        max_per_tier = config.get("max_entries_per_tier")
+        max_chars = config.get("max_total_chars")
+
+        if max_per_tier is None and max_chars is None:
+            return []
+
+        pruned: list[dict] = []
+
+        # Collect all entries with GC scores
+        all_entries: list[tuple[Path, dict, str, float]] = []
+        for tier in TIERS:
+            tier_dir = self.root / tier
+            if not tier_dir.exists():
+                continue
+            for p in tier_dir.glob("*.md"):
+                try:
+                    text = p.read_text(encoding="utf-8")
+                    meta, body = parse_entry(text)
+                except (OSError, UnicodeDecodeError):
+                    continue
+                gc_s = self.gc_score_entry(meta, body, config)
+                all_entries.append((p, meta, body, gc_s))
+
+        # Sort by gc_score ascending (lowest first = prune first)
+        all_entries.sort(key=lambda x: x[3])
+
+        # Enforce max_entries_per_tier
+        if max_per_tier is not None:
+            for tier in TIERS:
+                tier_entries = [(p, m, b, s) for p, m, b, s in all_entries if str(p).startswith(str(self.root / tier))]
+                if len(tier_entries) > max_per_tier:
+                    # Already sorted by gc_score asc, prune from the front
+                    to_prune = tier_entries[: len(tier_entries) - max_per_tier]
+                    for p, meta, _body, gc_s in to_prune:
+                        pruned.append(
+                            {
+                                "id": meta.get("id", p.stem)[:8],
+                                "title": meta.get("title", "(untitled)"),
+                                "score": gc_s,
+                                "reason": "budget:max_entries_per_tier",
+                            }
+                        )
+                        rel = str(p.relative_to(self.root))
+                        self.delete_raw(rel)
+                        self.embedding_cache.invalidate(meta.get("id", p.stem))
+                        all_entries = [(ep, em, eb, es) for ep, em, eb, es in all_entries if ep != p]
+
+        # Enforce max_total_chars
+        if max_chars is not None:
+            total_chars = sum(len(b) for _, _, b, _ in all_entries)
+            while total_chars > max_chars and all_entries:
+                p, meta, body, gc_s = all_entries[0]
+                pruned.append(
+                    {
+                        "id": meta.get("id", p.stem)[:8],
+                        "title": meta.get("title", "(untitled)"),
+                        "score": gc_s,
+                        "reason": "budget:max_total_chars",
+                    }
+                )
+                rel = str(p.relative_to(self.root))
+                self.delete_raw(rel)
+                self.embedding_cache.invalidate(meta.get("id", p.stem))
+                total_chars -= len(body)
+                all_entries = all_entries[1:]
+
+        return pruned
 
     def status(self) -> dict:
         """Get system status info."""
         counts = {}
+        total_chars = 0
         for tier in TIERS:
             tier_dir = self.root / tier
             if tier_dir.exists():
-                counts[tier] = len(list(tier_dir.glob("*.md")))
+                entries = list(tier_dir.glob("*.md"))
+                counts[tier] = len(entries)
+                for p in entries:
+                    try:
+                        text = p.read_text(encoding="utf-8")
+                        _, body = parse_entry(text)
+                        total_chars += len(body)
+                    except (OSError, UnicodeDecodeError):
+                        pass
             else:
                 counts[tier] = 0
 
         wal_dir = self.root / "wal"
         pending = len(self.wal.get_pending()) if wal_dir.exists() else 0
 
-        return {
+        result = {
             "palaia_root": str(self.root),
             "entries": counts,
             "total": sum(counts.values()),
+            "total_chars": total_chars,
             "wal_pending": pending,
             "config": self.config,
         }
+
+        # Budget info (Issue #71)
+        max_per_tier = self.config.get("max_entries_per_tier")
+        max_total_chars = self.config.get("max_total_chars")
+        if max_per_tier is not None or max_total_chars is not None:
+            budget = {}
+            if max_per_tier is not None:
+                budget["max_entries_per_tier"] = max_per_tier
+                budget["tier_usage"] = {t: f"{counts.get(t, 0)}/{max_per_tier}" for t in TIERS}
+            if max_total_chars is not None:
+                budget["max_total_chars"] = max_total_chars
+                budget["chars_usage"] = f"{total_chars}/{max_total_chars}"
+            result["budget"] = budget
+
+        return result
 
     def _find_entry(self, entry_id: str) -> Path | None:
         """Find an entry file across tiers."""
