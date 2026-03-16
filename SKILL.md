@@ -360,6 +360,35 @@ Find your npm global path with: `npm root -g`
 | Key | Description |
 |-----|-------------|
 | `workspace` | Path to the OpenClaw workspace (where `.palaia/` lives) |
+| `autoCapture` | Enable automatic memory capture after agent exchanges (default: false) |
+| `captureFrequency` | `"every"` or `"significant"` (default: `"significant"`) |
+| `captureMinTurns` | Minimum exchange turns before capture (default: 2) |
+| `captureModel` | Model override for LLM extraction (e.g. `"anthropic/claude-haiku-3"`, `"cheap"`) |
+| `recallMode` | `"list"` or `"query"` — how memories are retrieved (default: `"query"`) |
+
+> **Note (Issue #66):** Plugin config is currently **global** — all agents on the same OpenClaw
+> instance share the same config from `openclaw.json`. Per-agent config resolution would require
+> an OpenClaw upstream change where the plugin API provides agent-scoped config.
+> Individual agent behavior (e.g. different capture levels) can be configured via
+> `palaia init --capture-level` which writes to `.palaia/config.json` locally.
+
+### Capture Level (Issue #67)
+
+Configure how aggressively Palaia auto-captures agent exchanges:
+
+```bash
+palaia init --capture-level <off|sparsam|normal|aggressiv>
+```
+
+| Level | autoCapture | Frequency | Min Turns | Use Case |
+|-------|-------------|-----------|-----------|----------|
+| `off` | false | — | — | Manual-only memory |
+| `sparsam` | true | significant | 5 | Low noise, long sessions |
+| `normal` | true | significant | 2 | Recommended default |
+| `aggressiv` | true | every | 1 | Maximize capture |
+
+The setting is stored in `.palaia/config.json` under `plugin_config`.
+`palaia doctor` checks if a capture level is configured and suggests setting one in OpenClaw environments.
 
 ### 3. Restart OpenClaw Gateway
 The config change requires a gateway restart to take effect.

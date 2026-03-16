@@ -20,6 +20,12 @@ import { registerTools } from "./src/tools.js";
 import { registerHooks } from "./src/hooks.js";
 
 export default function palaiaPlugin(api: any) {
+  // Issue #66: Plugin config is currently resolved GLOBALLY via api.getConfig("palaia").
+  // OpenClaw does NOT provide per-agent config resolution — all agents share the same
+  // plugin config from openclaw.json → plugins.config.palaia.
+  // A per-agent resolver would require an OpenClaw upstream change where api.getConfig()
+  // accepts an agentId parameter or automatically scopes to the current agent context.
+  // See: https://github.com/iret77/palaia/issues/66
   const rawConfig = api.getConfig?.("palaia") as
     | Partial<PalaiaPluginConfig>
     | undefined;

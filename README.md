@@ -1,179 +1,153 @@
-# Palaia
+# Palaia — The Knowledge OS for OpenClaw Agent Teams
 
-**Your agent forgets everything. Every. Single. Session.**
-
-Yesterday's decisions, last week's server IP, that config you spent 20 minutes debugging — gone. Your agent starts over from scratch, makes the same mistakes, asks the same questions.
-
-Palaia gives your agent a memory that actually works. Local. Private. Instant.
+**Crash-safe. Local-first. Zero-cloud. The memory system that makes your agents smarter over time.**
 
 [![CI](https://github.com/iret77/palaia/actions/workflows/ci.yml/badge.svg)](https://github.com/iret77/palaia/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/palaia)](https://pypi.org/project/palaia/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![OpenClaw Plugin](https://img.shields.io/badge/OpenClaw-Plugin-blueviolet)](https://openclaw.ai)
 
-## Get Started
+---
 
-Tell your agent:
+## Install
 
-> "Install or update the Palaia memory skill from ClawHub to the latest version (even if already present). Read the SKILL.md completely and follow it step by step. Run `palaia init`, then `palaia doctor --fix` and resolve all warnings — don't stop until the doctor report is clean. Set up completely."
+```bash
+pip install "palaia[fastembed]"
+```
 
-That's it. Your agent handles everything. You just confirm.
+OpenClaw plugin (3 lines in your config):
+```json
+{
+  "plugins": {
+    "load": { "paths": ["<npm-global>/node_modules/@byte5ai/palaia"] },
+    "allow": ["palaia"],
+    "slots": { "memory": "palaia" }
+  }
+}
+```
 
-No cloud. No API keys. No database server. Everything stays on your machine.
+## Quick Start
+
+```bash
+palaia init                                         # Initialize store
+palaia write "API rate limit is 100 req/min" \
+  --type memory --tags api,limits                   # Save knowledge
+palaia query "what's the rate limit"                # Find it by meaning
+```
 
 ---
 
 ## Why Palaia?
 
-**Because the alternatives suck.**
+### WAL-Backed Crash Safety
+Every write goes through a write-ahead log before touching storage. Power loss mid-write? Palaia recovers automatically on next startup. No data loss. No corruption. No "oops."
 
-Cloud memory services need API keys, internet, and trust. Vector databases need infrastructure. Dumping everything into markdown files works until you have 200 of them and can't find anything.
+### Intelligent Tiering
+Memories automatically organize by usage: HOT (active), WARM (recent), COLD (archived). Frequently accessed entries stay fast. Nothing gets deleted — old memories fade to background storage.
 
-Palaia runs on your machine, survives crashes (WAL-backed), and finds things by meaning — not just keywords. Search for "due date" and it finds "the deadline is March 15th."
+### Structured Entry Types
+Not all knowledge is equal. Classify entries as `memory` (facts, decisions), `process` (workflows, checklists), or `task` (action items with status, priority, assignee). Query by type for focused results.
 
-| | Palaia | Cloud Memory | Vector DB | Markdown Files |
-|---|---|---|---|---|
-| Works offline | Yes | No | No | Yes |
-| Semantic search | Yes | Sometimes | Yes | No |
-| Survives crashes | Yes | Depends | Depends | No |
-| Zero infrastructure | Yes | No | No | Yes |
-| Finds things by meaning | Yes | Sometimes | Yes | No |
-| Auto-organizes over time | Yes | No | No | No |
+### Multi-Agent Collaboration
+Multiple agents share one store with scope-based access control. Private entries stay private. Team entries are shared. Projects group related knowledge. Inter-agent memos enable async communication.
 
-## Core Concepts
+### Zero-Cloud Architecture
+Everything runs on your machine. No API keys required for core functionality. No database server. No cloud dependency. Your data never leaves your infrastructure.
 
-### Write, Search, Find
+### Adaptive Nudging
+Palaia teaches agents good habits through CLI output hints — then stops once they learn. The graduation system tracks consecutive successes and retires nudges when agents demonstrate independence. Regression detection re-activates nudges if habits slip.
 
-```bash
-# Save something worth remembering
-palaia write "Customer prefers CSV exports over PDF" --tags "preferences"
+### OpenClaw-Native
+Built as a first-class OpenClaw plugin. Auto-capture of significant exchanges. Query-based contextual recall before each prompt. LLM-powered knowledge extraction. Configurable capture levels from conservative to aggressive.
 
-# Find it weeks later
-palaia query "what format does the customer want"
+---
 
-# See what's in active memory
-palaia list
-```
+## Features
 
-### Projects
+| Feature | Details |
+|---------|---------|
+| **Semantic Search** | Find by meaning, not keywords. Providers: fastembed, sentence-transformers, OpenAI, Gemini, Ollama, BM25 |
+| **Crash-Safe Writes** | WAL-backed — survives power loss, kills, OOM |
+| **Auto-Capture** | OpenClaw plugin captures significant exchanges automatically |
+| **Structured Types** | memory, process, task — with status, priority, assignee fields |
+| **Multi-Agent** | Shared store, scopes (private/team/public), agent aliases, inter-agent memos |
+| **Smart Tiering** | HOT → WARM → COLD rotation based on access patterns |
+| **Garbage Collection** | Automatic tier rotation, WAL cleanup, stale entry management |
+| **OpenClaw Plugin** | Drop-in replacement for built-in memory — query-based recall, auto-capture, LLM extraction |
+| **Projects** | Group entries by project with default scopes and ownership |
+| **Document Ingestion** | Index PDFs, HTML, Markdown for RAG search |
+| **Adaptive Nudging** | Teaches agents best practices, graduates when they learn |
 
-Keep memories organized when juggling multiple tasks:
+---
 
-```bash
-palaia project create website-redesign --description "Q2 redesign"
-palaia project write website-redesign "Homepage must load under 2s"
-palaia project query website-redesign "performance targets"
-```
+## Comparison
 
-### Entry Types
+| Feature | Palaia | Stock Memory | Mem0 | Engram |
+|---------|--------|-------------|------|--------|
+| Local-first | Yes | Yes | No (cloud) | Yes |
+| Crash-safe (WAL) | Yes | No | N/A | No |
+| Auto-Capture | Yes (plugin) | No | Yes | No |
+| Structured Types | Yes (memory/process/task) | No | No | No |
+| Multi-Agent Scopes | Yes (private/team/public) | No | Per-user | No |
+| Smart Tiering | Yes (HOT/WARM/COLD) | No | No | No |
+| Garbage Collection | Yes (automatic) | Manual | Managed | Manual |
+| OpenClaw Plugin | Native | Built-in | No | No |
+| Semantic Search | Hybrid (embedding + BM25) | None | Embedding | Embedding |
+| Zero-Cloud | Yes | Yes | No | Yes |
 
-Classify what you store:
+---
 
-```bash
-palaia write "Always run migrations before deploy" --type process --tags "deploy"
-palaia write "Switch to FastAPI decided 2026-03-01" --type memory --tags "decision,adr"
-palaia write "Fix login timeout bug" --type task --status open --priority high
-```
+## Configuration
 
-### Scopes
+### Plugin Config (OpenClaw)
 
-Control visibility:
+Set in `openclaw.json` under `plugins.entries.palaia.config`:
 
-- **`private`** — Only the agent that wrote it
-- **`team`** — All agents in the workspace (default)
-- **`public`** — Exportable across workspaces
+| Key | Default | Description |
+|-----|---------|-------------|
+| `autoCapture` | `false` | Capture significant exchanges automatically |
+| `captureFrequency` | `"significant"` | `"every"` or `"significant"` |
+| `captureMinTurns` | `2` | Minimum turns before capture |
+| `captureModel` | auto | Model for LLM extraction (e.g. `"anthropic/claude-haiku-3"`) |
+| `recallMode` | `"query"` | `"list"` (tier-based) or `"query"` (semantic) |
+| `recallTypeWeight` | `{process:1.5, task:1.2, memory:1.0}` | Type-aware result weighting |
 
-### Smart Tiering
+### Capture Levels
 
-Palaia auto-manages memory over time:
-- **HOT** — Frequently accessed, always in search results
-- **WARM** — Untouched for ~7 days, still searchable
-- **COLD** — Untouched for ~30 days, archived but retrievable
+Configure via `palaia init --capture-level`:
 
-Nothing gets deleted. Old memories fade quietly to the background.
+| Level | autoCapture | Frequency | Min Turns |
+|-------|-------------|-----------|-----------|
+| `off` | false | — | — |
+| `sparsam` | true | significant | 5 |
+| `normal` | true | significant | 2 |
+| `aggressiv` | true | every | 1 |
 
-## Semantic Search
-
-Palaia finds things by meaning, not just keywords. Available providers:
-
-| Provider | Type | Best for |
-|----------|------|----------|
-| `fastembed` | Local | Most systems — lightweight, fast, no GPU needed |
-| `sentence-transformers` | Local | GPU systems — heavier but accurate |
-| `gemini` | Cloud | Google Gemini API — no local compute needed |
-| `openai` | Cloud | When you have an OpenAI API key |
-| `ollama` | Local | When you run Ollama already |
-| `bm25` | Built-in | Always works — keyword fallback |
-
-```bash
-palaia detect                                    # See what's available
-palaia config set-chain fastembed bm25           # Set provider priority
-palaia warmup                                    # Pre-build search index
-```
-
-## Multi-Agent Setup
-
-Multiple agents can share one memory store:
-
-```bash
-palaia init                          # Auto-detects agents
-palaia write "note" --agent elliot   # Attribute to specific agent
-palaia write "secret" --scope private  # Only visible to the writer
-```
-
-## Document Ingestion (RAG)
-
-Index external documents alongside agent memory:
-
-```bash
-palaia ingest document.pdf --project docs
-palaia ingest https://example.com/api.html --project api-docs
-palaia query "How does auth work?" --project api-docs --rag
-```
+---
 
 ## CLI Reference
 
-| Command | What it does |
-|---------|-------------|
-| `palaia init` | Create a new store |
-| `palaia write "text"` | Save a memory |
-| `palaia query "search"` | Search by meaning or keywords |
-| `palaia get <id>` | Read a specific entry |
-| `palaia list` | List entries |
-| `palaia edit <id>` | Edit an entry |
-| `palaia status` | System health + active providers |
-| `palaia detect` | Available embedding providers |
-| `palaia warmup` | Pre-build search index |
-| `palaia doctor` | Diagnose and fix issues |
-| `palaia skill` | Print agent instructions (SKILL.md) |
-| `palaia project *` | Manage projects |
-| `palaia memo *` | Inter-agent messaging |
-| `palaia ingest` | Index documents for RAG |
-| `palaia export/import` | Share memories via git |
-| `palaia migrate` | Import from other memory systems |
+```
+palaia init [--agent NAME] [--capture-level LEVEL]   Initialize store
+palaia write "text" [--type TYPE] [--tags a,b]       Save a memory
+palaia query "search" [--type TYPE] [--project P]    Search by meaning
+palaia get <id>                                       Read specific entry
+palaia list [--tier T] [--type T] [--status S]       List entries
+palaia edit <id> [--status done]                      Edit entry
+palaia status                                         System health
+palaia doctor [--fix]                                 Diagnose + fix
+palaia project create|list|show|query|delete          Manage projects
+palaia memo send|inbox|ack|broadcast                  Inter-agent messaging
+palaia ingest <source> [--project P]                  Index documents (RAG)
+palaia detect                                         Available providers
+palaia warmup                                         Pre-build search index
+palaia migrate [--suggest]                            Import / suggest types
+```
 
 All commands support `--json` for machine-readable output.
 
-## OpenClaw Plugin
-
-Replace OpenClaw's built-in memory with Palaia:
-
-```bash
-npm install @byte5ai/palaia
-```
-
-Add to your OpenClaw config:
-```json
-{ "plugins": ["@byte5ai/palaia"] }
-```
-
-## Manual Install (without OpenClaw)
-
-```bash
-pip install "palaia[fastembed]"    # or: uv tool install "palaia[fastembed]"
-palaia init
-palaia doctor --fix
-palaia warmup                      # pre-builds search index — don't skip this
-```
+---
 
 ## Development
 
@@ -188,11 +162,12 @@ pytest
 
 ## Links
 
-- [CHANGELOG](CHANGELOG.md) — What's new in each version
-- [ClawHub](https://clawhub.com/skills/palaia) — Install via agent
 - [GitHub](https://github.com/iret77/palaia) — Source + Issues
+- [PyPI](https://pypi.org/project/palaia/) — Package registry
+- [ClawHub](https://clawhub.com/skills/palaia) — Install via agent skill
 - [OpenClaw](https://openclaw.ai) — The agent platform Palaia is built for
+- [CHANGELOG](CHANGELOG.md) — Release history
 
 ---
 
-MIT — © 2026 [byte5 GmbH](https://byte5.de)
+MIT — (c) 2026 [byte5 GmbH](https://byte5.de)
