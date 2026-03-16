@@ -25,10 +25,16 @@ interface TurnState {
   lastInjectedEntries: Array<{ title: string; date: string }>;
   /** Summaries of auto-captured content from agent_end for confirmation display. */
   lastCapturedSummaries: string[];
+  /** Whether recall (memory injection) occurred in this turn. */
+  recallOccurred: boolean;
+  /** Last inbound user message ID (for emoji reactions). */
+  lastUserMessageId?: string;
+  /** Channel ID from the last inbound event. */
+  lastChannelId?: string;
 }
 
 function emptyTurnState(): TurnState {
-  return { lastInjectedEntries: [], lastCapturedSummaries: [] };
+  return { lastInjectedEntries: [], lastCapturedSummaries: [], recallOccurred: false };
 }
 
 /** Session-scoped turn state map. Key = sessionKey or "__default__". */
@@ -108,6 +114,61 @@ async function savePluginState(state: PluginState, workspace?: string): Promise<
     await fs.writeFile(statePath, JSON.stringify(state, null, 2));
   } catch {
     // Non-fatal
+  }
+}
+
+// ============================================================================
+// Emoji Reaction Helper (Issue #87 v2: Reactions instead of Footnotes)
+// ============================================================================
+
+/**
+ * Send an emoji reaction via the OpenClaw Gateway HTTP API.
+ * Fails silently (console.warn) — reactions are non-critical.
+ * @param emoji - Emoji name without colons, e.g. "brain", "floppy_disk"
+ * @param channelId - Channel identifier (e.g. session key or channel id)
+ * @param messageId - Optional message ID to react to
+ */
+export async function sendReaction(
+  emoji: string,
+  channelId: string,
+  messageId?: string,
+): Promise<boolean> {
+  const gatewayPort = process.env.OPENCLAW_GATEWAY_PORT || "18789";
+  const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
+
+  const body: Record<string, unknown> = {
+    action: "react",
+    channel: channelId,
+    emoji,
+  };
+  if (messageId) {
+    body.messageId = messageId;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(`http://127.0.0.1:${gatewayPort}/api/message`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(gatewayToken ? { Authorization: `Bearer ${gatewayToken}` } : {}),
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      console.warn(`[palaia] Reaction failed (${response.status}): ${emoji} on ${channelId}`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn(`[palaia] Reaction error: ${error}`);
+    return false;
   }
 }
 
@@ -946,7 +1007,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           chars += line.length;
         }
 
-        // Track injected entries for footnote generation (Issue #87)
+        // Track injected entries and recall state (Issue #87)
         // Session-scoped to prevent cross-session leakage
         const sessionKey = resolveSessionKey(event, _ctx);
         const turnState = getTurnState(sessionKey);
@@ -958,6 +1019,28 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
             date: (orig as any)?.created || new Date().toISOString(),
           };
         });
+
+        // Flag that recall occurred (for emoji reaction in agent_end)
+        turnState.recallOccurred = true;
+
+        // Capture user message ID and channel for reactions
+        if (event.messages && Array.isArray(event.messages)) {
+          for (let i = event.messages.length - 1; i >= 0; i--) {
+            const msg = event.messages[i] as Record<string, unknown>;
+            if (msg?.role === "user") {
+              if (typeof msg.id === "string") turnState.lastUserMessageId = msg.id;
+              else if (typeof msg.messageId === "string") turnState.lastUserMessageId = msg.messageId;
+              else if (typeof msg.ts === "string") turnState.lastUserMessageId = msg.ts;
+              break;
+            }
+          }
+        }
+        // Capture channel ID from context
+        if (_ctx && typeof _ctx === "object") {
+          const ctx = _ctx as Record<string, unknown>;
+          if (typeof ctx.channelId === "string") turnState.lastChannelId = ctx.channelId;
+          else if (typeof ctx.sessionKey === "string") turnState.lastChannelId = ctx.sessionKey;
+        }
 
         // Update recall counter for satisfaction/transparency nudges (Issue #87)
         let nudgeContext = "";
@@ -986,58 +1069,18 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
     });
   }
 
-  // ── message_sending (Issue #81 + #87: Hints, Footnotes, Confirms) ──
-  // 1. Strip <palaia-hint /> tags
-  // 2. Append memory source footnotes (if enabled)
-  // 3. Append capture confirmations (if enabled)
+  // ── message_sending (Issue #81: Hint stripping) ──────────────────
+  // Strip <palaia-hint /> tags from outgoing messages.
+  // Footnotes and capture confirms are now handled via emoji reactions
+  // in agent_end (Issue #87 v2) since message_sending is bypassed on Slack.
   api.on("message_sending", (_event: any, _ctx: any) => {
     const content = _event?.content;
     if (typeof content !== "string") return;
 
-    let result = content;
-
-    // Step 1: Strip capture hints
-    const { hints, cleanedText } = parsePalaiaHints(result);
+    // Strip capture hints
+    const { hints, cleanedText } = parsePalaiaHints(content);
     if (hints.length > 0) {
-      result = cleanedText;
-    }
-
-    // Step 2: Memory source footnotes (Issue #87)
-    // Session-scoped state to prevent cross-session leakage.
-    // Note: message_sending may not receive sessionKey in event/ctx,
-    // so we fall back to finding the session with pending entries.
-    let sessionKey = resolveSessionKey(_event, _ctx);
-    let turnState = getTurnState(sessionKey);
-
-    // Fallback: if no entries found under resolved key, find the session that has them
-    if (turnState.lastInjectedEntries.length === 0 && turnState.lastCapturedSummaries.length === 0) {
-      for (const [k, v] of _sessionTurnState.entries()) {
-        if (v.lastInjectedEntries.length > 0 || v.lastCapturedSummaries.length > 0) {
-          sessionKey = k;
-          turnState = v;
-          break;
-        }
-      }
-    }
-
-    if (config.showMemorySources && turnState.lastInjectedEntries.length > 0) {
-      const footnote = buildFootnote(turnState.lastInjectedEntries, result);
-      if (footnote) {
-        result += footnote;
-      }
-      turnState.lastInjectedEntries = [];
-    }
-
-    // Step 3: Capture confirmations (Issue #87)
-    if (config.showCaptureConfirm && turnState.lastCapturedSummaries.length > 0) {
-      for (const summary of turnState.lastCapturedSummaries) {
-        result += `\n💾 Saved: "${summary}"`;
-      }
-      turnState.lastCapturedSummaries = [];
-    }
-
-    if (result !== content) {
-      return { content: result };
+      return { content: cleanedText };
     }
   });
 
@@ -1196,9 +1239,72 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
             `[palaia] Rule-based auto-captured: type=${captureData.type}, tags=${captureData.tags.join(",")}`
           );
         }
+        // ── Emoji Reactions (Issue #87 v2) ────────────────────────
+        // Send reactions after capture is done. Non-blocking, fire-and-forget.
+        const reactionSessionKey = resolveSessionKey(event, _ctx);
+        const reactionTurnState = getTurnState(reactionSessionKey);
+
+        // Resolve channel for reactions
+        let reactionChannel = reactionTurnState.lastChannelId;
+        if (!reactionChannel && _ctx && typeof _ctx === "object") {
+          const ctx = _ctx as Record<string, unknown>;
+          if (typeof ctx.channelId === "string") reactionChannel = ctx.channelId;
+          else if (typeof ctx.sessionKey === "string") reactionChannel = ctx.sessionKey;
+        }
+
+        if (reactionChannel) {
+          const messageId = reactionTurnState.lastUserMessageId;
+
+          // 💾 Capture confirm reaction
+          if (config.showCaptureConfirm && reactionTurnState.lastCapturedSummaries.length > 0) {
+            sendReaction("floppy_disk", reactionChannel, messageId).catch(() => {});
+          }
+
+          // 🧠 Recall reaction
+          if (config.showMemorySources && reactionTurnState.recallOccurred) {
+            sendReaction("brain", reactionChannel, messageId).catch(() => {});
+          }
+        }
+
+        // Reset turn state after reactions
+        reactionTurnState.lastCapturedSummaries = [];
+        reactionTurnState.lastInjectedEntries = [];
+        reactionTurnState.recallOccurred = false;
+        reactionTurnState.lastUserMessageId = undefined;
       } catch (error) {
         // Non-fatal: capture failure should never break the agent
         console.warn(`[palaia] Auto-capture failed: ${error}`);
+      }
+    });
+  }
+
+  // ── agent_end: Recall-only reactions (when autoCapture is off) ──
+  // If autoCapture is enabled, reactions are handled inside the autoCapture agent_end hook above.
+  // This hook handles the case where only recall occurred (no capture).
+  if (!config.autoCapture && config.memoryInject) {
+    api.on("agent_end", async (event: any, _ctx: any) => {
+      try {
+        const sessionKey = resolveSessionKey(event, _ctx);
+        const turnState = getTurnState(sessionKey);
+
+        let reactionChannel = turnState.lastChannelId;
+        if (!reactionChannel && _ctx && typeof _ctx === "object") {
+          const ctx = _ctx as Record<string, unknown>;
+          if (typeof ctx.channelId === "string") reactionChannel = ctx.channelId;
+          else if (typeof ctx.sessionKey === "string") reactionChannel = ctx.sessionKey;
+        }
+
+        if (reactionChannel && config.showMemorySources && turnState.recallOccurred) {
+          const messageId = turnState.lastUserMessageId;
+          sendReaction("brain", reactionChannel, messageId).catch(() => {});
+        }
+
+        // Reset
+        turnState.recallOccurred = false;
+        turnState.lastUserMessageId = undefined;
+        turnState.lastInjectedEntries = [];
+      } catch {
+        // Non-fatal
       }
     });
   }

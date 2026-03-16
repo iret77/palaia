@@ -20,6 +20,7 @@ import {
   isEntryRelevant,
   buildFootnote,
   checkNudges,
+  sendReaction,
   type ExtractionResult,
   type PalaiaHint,
 } from "../src/hooks.js";
@@ -870,5 +871,95 @@ describe("Config defaults for transparency features", () => {
   it("has showCaptureConfirm defaulting to true", async () => {
     const { DEFAULT_CONFIG } = await import("../src/config.js");
     expect(DEFAULT_CONFIG.showCaptureConfirm).toBe(true);
+  });
+});
+
+// ============================================================================
+// sendReaction (Issue #87 v2: Emoji Reactions)
+// ============================================================================
+
+describe("sendReaction", () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sends a reaction via Gateway API", async () => {
+    fetchSpy.mockResolvedValue(new Response("OK", { status: 200 }));
+
+    const result = await sendReaction("brain", "slack:channel:123", "msg-456");
+    expect(result).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+
+    const [url, options] = fetchSpy.mock.calls[0];
+    expect(url).toContain("/api/message");
+    const body = JSON.parse((options as any).body);
+    expect(body.action).toBe("react");
+    expect(body.emoji).toBe("brain");
+    expect(body.channel).toBe("slack:channel:123");
+    expect(body.messageId).toBe("msg-456");
+  });
+
+  it("sends reaction without messageId", async () => {
+    fetchSpy.mockResolvedValue(new Response("OK", { status: 200 }));
+
+    const result = await sendReaction("floppy_disk", "slack:channel:123");
+    expect(result).toBe(true);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as any).body);
+    expect(body.messageId).toBeUndefined();
+  });
+
+  it("returns false on HTTP error", async () => {
+    fetchSpy.mockResolvedValue(new Response("Not Found", { status: 404 }));
+
+    const result = await sendReaction("brain", "slack:channel:123");
+    expect(result).toBe(false);
+  });
+
+  it("returns false on network error (graceful degradation)", async () => {
+    fetchSpy.mockRejectedValue(new Error("Connection refused"));
+
+    const result = await sendReaction("brain", "slack:channel:123");
+    expect(result).toBe(false);
+  });
+
+  it("uses correct gateway port from env", async () => {
+    const origPort = process.env.OPENCLAW_GATEWAY_PORT;
+    process.env.OPENCLAW_GATEWAY_PORT = "9999";
+
+    fetchSpy.mockResolvedValue(new Response("OK", { status: 200 }));
+    await sendReaction("brain", "test-channel");
+
+    const [url] = fetchSpy.mock.calls[0];
+    expect(url).toContain(":9999/");
+
+    if (origPort !== undefined) {
+      process.env.OPENCLAW_GATEWAY_PORT = origPort;
+    } else {
+      delete process.env.OPENCLAW_GATEWAY_PORT;
+    }
+  });
+
+  it("includes Authorization header when token is set", async () => {
+    const origToken = process.env.OPENCLAW_GATEWAY_TOKEN;
+    process.env.OPENCLAW_GATEWAY_TOKEN = "test-token-123";
+
+    fetchSpy.mockResolvedValue(new Response("OK", { status: 200 }));
+    await sendReaction("brain", "test-channel");
+
+    const headers = (fetchSpy.mock.calls[0][1] as any).headers;
+    expect(headers.Authorization).toBe("Bearer test-token-123");
+
+    if (origToken !== undefined) {
+      process.env.OPENCLAW_GATEWAY_TOKEN = origToken;
+    } else {
+      delete process.env.OPENCLAW_GATEWAY_TOKEN;
+    }
   });
 });
