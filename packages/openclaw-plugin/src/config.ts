@@ -2,6 +2,13 @@
  * Plugin configuration schema and defaults for @byte5ai/palaia.
  */
 
+export interface RecallTypeWeights {
+  process: number;
+  task: number;
+  memory: number;
+  [key: string]: number;
+}
+
 export interface PalaiaPluginConfig {
   /** Path to palaia binary (default: auto-detect) */
   binaryPath?: string;
@@ -17,7 +24,31 @@ export interface PalaiaPluginConfig {
   memoryInject: boolean;
   /** Max characters for injected memory context */
   maxInjectedChars: number;
+
+  // ── Auto-Capture (Issue #64) ─────────────────────────────────
+  /** Enable automatic memory capture after agent exchanges */
+  autoCapture: boolean;
+  /** How often to capture: "every" | "significant" (default: "significant") */
+  captureFrequency: "every" | "significant";
+  /** Minimum exchange turns before capture is attempted */
+  captureMinTurns: number;
+  /** Model override for LLM-based extraction (e.g. "anthropic/claude-haiku-3", or "cheap") */
+  captureModel?: string;
+  /** Minimum significance score for LLM-extracted items (0.0-1.0, default: 0.3) */
+  captureMinSignificance: number;
+
+  // ── Query-based Recall (Issue #65) ───────────────────────────
+  /** Recall mode: "list" (context-independent) or "query" (context-relevant) */
+  recallMode: "list" | "query";
+  /** Type-aware weighting for recall results */
+  recallTypeWeight: RecallTypeWeights;
 }
+
+export const DEFAULT_RECALL_TYPE_WEIGHTS: RecallTypeWeights = {
+  process: 1.5,
+  task: 1.2,
+  memory: 1.0,
+};
 
 export const DEFAULT_CONFIG: PalaiaPluginConfig = {
   tier: "hot",
@@ -25,6 +56,12 @@ export const DEFAULT_CONFIG: PalaiaPluginConfig = {
   timeoutMs: 3000,
   memoryInject: false,
   maxInjectedChars: 4000,
+  autoCapture: false,
+  captureFrequency: "significant",
+  captureMinTurns: 2,
+  captureMinSignificance: 0.3,
+  recallMode: "query",
+  recallTypeWeight: { ...DEFAULT_RECALL_TYPE_WEIGHTS },
 };
 
 /**
@@ -33,5 +70,13 @@ export const DEFAULT_CONFIG: PalaiaPluginConfig = {
 export function resolveConfig(
   userConfig: Partial<PalaiaPluginConfig> | undefined
 ): PalaiaPluginConfig {
-  return { ...DEFAULT_CONFIG, ...userConfig };
+  const base = { ...DEFAULT_CONFIG, ...userConfig };
+  // Deep-merge recallTypeWeight
+  if (userConfig?.recallTypeWeight) {
+    base.recallTypeWeight = {
+      ...DEFAULT_RECALL_TYPE_WEIGHTS,
+      ...userConfig.recallTypeWeight,
+    };
+  }
+  return base;
 }

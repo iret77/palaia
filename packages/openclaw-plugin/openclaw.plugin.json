@@ -35,6 +35,38 @@
         "type": "number",
         "default": 4000,
         "description": "Max characters for injected memory context"
+      },
+      "autoCapture": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable automatic memory capture after agent exchanges"
+      },
+      "captureFrequency": {
+        "type": "string",
+        "enum": ["every", "significant"],
+        "default": "significant",
+        "description": "How often to capture: every exchange or only significant ones"
+      },
+      "captureMinTurns": {
+        "type": "number",
+        "default": 2,
+        "description": "Minimum exchange turns before capture is attempted"
+      },
+      "recallMode": {
+        "type": "string",
+        "enum": ["list", "query"],
+        "default": "query",
+        "description": "Recall mode: list (context-independent) or query (context-relevant)"
+      },
+      "recallTypeWeight": {
+        "type": "object",
+        "default": { "process": 1.5, "task": 1.2, "memory": 1.0 },
+        "description": "Type-aware weighting for recall results",
+        "properties": {
+          "process": { "type": "number", "default": 1.5 },
+          "task": { "type": "number", "default": 1.2 },
+          "memory": { "type": "number", "default": 1.0 }
+        }
       }
     }
   },
@@ -46,6 +78,14 @@
     "workspace": {
       "label": "Workspace Path",
       "placeholder": "agent workspace"
+    },
+    "autoCapture": {
+      "label": "Auto-Capture",
+      "description": "Automatically capture significant exchanges as memories"
+    },
+    "recallMode": {
+      "label": "Recall Mode",
+      "description": "How memories are retrieved: query (semantic) or list (tier-based)"
     }
   }
 }

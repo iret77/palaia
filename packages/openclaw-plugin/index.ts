@@ -7,7 +7,8 @@
  * - memory_search: Semantic search over Palaia memory
  * - memory_get: Read a specific memory entry
  * - memory_write: Write new entries (optional, opt-in)
- * - before_prompt_build: HOT memory injection (opt-in)
+ * - before_prompt_build: Query-based contextual recall (opt-in, Issue #65)
+ * - agent_end: Auto-capture of significant exchanges (opt-in, Issue #64)
  * - palaia-recovery: WAL replay on startup
  *
  * Activation:
