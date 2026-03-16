@@ -28,17 +28,17 @@
       },
       "memoryInject": {
         "type": "boolean",
-        "default": false,
+        "default": true,
         "description": "Inject HOT memory into agent context on prompt build"
       },
       "maxInjectedChars": {
         "type": "number",
-        "default": 4000,
+        "default": 8000,
         "description": "Max characters for injected memory context"
       },
       "autoCapture": {
         "type": "boolean",
-        "default": false,
+        "default": true,
         "description": "Enable automatic memory capture after agent exchanges"
       },
       "captureFrequency": {
@@ -79,9 +79,17 @@
       "label": "Workspace Path",
       "placeholder": "agent workspace"
     },
+    "memoryInject": {
+      "label": "Memory Injection",
+      "description": "Inject relevant memories into agent context before each prompt (recommended: on)"
+    },
+    "maxInjectedChars": {
+      "label": "Max Injected Characters",
+      "description": "Maximum characters of memory context injected per prompt (recommended: 8000)"
+    },
     "autoCapture": {
       "label": "Auto-Capture",
-      "description": "Automatically capture significant exchanges as memories"
+      "description": "Automatically capture significant exchanges as memories (recommended: on)"
     },
     "recallMode": {
       "label": "Recall Mode",

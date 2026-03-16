@@ -825,6 +825,64 @@ def _check_unread_memos(palaia_root: Path | None) -> dict[str, Any]:
         }
 
 
+def _check_plugin_defaults_upgrade(palaia_root: Path | None) -> dict[str, Any]:
+    """Check if plugin defaults need upgrading from v1.x to v2.0."""
+    if palaia_root is None:
+        return {
+            "name": "plugin_defaults_upgrade",
+            "label": "Plugin defaults",
+            "status": "ok",
+            "message": "Not initialized",
+        }
+
+    from palaia.config import load_config
+
+    config = load_config(palaia_root)
+    plugin_config = config.get("plugin_config")
+
+    # Only relevant if plugin_config exists (user ran init --capture-level or
+    # had explicit settings). If no plugin_config at all, the TypeScript plugin
+    # defaults apply (which are already v2.0 defaults after this release).
+    if not plugin_config:
+        return {
+            "name": "plugin_defaults_upgrade",
+            "label": "Plugin defaults",
+            "status": "ok",
+            "message": "Using plugin defaults (v2.0)",
+        }
+
+    # Detect v1.x default values that need upgrading.
+    # Only suggest upgrade for values that match the OLD defaults exactly —
+    # if the user set custom values, respect them.
+    upgradeable: list[str] = []
+    # autoCapture: false → true (only if user has the old default)
+    if plugin_config.get("autoCapture") is False:
+        upgradeable.append("autoCapture: false → true")
+
+    if not upgradeable:
+        return {
+            "name": "plugin_defaults_upgrade",
+            "label": "Plugin defaults",
+            "status": "ok",
+            "message": "Plugin config is up to date",
+        }
+
+    return {
+        "name": "plugin_defaults_upgrade",
+        "label": "Plugin defaults",
+        "status": "warn",
+        "message": f"v1.x defaults detected: {', '.join(upgradeable)}",
+        "fix": (
+            "Palaia 2.0 has optimized defaults for zero-config UX.\n"
+            "  Run: palaia doctor --fix  to upgrade your config.\n"
+            "  Changes: autoCapture=true (was false)\n"
+            "  Custom values you've set will NOT be touched."
+        ),
+        "fixable": True,
+        "details": {"upgradeable": upgradeable},
+    }
+
+
 def _check_capture_level(palaia_root: Path | None) -> dict[str, Any]:
     """Check if capture-level is configured in an OpenClaw environment (Issue #67)."""
     if palaia_root is None:
@@ -843,10 +901,7 @@ def _check_capture_level(palaia_root: Path | None) -> dict[str, Any]:
     # Only relevant in OpenClaw environments
     import os
 
-    is_openclaw = (
-        (Path.home() / ".openclaw").is_dir()
-        or bool(os.environ.get("OPENCLAW_HOME"))
-    )
+    is_openclaw = (Path.home() / ".openclaw").is_dir() or bool(os.environ.get("OPENCLAW_HOME"))
 
     if not is_openclaw:
         return {
@@ -899,6 +954,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_default_agent_alias(palaia_root),
         _check_unread_memos(palaia_root),
         _check_capture_level(palaia_root),
+        _check_plugin_defaults_upgrade(palaia_root),
         _check_openclaw_plugin(),
         _check_smart_memory_skill(),
         _check_legacy_memory_files(),
@@ -1023,6 +1079,22 @@ def apply_fixes(palaia_root: Path | None, results: list[dict[str, Any]]) -> list
             actions.append(f"Auto-configured chain: {' → '.join(new_chain)}")
             if any(p != "bm25" for p in new_chain):
                 ran_warmup = True
+
+    # Fix: upgrade v1.x plugin defaults to v2.0
+    for r in results:
+        if r.get("name") == "plugin_defaults_upgrade" and r.get("fixable") and r.get("status") == "warn":
+            plugin_config = config.get("plugin_config", {})
+            upgraded = []
+
+            # Only upgrade values that match old v1.x defaults exactly
+            if plugin_config.get("autoCapture") is False:
+                plugin_config["autoCapture"] = True
+                upgraded.append("autoCapture: false → true")
+
+            if upgraded:
+                config["plugin_config"] = plugin_config
+                save_config(palaia_root, config)
+                actions.append(f"Upgraded plugin defaults to v2.0: {', '.join(upgraded)}")
 
     # Run warmup + reindex after all fixes if we have semantic providers
     if ran_warmup:
