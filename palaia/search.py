@@ -172,16 +172,22 @@ class SearchEngine:
         priority: str | None = None,
         assignee: str | None = None,
         instance: str | None = None,
+        before: str | None = None,
+        after: str | None = None,
+        cross_project: bool = False,
     ) -> list[dict]:
         """Search memories using hybrid ranking (BM25 + embeddings when available).
 
         Structured filters (type, status, priority, assignee, instance) use exact match,
         not embeddings.
+
+        Temporal filters (before, after) filter by entry created timestamp.
+        cross_project=True ignores project filter and searches across all projects.
         """
         docs_with_meta = self.build_index(include_cold=include_cold, agent=agent)
 
         # Apply structured filters (exact match, pre-BM25)
-        if project:
+        if project and not cross_project:
             docs_with_meta = [(did, text, meta) for did, text, meta in docs_with_meta if meta.get("project") == project]
         if entry_type:
             docs_with_meta = [
@@ -202,7 +208,17 @@ class SearchEngine:
                 (did, text, meta) for did, text, meta in docs_with_meta if meta.get("instance") == instance
             ]
 
-        if project or entry_type or status or priority or assignee or instance:
+        # Temporal filters (Issue #74)
+        if before:
+            docs_with_meta = [
+                (did, text, meta) for did, text, meta in docs_with_meta if meta.get("created", "") < before
+            ]
+        if after:
+            docs_with_meta = [
+                (did, text, meta) for did, text, meta in docs_with_meta if meta.get("created", "") > after
+            ]
+
+        if project or entry_type or status or priority or assignee or instance or before or after:
             # Rebuild BM25 index with filtered docs
             self.bm25.index([(did, text) for did, text, meta in docs_with_meta])
 
@@ -292,6 +308,8 @@ class SearchEngine:
                     result_entry["due_date"] = meta["due_date"]
                 if meta.get("instance"):
                     result_entry["instance"] = meta["instance"]
+                if meta.get("project"):
+                    result_entry["project"] = meta["project"]
                 output.append(result_entry)
         return output
 
