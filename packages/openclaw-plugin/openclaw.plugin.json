@@ -52,6 +52,16 @@
         "default": 2,
         "description": "Minimum exchange turns before capture is attempted"
       },
+      "showMemorySources": {
+        "type": "boolean",
+        "default": true,
+        "description": "Show memory source footnotes in agent responses"
+      },
+      "showCaptureConfirm": {
+        "type": "boolean",
+        "default": true,
+        "description": "Show capture confirmations in agent responses"
+      },
       "recallMode": {
         "type": "string",
         "enum": ["list", "query"],
@@ -90,6 +100,14 @@
     "autoCapture": {
       "label": "Auto-Capture",
       "description": "Automatically capture significant exchanges as memories (recommended: on)"
+    },
+    "showMemorySources": {
+      "label": "Memory Source Footnotes",
+      "description": "Show which memories were used in agent responses (recommended: on)"
+    },
+    "showCaptureConfirm": {
+      "label": "Capture Confirmations",
+      "description": "Show confirmation when exchanges are saved to memory (recommended: on)"
     },
     "recallMode": {
       "label": "Recall Mode",
