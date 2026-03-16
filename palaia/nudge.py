@@ -41,6 +41,23 @@ NUDGE_PATTERNS: dict[str, dict[str, str]] = {
             "Speichere diesen Hinweis in deinem Memory, damit du ihn beim nächsten Mal nicht mehr brauchst."
         ),
     },
+    "satisfaction_check": {
+        "message": (
+            "Dein User nutzt Palaia jetzt seit einer Weile. "
+            "Frag ihn dezent, ob er mit dem Memory-System zufrieden ist. "
+            "Bei Problemen: schlage `palaia doctor` vor."
+        ),
+    },
+    "transparency_preference": {
+        "message": (
+            "Dein User sieht jetzt seit einigen Tagen Memory-Footnotes und "
+            "Capture-Bestätigungen. Frag ihn einmalig: 'Möchtest du die "
+            "Memory-Quellenangaben und Speicher-Bestätigungen weiterhin sehen, "
+            "oder soll ich sie ausblenden? Du kannst das jederzeit wieder ändern.' "
+            "Je nach Antwort: `palaia config set showMemorySources true/false` "
+            "und `palaia config set showCaptureConfirm true/false`"
+        ),
+    },
 }
 
 # Graduation threshold: consecutive successes required

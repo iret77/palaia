@@ -224,7 +224,22 @@ class TestNudgeMessages:
         for pattern_id in NUDGE_PATTERNS:
             msg = tracker.get_nudge_message(pattern_id)
             assert msg is not None, f"Pattern {pattern_id} has no message"
-            assert "Speichere diesen Hinweis" in msg
+            assert len(msg) > 10, f"Pattern {pattern_id} has a suspiciously short message"
+
+    def test_satisfaction_check_pattern(self, palaia_root):
+        tracker = NudgeTracker(palaia_root)
+        msg = tracker.get_nudge_message("satisfaction_check")
+        assert msg is not None
+        assert "zufrieden" in msg
+        assert "doctor" in msg
+
+    def test_transparency_preference_pattern(self, palaia_root):
+        tracker = NudgeTracker(palaia_root)
+        msg = tracker.get_nudge_message("transparency_preference")
+        assert msg is not None
+        assert "Footnotes" in msg
+        assert "showMemorySources" in msg
+        assert "showCaptureConfirm" in msg
 
 
 class TestCLIIntegration:

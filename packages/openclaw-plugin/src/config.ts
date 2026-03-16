@@ -43,6 +43,12 @@ export interface PalaiaPluginConfig {
   /** Static project override for auto-capture (default: undefined → LLM detection) */
   captureProject?: string;
 
+  // ── Transparency Features (Issue #87) ────────────────────────
+  /** Show memory source footnotes in agent responses (default: true) */
+  showMemorySources: boolean;
+  /** Show capture confirmation in agent responses (default: true) */
+  showCaptureConfirm: boolean;
+
   // ── Query-based Recall (Issue #65) ───────────────────────────
   /** Recall mode: "list" (context-independent) or "query" (context-relevant) */
   recallMode: "list" | "query";
@@ -66,6 +72,8 @@ export const DEFAULT_CONFIG: PalaiaPluginConfig = {
   captureFrequency: "significant",
   captureMinTurns: 2,
   captureMinSignificance: 0.3,
+  showMemorySources: true,
+  showCaptureConfirm: true,
   recallMode: "query",
   recallTypeWeight: { ...DEFAULT_RECALL_TYPE_WEIGHTS },
 };

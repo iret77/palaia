@@ -15,6 +15,173 @@ import { run, runJson, recover, type RunnerOpts } from "./runner.js";
 import type { PalaiaPluginConfig, RecallTypeWeights } from "./config.js";
 
 // ============================================================================
+// Turn-level State (Issue #87: Transparency Features)
+// ============================================================================
+// Shared between hooks within one turn. Reset after use in message_sending.
+
+/** Entries injected by before_prompt_build for footnote attribution. */
+let _lastInjectedEntries: Array<{ title: string; date: string }> = [];
+
+/** Summaries of auto-captured content from agent_end for confirmation display. */
+let _lastCapturedSummaries: string[] = [];
+
+/** Reset turn state (for testing). */
+export function resetTurnState(): void {
+  _lastInjectedEntries = [];
+  _lastCapturedSummaries = [];
+}
+
+// ============================================================================
+// Plugin State Persistence (Issue #87: Recall counter for nudges)
+// ============================================================================
+
+interface PluginState {
+  successfulRecalls: number;
+  satisfactionNudged: boolean;
+  transparencyNudged: boolean;
+  firstRecallTimestamp: string | null;
+}
+
+const DEFAULT_PLUGIN_STATE: PluginState = {
+  successfulRecalls: 0,
+  satisfactionNudged: false,
+  transparencyNudged: false,
+  firstRecallTimestamp: null,
+};
+
+async function loadPluginState(workspace?: string): Promise<PluginState> {
+  const dir = workspace || process.cwd();
+  const statePath = path.join(dir, ".palaia", "plugin-state.json");
+  try {
+    const raw = await fs.readFile(statePath, "utf-8");
+    return { ...DEFAULT_PLUGIN_STATE, ...JSON.parse(raw) };
+  } catch {
+    return { ...DEFAULT_PLUGIN_STATE };
+  }
+}
+
+async function savePluginState(state: PluginState, workspace?: string): Promise<void> {
+  const dir = workspace || process.cwd();
+  const statePath = path.join(dir, ".palaia", "plugin-state.json");
+  try {
+    await fs.writeFile(statePath, JSON.stringify(state, null, 2));
+  } catch {
+    // Non-fatal
+  }
+}
+
+// ============================================================================
+// Footnote Helpers (Issue #87)
+// ============================================================================
+
+/**
+ * Format an ISO date string as a short date: "Mar 16", "Feb 10".
+ */
+export function formatShortDate(isoDate: string): string {
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  try {
+    const d = new Date(isoDate);
+    if (isNaN(d.getTime())) return "";
+    return `${months[d.getMonth()]} ${d.getDate()}`;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Check if an injected entry is relevant to the response text.
+ * Simple keyword overlap: split title into words, check if >=2 words appear
+ * in the response (case-insensitive). Words shorter than 3 chars are skipped.
+ */
+export function isEntryRelevant(title: string, responseText: string): boolean {
+  const responseLower = responseText.toLowerCase();
+  const titleWords = title
+    .toLowerCase()
+    .split(/[\s\-_/]+/)
+    .filter((w) => w.length >= 3);
+  if (titleWords.length === 0) return false;
+  // For single-word titles, require that one word to match
+  const threshold = titleWords.length === 1 ? 1 : 2;
+  let matches = 0;
+  for (const word of titleWords) {
+    if (responseLower.includes(word)) {
+      matches++;
+      if (matches >= threshold) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Build a memory source footnote string from injected entries and response text.
+ * Returns null if no relevant entries found.
+ */
+export function buildFootnote(
+  entries: Array<{ title: string; date: string }>,
+  responseText: string,
+  maxEntries = 3,
+): string | null {
+  const relevant = entries.filter((e) => isEntryRelevant(e.title, responseText));
+  if (relevant.length === 0) return null;
+
+  const display = relevant.slice(0, maxEntries);
+  const parts = display.map((e) => {
+    const dateStr = formatShortDate(e.date);
+    return dateStr ? `"${e.title}" (${dateStr})` : `"${e.title}"`;
+  });
+  return `\n\n📎 Palaia: ${parts.join(", ")}`;
+}
+
+// ============================================================================
+// Satisfaction / Transparency Nudge Helpers (Issue #87)
+// ============================================================================
+
+const SATISFACTION_THRESHOLD = 10;
+const TRANSPARENCY_RECALL_THRESHOLD = 50;
+const TRANSPARENCY_DAYS_THRESHOLD = 7;
+
+const SATISFACTION_NUDGE_TEXT =
+  "Dein User nutzt Palaia jetzt seit einer Weile. " +
+  "Frag ihn dezent, ob er mit dem Memory-System zufrieden ist. " +
+  "Bei Problemen: schlage `palaia doctor` vor.";
+
+const TRANSPARENCY_NUDGE_TEXT =
+  "Dein User sieht jetzt seit einigen Tagen Memory-Footnotes und Capture-Bestätigungen. " +
+  "Frag ihn einmalig: 'Möchtest du die Memory-Quellenangaben und Speicher-Bestätigungen " +
+  "weiterhin sehen, oder soll ich sie ausblenden? Du kannst das jederzeit wieder ändern.' " +
+  "Je nach Antwort: `palaia config set showMemorySources true/false` und " +
+  "`palaia config set showCaptureConfirm true/false`";
+
+/**
+ * Check which nudges (if any) should fire based on plugin state.
+ * Returns nudge texts to prepend, and updates state accordingly.
+ */
+export function checkNudges(state: PluginState): { nudges: string[]; updated: boolean } {
+  const nudges: string[] = [];
+  let updated = false;
+
+  // Satisfaction check: after 10 recalls, one-shot
+  if (!state.satisfactionNudged && state.successfulRecalls >= SATISFACTION_THRESHOLD) {
+    nudges.push(SATISFACTION_NUDGE_TEXT);
+    state.satisfactionNudged = true;
+    updated = true;
+  }
+
+  // Transparency preference: after 50 recalls OR 7 days, one-shot
+  if (!state.transparencyNudged && state.firstRecallTimestamp) {
+    const daysSinceFirst = (Date.now() - new Date(state.firstRecallTimestamp).getTime()) / (1000 * 60 * 60 * 24);
+    if (state.successfulRecalls >= TRANSPARENCY_RECALL_THRESHOLD || daysSinceFirst >= TRANSPARENCY_DAYS_THRESHOLD) {
+      nudges.push(TRANSPARENCY_NUDGE_TEXT);
+      state.transparencyNudged = true;
+      updated = true;
+    }
+  }
+
+  return { nudges, updated };
+}
+
+// ============================================================================
 // Capture Hints (Issue #81)
 // ============================================================================
 
@@ -684,8 +851,36 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           chars += line.length;
         }
 
+        // Track injected entries for footnote generation (Issue #87)
+        _lastInjectedEntries = ranked.map((e) => {
+          // Find original entry to get created date
+          const orig = entries.find((o) => o.id === e.id);
+          return {
+            title: e.title,
+            date: (orig as any)?.created || new Date().toISOString(),
+          };
+        });
+
+        // Update recall counter for satisfaction/transparency nudges (Issue #87)
+        let nudgeContext = "";
+        try {
+          const pluginState = await loadPluginState(config.workspace);
+          pluginState.successfulRecalls++;
+          if (!pluginState.firstRecallTimestamp) {
+            pluginState.firstRecallTimestamp = new Date().toISOString();
+          }
+          const { nudges, updated } = checkNudges(pluginState);
+          if (nudges.length > 0) {
+            nudgeContext = "\n\n## Agent Nudge (Palaia)\n\n" + nudges.join("\n\n");
+          }
+          // Always save: recall count changed, nudges may have updated
+          await savePluginState(pluginState, config.workspace);
+        } catch {
+          // Non-fatal: nudge tracking failure should not break recall
+        }
+
         // Use prependContext for per-turn dynamic memory injection
-        return { prependContext: text };
+        return { prependContext: text + nudgeContext };
       } catch (error) {
         // Non-fatal: if memory injection fails, agent continues without it
         console.warn(`[palaia] Memory injection failed: ${error}`);
@@ -693,16 +888,41 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
     });
   }
 
-  // ── message_sending (Issue #81: Strip capture hints) ─────────
-  // Removes <palaia-hint ... /> tags from outgoing messages so they
-  // don't appear in the final output sent to the user.
+  // ── message_sending (Issue #81 + #87: Hints, Footnotes, Confirms) ──
+  // 1. Strip <palaia-hint /> tags
+  // 2. Append memory source footnotes (if enabled)
+  // 3. Append capture confirmations (if enabled)
   api.on("message_sending", (_event: any, _ctx: any) => {
     const content = _event?.content;
     if (typeof content !== "string") return;
 
-    const { hints, cleanedText } = parsePalaiaHints(content);
-    if (hints.length > 0 && cleanedText !== content) {
-      return { content: cleanedText };
+    let result = content;
+
+    // Step 1: Strip capture hints
+    const { hints, cleanedText } = parsePalaiaHints(result);
+    if (hints.length > 0) {
+      result = cleanedText;
+    }
+
+    // Step 2: Memory source footnotes (Issue #87)
+    if (config.showMemorySources && _lastInjectedEntries.length > 0) {
+      const footnote = buildFootnote(_lastInjectedEntries, result);
+      if (footnote) {
+        result += footnote;
+      }
+      _lastInjectedEntries = [];
+    }
+
+    // Step 3: Capture confirmations (Issue #87)
+    if (config.showCaptureConfirm && _lastCapturedSummaries.length > 0) {
+      for (const summary of _lastCapturedSummaries) {
+        result += `\n💾 Saved: "${summary}"`;
+      }
+      _lastCapturedSummaries = [];
+    }
+
+    if (result !== content) {
+      return { content: result };
     }
   });
 
@@ -807,6 +1027,8 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
                 effectiveScope,
               );
               await run(args, opts);
+              // Track for capture confirm (Issue #87)
+              _lastCapturedSummaries.push(r.content.slice(0, 80));
               console.log(
                 `[palaia] LLM auto-captured: type=${r.type}, significance=${r.significance}, tags=${r.tags.join(",")}, project=${effectiveProject || "none"}, scope=${effectiveScope || "team"}`
               );
@@ -849,6 +1071,8 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           );
 
           await run(args, opts);
+          // Track for capture confirm (Issue #87)
+          _lastCapturedSummaries.push(captureData.summary.slice(0, 80));
           console.log(
             `[palaia] Rule-based auto-captured: type=${captureData.type}, tags=${captureData.tags.join(",")}`
           );

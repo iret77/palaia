@@ -386,6 +386,8 @@ Find your npm global path with: `npm root -g`
 | `captureFrequency` | `"every"` or `"significant"` (default: `"significant"`) |
 | `captureMinTurns` | Minimum exchange turns before capture (default: 2) |
 | `captureModel` | Model override for LLM extraction (e.g. `"anthropic/claude-haiku-3"`, `"cheap"`) |
+| `showMemorySources` | Show memory source footnotes in responses (default: `true`) |
+| `showCaptureConfirm` | Show capture confirmations in responses (default: `true`) |
 | `recallMode` | `"list"` or `"query"` — how memories are retrieved (default: `"query"`) |
 
 > **Note (Issue #66):** Plugin config is currently **global** — all agents on the same OpenClaw
@@ -570,6 +572,43 @@ Palaia includes a graduation system that adapts to agent behavior:
 - New processes always trigger nudges until a pattern is established
 
 **Important:** SKILL.md documentation is the primary source for agent behavior. Nudging is the safety net for when agents don't read the docs — not a replacement for good documentation.
+
+## Transparency Features
+
+Palaia makes its memory operations visible to the user by default. Both features are enabled out of the box and can be toggled independently.
+
+### Memory Source Footnotes
+
+When Palaia injects memories into the agent context and the agent uses them in a response, a footnote is appended:
+
+```
+📎 Palaia: "PostgreSQL migration plan" (Mar 16), "Deploy process" (Mar 10)
+```
+
+This shows the user which memories influenced the response. Max 3 sources are shown, selected by keyword relevance between the memory title and the response text.
+
+**Disable:** `palaia config set showMemorySources false`
+**Re-enable:** `palaia config set showMemorySources true`
+
+### Capture Confirmations
+
+When Palaia auto-captures a significant exchange, a confirmation is shown:
+
+```
+💾 Saved: "Team decided to use PostgreSQL for the project due to JSON support"
+```
+
+This confirms that knowledge was stored and gives the user a preview of what was captured.
+
+**Disable:** `palaia config set showCaptureConfirm false`
+**Re-enable:** `palaia config set showCaptureConfirm true`
+
+### Satisfaction and Preference Nudges
+
+After sustained usage, Palaia nudges agents to check in with the user:
+
+1. **Satisfaction check** (after ~10 successful recalls): Ask the user if the memory system is working well. Suggest `palaia doctor` if there are issues.
+2. **Transparency preference** (after ~50 recalls or ~7 days): Ask the user whether they want to keep seeing footnotes and capture confirmations, or hide them. Both are one-shot nudges that won't repeat.
 
 ## Commands Reference
 
