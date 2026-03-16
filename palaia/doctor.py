@@ -858,6 +858,15 @@ def _check_plugin_defaults_upgrade(palaia_root: Path | None) -> dict[str, Any]:
     # autoCapture: false → true (only if user has the old default)
     if plugin_config.get("autoCapture") is False:
         upgradeable.append("autoCapture: false → true")
+    # memoryInject: false → true (only if user has the old default)
+    if plugin_config.get("memoryInject") is False:
+        upgradeable.append("memoryInject: false → true")
+    # maxInjectedChars: 4000 → 8000 (only if user has the old default)
+    if plugin_config.get("maxInjectedChars") == 4000:
+        upgradeable.append("maxInjectedChars: 4000 → 8000")
+    # recallMode: list → query (only if user has the old default)
+    if plugin_config.get("recallMode") == "list":
+        upgradeable.append("recallMode: list → query")
 
     if not upgradeable:
         return {
@@ -867,15 +876,16 @@ def _check_plugin_defaults_upgrade(palaia_root: Path | None) -> dict[str, Any]:
             "message": "Plugin config is up to date",
         }
 
+    changes_summary = ", ".join(upgradeable)
     return {
         "name": "plugin_defaults_upgrade",
         "label": "Plugin defaults",
         "status": "warn",
-        "message": f"v1.x defaults detected: {', '.join(upgradeable)}",
+        "message": f"v1.x defaults detected: {changes_summary}",
         "fix": (
             "Palaia 2.0 has optimized defaults for zero-config UX.\n"
-            "  Run: palaia doctor --fix  to upgrade your config.\n"
-            "  Changes: autoCapture=true (was false)\n"
+            f"  Run: palaia doctor --fix  to upgrade your config.\n"
+            f"  Changes: {changes_summary}\n"
             "  Custom values you've set will NOT be touched."
         ),
         "fixable": True,
@@ -1090,6 +1100,15 @@ def apply_fixes(palaia_root: Path | None, results: list[dict[str, Any]]) -> list
             if plugin_config.get("autoCapture") is False:
                 plugin_config["autoCapture"] = True
                 upgraded.append("autoCapture: false → true")
+            if plugin_config.get("memoryInject") is False:
+                plugin_config["memoryInject"] = True
+                upgraded.append("memoryInject: false → true")
+            if plugin_config.get("maxInjectedChars") == 4000:
+                plugin_config["maxInjectedChars"] = 8000
+                upgraded.append("maxInjectedChars: 4000 → 8000")
+            if plugin_config.get("recallMode") == "list":
+                plugin_config["recallMode"] = "query"
+                upgraded.append("recallMode: list → query")
 
             if upgraded:
                 config["plugin_config"] = plugin_config
