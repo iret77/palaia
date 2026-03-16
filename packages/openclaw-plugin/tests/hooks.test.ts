@@ -21,6 +21,10 @@ import {
   buildFootnote,
   checkNudges,
   sendReaction,
+  normalizeForMatch,
+  findBotReplyByContent,
+  extractTargetFromSessionKey,
+  extractChannelFromSessionKey,
   type ExtractionResult,
   type PalaiaHint,
 } from "../src/hooks.js";
@@ -961,5 +965,192 @@ describe("sendReaction", () => {
     } else {
       delete process.env.OPENCLAW_GATEWAY_TOKEN;
     }
+  });
+});
+
+// ============================================================================
+// normalizeForMatch
+// ============================================================================
+
+describe("normalizeForMatch", () => {
+  it("lowercases text", () => {
+    expect(normalizeForMatch("Hello WORLD")).toBe("hello world");
+  });
+
+  it("strips markdown characters", () => {
+    expect(normalizeForMatch("**bold** and _italic_ and `code`")).toBe("bold and italic and code");
+  });
+
+  it("strips brackets and parens", () => {
+    expect(normalizeForMatch("[link](http://example.com) text")).toBe("linkhttp://example.com text");
+  });
+
+  it("collapses whitespace", () => {
+    expect(normalizeForMatch("hello   world\n\nnew  line")).toBe("hello world new line");
+  });
+
+  it("trims leading/trailing whitespace", () => {
+    expect(normalizeForMatch("  hello  ")).toBe("hello");
+  });
+
+  it("truncates to 80 chars", () => {
+    const long = "a".repeat(100);
+    expect(normalizeForMatch(long)).toHaveLength(80);
+  });
+
+  it("handles unicode", () => {
+    expect(normalizeForMatch("Über **Straße** und ~Brücke~")).toBe("über straße und brücke");
+  });
+
+  it("handles empty string", () => {
+    expect(normalizeForMatch("")).toBe("");
+  });
+
+  it("handles only markdown chars", () => {
+    expect(normalizeForMatch("**__~~``")).toBe("");
+  });
+
+  it("strips tilde for strikethrough", () => {
+    expect(normalizeForMatch("~~deleted~~ text")).toBe("deleted text");
+  });
+});
+
+// ============================================================================
+// extractTargetFromSessionKey / extractChannelFromSessionKey
+// ============================================================================
+
+describe("extractTargetFromSessionKey", () => {
+  it("extracts channel target from session key", () => {
+    expect(extractTargetFromSessionKey("agent:main:slack:channel:c0ake2g15hv")).toBe("channel:C0AKE2G15HV");
+  });
+
+  it("extracts dm target", () => {
+    expect(extractTargetFromSessionKey("agent:main:slack:dm:u12345")).toBe("dm:U12345");
+  });
+
+  it("returns undefined for invalid key", () => {
+    expect(extractTargetFromSessionKey("something:else")).toBeUndefined();
+  });
+});
+
+describe("extractChannelFromSessionKey", () => {
+  it("extracts channel provider from session key", () => {
+    expect(extractChannelFromSessionKey("agent:main:slack:channel:c0ake2g15hv")).toBe("slack");
+  });
+
+  it("extracts telegram provider", () => {
+    expect(extractChannelFromSessionKey("agent:main:telegram:channel:123456")).toBe("telegram");
+  });
+
+  it("returns undefined for short key", () => {
+    expect(extractChannelFromSessionKey("foo:bar")).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// findBotReplyByContent
+// ============================================================================
+
+describe("findBotReplyByContent", () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+    process.env.OPENCLAW_GATEWAY_PORT = "18789";
+    process.env.OPENCLAW_GATEWAY_TOKEN = "test-token";
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+    delete process.env.OPENCLAW_GATEWAY_PORT;
+    delete process.env.OPENCLAW_GATEWAY_TOKEN;
+  });
+
+  it("finds matching message by content prefix", async () => {
+    const responseText = "This is a bot response that should be matched by content prefix matching.";
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        messages: [
+          { id: "msg-1", text: "User question here" },
+          { id: "msg-2", text: "This is a bot response that should be matched by content prefix matching. Extra stuff here." },
+        ],
+      }),
+    } as any);
+
+    const result = await findBotReplyByContent("slack", responseText, "agent:main:slack:channel:c0ake2g15hv");
+    expect(result).toBe("msg-2");
+  });
+
+  it("returns undefined when no match", async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        messages: [
+          { id: "msg-1", text: "Something completely different" },
+        ],
+      }),
+    } as any);
+
+    const result = await findBotReplyByContent("slack", "This response does not exist in the channel messages at all anywhere.", "agent:main:slack:channel:c0ake2g15hv");
+    expect(result).toBeUndefined();
+  });
+
+  it("returns undefined on API error", async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+    } as any);
+
+    const result = await findBotReplyByContent("slack", "Some response text that is long enough for matching.", "agent:main:slack:channel:c0ake2g15hv");
+    expect(result).toBeUndefined();
+  });
+
+  it("returns undefined on fetch exception", async () => {
+    fetchSpy.mockRejectedValueOnce(new Error("Network error"));
+
+    const result = await findBotReplyByContent("slack", "Some response text that is long enough for matching.", "agent:main:slack:channel:c0ake2g15hv");
+    expect(result).toBeUndefined();
+  });
+
+  it("returns undefined when session key has no target", async () => {
+    const result = await findBotReplyByContent("slack", "Some response text that is long enough for matching.", "invalid:key");
+    expect(result).toBeUndefined();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns undefined when needle is too short", async () => {
+    const result = await findBotReplyByContent("slack", "short", "agent:main:slack:channel:c0ake2g15hv");
+    expect(result).toBeUndefined();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("uses msg.ts as fallback ID", async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        messages: [
+          { ts: "1234567890.123456", text: "This is a bot response that should be matched by the ts field." },
+        ],
+      }),
+    } as any);
+
+    const result = await findBotReplyByContent("slack", "This is a bot response that should be matched by the ts field.", "agent:main:slack:channel:c0ake2g15hv");
+    expect(result).toBe("1234567890.123456");
+  });
+
+  it("parses session key and sends correct target", async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ messages: [] }),
+    } as any);
+
+    await findBotReplyByContent("slack", "Some response text that is definitely long enough for matching.", "agent:main:slack:channel:c0ake2g15hv");
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as any).body);
+    expect(body.target).toBe("channel:C0AKE2G15HV");
+    expect(body.action).toBe("read");
+    expect(body.limit).toBe(5);
   });
 });

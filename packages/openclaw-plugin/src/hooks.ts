@@ -9,10 +9,18 @@
  */
 
 import fs from "node:fs/promises";
+import { appendFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { run, runJson, recover, type RunnerOpts } from "./runner.js";
 import type { PalaiaPluginConfig, RecallTypeWeights } from "./config.js";
+
+const DEBUG_LOG = "/tmp/palaia-reactions-debug.log";
+function debugLog(msg: string): void {
+  try {
+    appendFileSync(DEBUG_LOG, `[${new Date().toISOString()}] ${msg}\n`);
+  } catch { /* ignore */ }
+}
 
 // ============================================================================
 // Turn-level State (Issue #87: Transparency Features)
@@ -31,6 +39,8 @@ interface TurnState {
   lastUserMessageId?: string;
   /** Channel ID from the last inbound event. */
   lastChannelId?: string;
+  /** Timestamp when the turn started (Date.now()). */
+  turnStartMs?: number;
 }
 
 function emptyTurnState(): TurnState {
@@ -125,13 +135,15 @@ async function savePluginState(state: PluginState, workspace?: string): Promise<
  * Send an emoji reaction via the OpenClaw Gateway HTTP API.
  * Fails silently (console.warn) — reactions are non-critical.
  * @param emoji - Emoji name without colons, e.g. "brain", "floppy_disk"
- * @param channelId - Channel identifier (e.g. session key or channel id)
+ * @param channelId - Channel provider name (e.g. "slack", "telegram")
  * @param messageId - Optional message ID to react to
+ * @param target - Optional target (e.g. "channel:C0AKE2G15HV"), extracted from session key
  */
 export async function sendReaction(
   emoji: string,
   channelId: string,
   messageId?: string,
+  target?: string,
 ): Promise<boolean> {
   const gatewayPort = process.env.OPENCLAW_GATEWAY_PORT || "18789";
   const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
@@ -144,6 +156,11 @@ export async function sendReaction(
   if (messageId) {
     body.messageId = messageId;
   }
+  if (target) {
+    body.target = target;
+  }
+
+  debugLog(`sendReaction: emoji=${emoji}, channel=${channelId}, messageId=${messageId}, target=${target}, body=${JSON.stringify(body)}`);
 
   try {
     const controller = new AbortController();
@@ -162,13 +179,148 @@ export async function sendReaction(
     clearTimeout(timeout);
 
     if (!response.ok) {
+      const respText = await response.text().catch(() => "");
+      debugLog(`sendReaction: FAILED (${response.status}): ${emoji} on ${channelId} — ${respText}`);
       console.warn(`[palaia] Reaction failed (${response.status}): ${emoji} on ${channelId}`);
       return false;
     }
+    debugLog(`sendReaction: OK ${emoji} on ${channelId}`);
     return true;
   } catch (error) {
+    debugLog(`sendReaction: ERROR ${error}`);
     console.warn(`[palaia] Reaction error: ${error}`);
     return false;
+  }
+}
+
+// ============================================================================
+// Content-Hash Matching for Bot Reply Reactions
+// ============================================================================
+
+/**
+ * Normalize text for content-based message matching.
+ * Lowercases, strips markdown, collapses whitespace, trims, truncates to 80 chars.
+ */
+export function normalizeForMatch(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[*_`~\[\]()]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+/**
+ * Extract channel target from a session key.
+ * e.g. "agent:main:slack:channel:c0ake2g15hv" → "channel:C0AKE2G15HV"
+ */
+export function extractTargetFromSessionKey(sessionKey: string): string | undefined {
+  // Pattern: ...:<targetType>:<targetId>
+  const parts = sessionKey.split(":");
+  // Find "channel" or "dm" or similar target type in the parts
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (parts[i] === "channel" || parts[i] === "dm" || parts[i] === "group") {
+      return `${parts[i]}:${parts[i + 1].toUpperCase()}`;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Extract channel provider from a session key.
+ * e.g. "agent:main:slack:channel:c0ake2g15hv" → "slack"
+ */
+export function extractChannelFromSessionKey(sessionKey: string): string | undefined {
+  const parts = sessionKey.split(":");
+  // Pattern: agent:<name>:<channel>:<targetType>:<targetId>
+  // The channel provider is at index 2
+  if (parts.length >= 5 && parts[0] === "agent") {
+    return parts[2];
+  }
+  return undefined;
+}
+
+/**
+ * Find the bot's reply message by matching normalized content against recent channel messages.
+ * Uses Gateway API to read recent messages, then prefix-matches normalized text.
+ */
+export async function findBotReplyByContent(
+  channelId: string,
+  responseText: string,
+  sessionKey: string,
+): Promise<string | undefined> {
+  const needle = normalizeForMatch(responseText);
+  if (!needle || needle.length < 10) {
+    debugLog(`findBotReplyByContent: needle too short (${needle.length}), skipping`);
+    return undefined;
+  }
+  const matchPrefix = needle.slice(0, 40);
+
+  const target = extractTargetFromSessionKey(sessionKey);
+  if (!target) {
+    debugLog(`findBotReplyByContent: could not extract target from sessionKey=${sessionKey}`);
+    return undefined;
+  }
+
+  const gatewayPort = process.env.OPENCLAW_GATEWAY_PORT || "18789";
+  const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+
+    const body = {
+      action: "read",
+      channel: channelId,
+      target,
+      limit: 5,
+    };
+
+    debugLog(`findBotReplyByContent: POST /api/message body=${JSON.stringify(body)}`);
+
+    const response = await fetch(`http://127.0.0.1:${gatewayPort}/api/message`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(gatewayToken ? { Authorization: `Bearer ${gatewayToken}` } : {}),
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      debugLog(`findBotReplyByContent: API returned ${response.status}`);
+      return undefined;
+    }
+
+    const data = await response.json() as { messages?: Array<Record<string, unknown>> };
+    const messages = data.messages || (Array.isArray(data) ? data : []) as Array<Record<string, unknown>>;
+
+    debugLog(`findBotReplyByContent: got ${messages.length} messages`);
+
+    for (const msg of messages) {
+      const msgText = typeof msg.text === "string" ? msg.text
+        : typeof msg.content === "string" ? msg.content
+        : typeof msg.body === "string" ? msg.body
+        : "";
+      if (!msgText) continue;
+
+      const normalized = normalizeForMatch(msgText);
+      if (normalized.startsWith(matchPrefix)) {
+        const msgId = (msg.id || msg.ts || msg.messageId) as string | undefined;
+        debugLog(`findBotReplyByContent: MATCH found, msgId=${msgId}, normalized prefix=${normalized.slice(0, 40)}`);
+        return msgId;
+      }
+    }
+
+    debugLog(`findBotReplyByContent: no match found. needle prefix="${matchPrefix}"`);
+    return undefined;
+  } catch (error) {
+    debugLog(`findBotReplyByContent: ERROR ${error}`);
+    console.warn(`[palaia] findBotReplyByContent error: ${error}`);
+    return undefined;
   }
 }
 
@@ -936,6 +1088,7 @@ function buildRunnerOpts(config: PalaiaPluginConfig): RunnerOpts {
  * Register lifecycle hooks on the plugin API.
  */
 export function registerHooks(api: any, config: PalaiaPluginConfig): void {
+  debugLog(`registerHooks: called, autoCapture=${config.autoCapture}, memoryInject=${config.memoryInject}, showMemorySources=${config.showMemorySources}, showCaptureConfirm=${config.showCaptureConfirm}`);
   const opts = buildRunnerOpts(config);
 
   // ── before_prompt_build (Issue #65: Query-based Recall) ────────
@@ -1022,6 +1175,9 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
 
         // Flag that recall occurred (for emoji reaction in agent_end)
         turnState.recallOccurred = true;
+
+        // Track turn start time
+        turnState.turnStartMs = Date.now();
 
         // Capture user message ID and channel for reactions
         if (event.messages && Array.isArray(event.messages)) {
@@ -1240,12 +1396,18 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           );
         }
         // ── Emoji Reactions (Issue #87 v2) ────────────────────────
-        // Send reactions after capture is done. Non-blocking, fire-and-forget.
+        // Send reactions on the BOT REPLY (content-matched), not the user message.
         const reactionSessionKey = resolveSessionKey(event, _ctx);
         const reactionTurnState = getTurnState(reactionSessionKey);
 
-        // Resolve channel for reactions
-        let reactionChannel = reactionTurnState.lastChannelId;
+        debugLog(`agent_end (autoCapture): fired, sessionKey=${reactionSessionKey}, recallOccurred=${reactionTurnState.recallOccurred}, capturedCount=${reactionTurnState.lastCapturedSummaries.length}`);
+
+        // Resolve channel provider for reactions (e.g. "slack", "telegram")
+        const channelProvider = extractChannelFromSessionKey(reactionSessionKey);
+        const channelTarget = extractTargetFromSessionKey(reactionSessionKey);
+
+        // Fallback channel from context
+        let reactionChannel = channelProvider || reactionTurnState.lastChannelId;
         if (!reactionChannel && _ctx && typeof _ctx === "object") {
           const ctx = _ctx as Record<string, unknown>;
           if (typeof ctx.channelId === "string") reactionChannel = ctx.channelId;
@@ -1253,16 +1415,39 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         }
 
         if (reactionChannel) {
-          const messageId = reactionTurnState.lastUserMessageId;
+          // Try to find the bot reply message by content matching
+          let targetMessageId = reactionTurnState.lastUserMessageId; // fallback
+
+          // Extract last assistant message text for content matching
+          const lastAssistantText = (() => {
+            if (!event.messages || !Array.isArray(event.messages)) return undefined;
+            for (let i = event.messages.length - 1; i >= 0; i--) {
+              const msg = event.messages[i] as Record<string, unknown>;
+              if (msg?.role === "assistant" && typeof msg.content === "string") {
+                return msg.content;
+              }
+            }
+            return undefined;
+          })();
+
+          if (lastAssistantText && reactionChannel) {
+            const botReplyId = await findBotReplyByContent(reactionChannel, lastAssistantText, reactionSessionKey);
+            if (botReplyId) {
+              targetMessageId = botReplyId;
+              debugLog(`agent_end: using bot reply ID ${botReplyId}`);
+            } else {
+              debugLog(`agent_end: no bot reply match, falling back to user msg ${targetMessageId}`);
+            }
+          }
 
           // 💾 Capture confirm reaction
           if (config.showCaptureConfirm && reactionTurnState.lastCapturedSummaries.length > 0) {
-            sendReaction("floppy_disk", reactionChannel, messageId).catch(() => {});
+            sendReaction("floppy_disk", reactionChannel, targetMessageId, channelTarget).catch(() => {});
           }
 
           // 🧠 Recall reaction
           if (config.showMemorySources && reactionTurnState.recallOccurred) {
-            sendReaction("brain", reactionChannel, messageId).catch(() => {});
+            sendReaction("brain", reactionChannel, targetMessageId, channelTarget).catch(() => {});
           }
         }
 
@@ -1287,7 +1472,12 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         const sessionKey = resolveSessionKey(event, _ctx);
         const turnState = getTurnState(sessionKey);
 
-        let reactionChannel = turnState.lastChannelId;
+        debugLog(`agent_end (recall-only): fired, sessionKey=${sessionKey}, recallOccurred=${turnState.recallOccurred}`);
+
+        const channelProvider = extractChannelFromSessionKey(sessionKey);
+        const channelTarget = extractTargetFromSessionKey(sessionKey);
+
+        let reactionChannel = channelProvider || turnState.lastChannelId;
         if (!reactionChannel && _ctx && typeof _ctx === "object") {
           const ctx = _ctx as Record<string, unknown>;
           if (typeof ctx.channelId === "string") reactionChannel = ctx.channelId;
@@ -1295,8 +1485,29 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         }
 
         if (reactionChannel && config.showMemorySources && turnState.recallOccurred) {
-          const messageId = turnState.lastUserMessageId;
-          sendReaction("brain", reactionChannel, messageId).catch(() => {});
+          let targetMessageId = turnState.lastUserMessageId;
+
+          // Try content-match for bot reply
+          const lastAssistantText = (() => {
+            if (!event.messages || !Array.isArray(event.messages)) return undefined;
+            for (let i = event.messages.length - 1; i >= 0; i--) {
+              const msg = event.messages[i] as Record<string, unknown>;
+              if (msg?.role === "assistant" && typeof msg.content === "string") {
+                return msg.content;
+              }
+            }
+            return undefined;
+          })();
+
+          if (lastAssistantText && reactionChannel) {
+            const botReplyId = await findBotReplyByContent(reactionChannel, lastAssistantText, sessionKey);
+            if (botReplyId) {
+              targetMessageId = botReplyId;
+              debugLog(`agent_end (recall-only): using bot reply ID ${botReplyId}`);
+            }
+          }
+
+          sendReaction("brain", reactionChannel, targetMessageId, channelTarget).catch(() => {});
         }
 
         // Reset
