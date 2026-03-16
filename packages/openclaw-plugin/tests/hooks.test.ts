@@ -25,6 +25,8 @@ import {
   findBotReplyByContent,
   extractTargetFromSessionKey,
   extractChannelFromSessionKey,
+  isValidScope,
+  sanitizeScope,
   type ExtractionResult,
   type PalaiaHint,
 } from "../src/hooks.js";
@@ -1153,4 +1155,28 @@ describe("findBotReplyByContent", () => {
     expect(body.action).toBe("read");
     expect(body.limit).toBe(5);
   });
+});
+
+// ============================================================================
+// isValidScope / sanitizeScope (Issue #90)
+// ============================================================================
+
+describe("isValidScope", () => {
+  it("accepts private", () => expect(isValidScope("private")).toBe(true));
+  it("accepts team", () => expect(isValidScope("team")).toBe(true));
+  it("accepts public", () => expect(isValidScope("public")).toBe(true));
+  it("accepts shared: prefix", () => expect(isValidScope("shared:org")).toBe(true));
+  it("rejects garbage", () => expect(isValidScope("y")).toBe(false));
+  it("rejects empty string", () => expect(isValidScope("")).toBe(false));
+  it("rejects partial match", () => expect(isValidScope("teams")).toBe(false));
+  it("rejects 'shared' without colon", () => expect(isValidScope("shared")).toBe(false));
+});
+
+describe("sanitizeScope", () => {
+  it("returns valid scope as-is", () => expect(sanitizeScope("private")).toBe("private"));
+  it("returns fallback for invalid scope", () => expect(sanitizeScope("y")).toBe("team"));
+  it("returns fallback for null", () => expect(sanitizeScope(null)).toBe("team"));
+  it("returns fallback for undefined", () => expect(sanitizeScope(undefined)).toBe("team"));
+  it("uses custom fallback", () => expect(sanitizeScope("garbage", "private")).toBe("private"));
+  it("accepts shared: scope", () => expect(sanitizeScope("shared:org")).toBe("shared:org"));
 });

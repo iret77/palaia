@@ -194,6 +194,28 @@ export async function sendReaction(
 }
 
 // ============================================================================
+// Scope Validation (Issue #90)
+// ============================================================================
+
+const VALID_SCOPES = ["private", "team", "public"];
+
+/**
+ * Check if a scope string is valid for palaia write.
+ * Valid: "private", "team", "public", or any "shared:*" prefix.
+ */
+export function isValidScope(s: string): boolean {
+  return VALID_SCOPES.includes(s) || s.startsWith("shared:");
+}
+
+/**
+ * Sanitize a scope value — returns the value if valid, otherwise fallback.
+ */
+export function sanitizeScope(rawScope: string | null | undefined, fallback = "team"): string {
+  if (rawScope && isValidScope(rawScope)) return rawScope;
+  return fallback;
+}
+
+// ============================================================================
 // Content-Hash Matching for Bot Reply Reactions
 // ============================================================================
 
@@ -800,8 +822,7 @@ export async function extractWithLLM(
         ? item.project.trim()
         : null;
 
-      const validScopes = new Set(["private", "team", "public"]);
-      const scope = typeof item.scope === "string" && validScopes.has(item.scope)
+      const scope = typeof item.scope === "string" && isValidScope(item.scope)
         ? item.scope
         : null;
 
@@ -1300,7 +1321,8 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           ];
 
           // Scope priority: config override > hint > LLM > "team" default
-          const scope = config.captureScope || itemScope || "team";
+          // Validate scope — LLM sometimes returns garbage like "y" (Issue #90)
+          const scope = sanitizeScope(config.captureScope || itemScope, config.captureScope || "team");
           args.push("--scope", scope);
 
           // Project priority: config override > hint > LLM
