@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import json
-import time
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from palaia.nudge import NudgeTracker, GRADUATION_THRESHOLD, NUDGE_COOLDOWN_SECONDS
+from palaia.nudge import GRADUATION_THRESHOLD, NudgeTracker
 
 
 @pytest.fixture
@@ -247,18 +245,14 @@ class TestCLIIntegration:
         assert any("--type" in n for n in out["nudge"])
 
     def test_write_with_type_no_nudge(self, palaia_root, monkeypatch, capsys):
-        self._run_palaia(
-            palaia_root, ["write", "test entry", "--type", "memory", "--json"], monkeypatch
-        )
+        self._run_palaia(palaia_root, ["write", "test entry", "--type", "memory", "--json"], monkeypatch)
         out = json.loads(capsys.readouterr().out)
         # No nudge for type, but might still have nudge for tags
         type_nudges = [n for n in out.get("nudge", []) if "--type" in n]
         assert len(type_nudges) == 0
 
     def test_write_with_tags_no_tags_nudge(self, palaia_root, monkeypatch, capsys):
-        self._run_palaia(
-            palaia_root, ["write", "test entry", "--tags", "test", "--json"], monkeypatch
-        )
+        self._run_palaia(palaia_root, ["write", "test entry", "--tags", "test", "--json"], monkeypatch)
         out = json.loads(capsys.readouterr().out)
         tags_nudges = [n for n in out.get("nudge", []) if "--tags" in n]
         assert len(tags_nudges) == 0
@@ -275,9 +269,7 @@ class TestCLIIntegration:
             capsys.readouterr()  # clear output
 
         # Write WITH type again — should NOT nudge for type (still graduated)
-        self._run_palaia(
-            palaia_root, ["write", "test with type", "--type", "memory", "--json"], monkeypatch
-        )
+        self._run_palaia(palaia_root, ["write", "test with type", "--type", "memory", "--json"], monkeypatch)
         out = json.loads(capsys.readouterr().out)
         type_nudges = [n for n in out.get("nudge", []) if "--type" in n]
         assert len(type_nudges) == 0

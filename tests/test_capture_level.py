@@ -86,7 +86,9 @@ class TestDoctorCaptureLevel:
         # Simulate OpenClaw environment
         openclaw_dir = Path.home() / ".openclaw"
         if not openclaw_dir.exists():
-            monkeypatch.setattr("pathlib.Path.is_dir", lambda self: True if ".openclaw" in str(self) else Path.is_dir(self))
+            monkeypatch.setattr(
+                "pathlib.Path.is_dir", lambda self: True if ".openclaw" in str(self) else Path.is_dir(self)
+            )
 
         from palaia.doctor import _check_capture_level
 
