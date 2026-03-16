@@ -2,91 +2,19 @@
  * Lifecycle hooks for the Palaia OpenClaw plugin.
  *
  * - before_prompt_build: Query-based contextual recall (Issue #65).
+ *   Returns appendSystemContext with 🧠 instruction when memory is used.
  * - agent_end: Auto-capture of significant exchanges (Issue #64).
  *   Now with LLM-based extraction via OpenClaw's runEmbeddedPiAgent,
  *   falling back to rule-based extraction if the LLM is unavailable.
  * - palaia-recovery service: Replays WAL on startup.
+ * - /palaia command: Show memory status.
  */
 
 import fs from "node:fs/promises";
-import { appendFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { run, runJson, recover, type RunnerOpts } from "./runner.js";
 import type { PalaiaPluginConfig, RecallTypeWeights } from "./config.js";
-
-const DEBUG_LOG = "/tmp/palaia-reactions-debug.log";
-function debugLog(msg: string): void {
-  try {
-    appendFileSync(DEBUG_LOG, `[${new Date().toISOString()}] ${msg}\n`);
-  } catch { /* ignore */ }
-}
-
-// ============================================================================
-// Turn-level State (Issue #87: Transparency Features)
-// ============================================================================
-// Session-scoped state to prevent cross-session leakage (Issue #XX).
-// Each agent session gets its own TurnState, keyed by sessionKey.
-
-interface TurnState {
-  /** Entries injected by before_prompt_build for footnote attribution. */
-  lastInjectedEntries: Array<{ title: string; date: string }>;
-  /** Summaries of auto-captured content from agent_end for confirmation display. */
-  lastCapturedSummaries: string[];
-  /** Whether recall (memory injection) occurred in this turn. */
-  recallOccurred: boolean;
-  /** Last inbound user message ID (for emoji reactions). */
-  lastUserMessageId?: string;
-  /** Channel ID from the last inbound event. */
-  lastChannelId?: string;
-  /** Timestamp when the turn started (Date.now()). */
-  turnStartMs?: number;
-}
-
-function emptyTurnState(): TurnState {
-  return { lastInjectedEntries: [], lastCapturedSummaries: [], recallOccurred: false };
-}
-
-/** Session-scoped turn state map. Key = sessionKey or "__default__". */
-const _sessionTurnState = new Map<string, TurnState>();
-
-const DEFAULT_SESSION_KEY = "__default__";
-
-/** Get turn state for a session (creates if absent). */
-function getTurnState(sessionKey?: string): TurnState {
-  const key = sessionKey || DEFAULT_SESSION_KEY;
-  let state = _sessionTurnState.get(key);
-  if (!state) {
-    state = emptyTurnState();
-    _sessionTurnState.set(key, state);
-  }
-  return state;
-}
-
-/**
- * Extract session key from event or context.
- * Tries event.sessionKey, ctx.sessionKey, event.session?.key, ctx.session?.key.
- */
-function resolveSessionKey(event?: Record<string, unknown>, ctx?: Record<string, unknown>): string {
-  if (event) {
-    if (typeof event.sessionKey === "string" && event.sessionKey) return event.sessionKey;
-    if (event.session && typeof event.session === "object" && typeof (event.session as Record<string, unknown>).key === "string") {
-      return (event.session as Record<string, unknown>).key as string;
-    }
-  }
-  if (ctx) {
-    if (typeof ctx.sessionKey === "string" && ctx.sessionKey) return ctx.sessionKey;
-    if (ctx.session && typeof ctx.session === "object" && typeof (ctx.session as Record<string, unknown>).key === "string") {
-      return (ctx.session as Record<string, unknown>).key as string;
-    }
-  }
-  return DEFAULT_SESSION_KEY;
-}
-
-/** Reset turn state for all sessions (for testing). */
-export function resetTurnState(): void {
-  _sessionTurnState.clear();
-}
 
 // ============================================================================
 // Plugin State Persistence (Issue #87: Recall counter for nudges)
@@ -128,72 +56,6 @@ async function savePluginState(state: PluginState, workspace?: string): Promise<
 }
 
 // ============================================================================
-// Emoji Reaction Helper (Issue #87 v2: Reactions instead of Footnotes)
-// ============================================================================
-
-/**
- * Send an emoji reaction via the OpenClaw Gateway HTTP API.
- * Fails silently (console.warn) — reactions are non-critical.
- * @param emoji - Emoji name without colons, e.g. "brain", "floppy_disk"
- * @param channelId - Channel provider name (e.g. "slack", "telegram")
- * @param messageId - Optional message ID to react to
- * @param target - Optional target (e.g. "channel:C0AKE2G15HV"), extracted from session key
- */
-export async function sendReaction(
-  emoji: string,
-  channelId: string,
-  messageId?: string,
-  target?: string,
-): Promise<boolean> {
-  const gatewayPort = process.env.OPENCLAW_GATEWAY_PORT || "18789";
-  const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
-
-  const body: Record<string, unknown> = {
-    action: "react",
-    channel: channelId,
-    emoji,
-  };
-  if (messageId) {
-    body.messageId = messageId;
-  }
-  if (target) {
-    body.target = target;
-  }
-
-  debugLog(`sendReaction: emoji=${emoji}, channel=${channelId}, messageId=${messageId}, target=${target}, body=${JSON.stringify(body)}`);
-
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-
-    const response = await fetch(`http://127.0.0.1:${gatewayPort}/api/message`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(gatewayToken ? { Authorization: `Bearer ${gatewayToken}` } : {}),
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      const respText = await response.text().catch(() => "");
-      debugLog(`sendReaction: FAILED (${response.status}): ${emoji} on ${channelId} — ${respText}`);
-      console.warn(`[palaia] Reaction failed (${response.status}): ${emoji} on ${channelId}`);
-      return false;
-    }
-    debugLog(`sendReaction: OK ${emoji} on ${channelId}`);
-    return true;
-  } catch (error) {
-    debugLog(`sendReaction: ERROR ${error}`);
-    console.warn(`[palaia] Reaction error: ${error}`);
-    return false;
-  }
-}
-
-// ============================================================================
 // Scope Validation (Issue #90)
 // ============================================================================
 
@@ -216,30 +78,15 @@ export function sanitizeScope(rawScope: string | null | undefined, fallback = "t
 }
 
 // ============================================================================
-// Content-Hash Matching for Bot Reply Reactions
+// Session Key Helpers
 // ============================================================================
-
-/**
- * Normalize text for content-based message matching.
- * Lowercases, strips markdown, collapses whitespace, trims, truncates to 80 chars.
- */
-export function normalizeForMatch(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[*_`~\[\]()]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80);
-}
 
 /**
  * Extract channel target from a session key.
  * e.g. "agent:main:slack:channel:c0ake2g15hv" → "channel:C0AKE2G15HV"
  */
 export function extractTargetFromSessionKey(sessionKey: string): string | undefined {
-  // Pattern: ...:<targetType>:<targetId>
   const parts = sessionKey.split(":");
-  // Find "channel" or "dm" or similar target type in the parts
   for (let i = 0; i < parts.length - 1; i++) {
     if (parts[i] === "channel" || parts[i] === "dm" || parts[i] === "group") {
       return `${parts[i]}:${parts[i + 1].toUpperCase()}`;
@@ -254,96 +101,10 @@ export function extractTargetFromSessionKey(sessionKey: string): string | undefi
  */
 export function extractChannelFromSessionKey(sessionKey: string): string | undefined {
   const parts = sessionKey.split(":");
-  // Pattern: agent:<name>:<channel>:<targetType>:<targetId>
-  // The channel provider is at index 2
   if (parts.length >= 5 && parts[0] === "agent") {
     return parts[2];
   }
   return undefined;
-}
-
-/**
- * Find the bot's reply message by matching normalized content against recent channel messages.
- * Uses Gateway API to read recent messages, then prefix-matches normalized text.
- */
-export async function findBotReplyByContent(
-  channelId: string,
-  responseText: string,
-  sessionKey: string,
-): Promise<string | undefined> {
-  const needle = normalizeForMatch(responseText);
-  if (!needle || needle.length < 10) {
-    debugLog(`findBotReplyByContent: needle too short (${needle.length}), skipping`);
-    return undefined;
-  }
-  const matchPrefix = needle.slice(0, 40);
-
-  const target = extractTargetFromSessionKey(sessionKey);
-  if (!target) {
-    debugLog(`findBotReplyByContent: could not extract target from sessionKey=${sessionKey}`);
-    return undefined;
-  }
-
-  const gatewayPort = process.env.OPENCLAW_GATEWAY_PORT || "18789";
-  const gatewayToken = process.env.OPENCLAW_GATEWAY_TOKEN || "";
-
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-
-    const body = {
-      action: "read",
-      channel: channelId,
-      target,
-      limit: 5,
-    };
-
-    debugLog(`findBotReplyByContent: POST /api/message body=${JSON.stringify(body)}`);
-
-    const response = await fetch(`http://127.0.0.1:${gatewayPort}/api/message`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(gatewayToken ? { Authorization: `Bearer ${gatewayToken}` } : {}),
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      debugLog(`findBotReplyByContent: API returned ${response.status}`);
-      return undefined;
-    }
-
-    const data = await response.json() as { messages?: Array<Record<string, unknown>> };
-    const messages = data.messages || (Array.isArray(data) ? data : []) as Array<Record<string, unknown>>;
-
-    debugLog(`findBotReplyByContent: got ${messages.length} messages`);
-
-    for (const msg of messages) {
-      const msgText = typeof msg.text === "string" ? msg.text
-        : typeof msg.content === "string" ? msg.content
-        : typeof msg.body === "string" ? msg.body
-        : "";
-      if (!msgText) continue;
-
-      const normalized = normalizeForMatch(msgText);
-      if (normalized.startsWith(matchPrefix)) {
-        const msgId = (msg.id || msg.ts || msg.messageId) as string | undefined;
-        debugLog(`findBotReplyByContent: MATCH found, msgId=${msgId}, normalized prefix=${normalized.slice(0, 40)}`);
-        return msgId;
-      }
-    }
-
-    debugLog(`findBotReplyByContent: no match found. needle prefix="${matchPrefix}"`);
-    return undefined;
-  } catch (error) {
-    debugLog(`findBotReplyByContent: ERROR ${error}`);
-    console.warn(`[palaia] findBotReplyByContent error: ${error}`);
-    return undefined;
-  }
 }
 
 // ============================================================================
@@ -377,7 +138,6 @@ export function isEntryRelevant(title: string, responseText: string): boolean {
     .split(/[\s\-_/]+/)
     .filter((w) => w.length >= 3);
   if (titleWords.length === 0) return false;
-  // For single-word titles, require that one word to match
   const threshold = titleWords.length === 1 ? 1 : 2;
   let matches = 0;
   for (const word of titleWords) {
@@ -398,8 +158,6 @@ export function buildFootnote(
   _responseText: string,
   maxEntries = 3,
 ): string | null {
-  // All injected entries were already selected by semantic search — no additional
-  // keyword filtering needed. Show top-N as attribution footnotes.
   if (entries.length === 0) return null;
 
   const display = entries.slice(0, maxEntries);
@@ -438,14 +196,12 @@ export function checkNudges(state: PluginState): { nudges: string[]; updated: bo
   const nudges: string[] = [];
   let updated = false;
 
-  // Satisfaction check: after 10 recalls, one-shot
   if (!state.satisfactionNudged && state.successfulRecalls >= SATISFACTION_THRESHOLD) {
     nudges.push(SATISFACTION_NUDGE_TEXT);
     state.satisfactionNudged = true;
     updated = true;
   }
 
-  // Transparency preference: after 50 recalls OR 7 days, one-shot
   if (!state.transparencyNudged && state.firstRecallTimestamp) {
     const daysSinceFirst = (Date.now() - new Date(state.firstRecallTimestamp).getTime()) / (1000 * 60 * 60 * 24);
     if (state.successfulRecalls >= TRANSPARENCY_RECALL_THRESHOLD || daysSinceFirst >= TRANSPARENCY_DAYS_THRESHOLD) {
@@ -513,7 +269,7 @@ interface CachedProject {
 
 let _cachedProjects: CachedProject[] | null = null;
 let _projectCacheTime = 0;
-const PROJECT_CACHE_TTL_MS = 60_000; // 1 minute
+const PROJECT_CACHE_TTL_MS = 60_000;
 
 /** Reset project cache (for testing). */
 export function resetProjectCache(): void {
@@ -542,7 +298,6 @@ async function loadProjects(opts: import("./runner.js").RunnerOpts): Promise<Cac
     _projectCacheTime = now;
     return _cachedProjects;
   } catch {
-    // Non-fatal: return empty if project list fails
     return _cachedProjects || [];
   }
 }
@@ -588,25 +343,18 @@ export interface ExtractionResult {
 
 type RunEmbeddedPiAgentFn = (params: Record<string, unknown>) => Promise<unknown>;
 
-/** Cached loader result (null = not yet attempted, Error = load failed) */
 let _embeddedPiAgentLoader: Promise<RunEmbeddedPiAgentFn> | null = null;
 
-/**
- * Load runEmbeddedPiAgent from OpenClaw internals.
- * Mirrors the import pattern used by the llm-task extension.
- */
 async function loadRunEmbeddedPiAgent(): Promise<RunEmbeddedPiAgentFn> {
-  // Source checkout (tests/dev)
   try {
     const mod = await import("../../../src/agents/pi-embedded-runner.js");
     if (typeof (mod as any).runEmbeddedPiAgent === "function") {
       return (mod as any).runEmbeddedPiAgent;
     }
   } catch {
-    // ignore — not in source tree
+    // ignore
   }
 
-  // Bundled install
   const distPath = "../../../dist/extensionAPI.js";
   const mod = (await import(distPath)) as { runEmbeddedPiAgent?: unknown };
   const fn = (mod as any).runEmbeddedPiAgent;
@@ -616,10 +364,6 @@ async function loadRunEmbeddedPiAgent(): Promise<RunEmbeddedPiAgentFn> {
   return fn as RunEmbeddedPiAgentFn;
 }
 
-/**
- * Get a cached reference to runEmbeddedPiAgent.
- * Returns the function or throws if unavailable.
- */
 export function getEmbeddedPiAgent(): Promise<RunEmbeddedPiAgentFn> {
   if (!_embeddedPiAgentLoader) {
     _embeddedPiAgentLoader = loadRunEmbeddedPiAgent();
@@ -646,9 +390,6 @@ Only extract genuinely significant knowledge. Skip small talk, acknowledgments, 
 Return empty array [] if nothing is worth remembering.
 Return ONLY valid JSON, no markdown fences.`;
 
-/**
- * Build the full extraction prompt, including known projects if available.
- */
 function buildExtractionPrompt(projects: CachedProject[]): string {
   if (projects.length === 0) return EXTRACTION_SYSTEM_PROMPT_BASE;
   const projectList = projects
@@ -657,28 +398,21 @@ function buildExtractionPrompt(projects: CachedProject[]): string {
   return `${EXTRACTION_SYSTEM_PROMPT_BASE}\n\nKnown projects: ${projectList}`;
 }
 
-/** Known cheap models per provider */
 const CHEAP_MODELS: Record<string, string> = {
   anthropic: "claude-haiku-4",
   openai: "gpt-4.1-mini",
   google: "gemini-2.0-flash",
 };
 
-/**
- * Resolve the model to use for extraction based on config.
- * Returns { provider, model } or undefined if no model can be resolved.
- */
 export function resolveCaptureModel(
   config: any,
   captureModel?: string,
 ): { provider: string; model: string } | undefined {
-  // 1. Explicit captureModel in plugin config
   if (captureModel && captureModel !== "cheap") {
     const parts = captureModel.split("/");
     if (parts.length >= 2) {
       return { provider: parts[0], model: parts.slice(1).join("/") };
     }
-    // If no slash, treat as model name — need provider from defaults
     const defaultsModel = config?.agents?.defaults?.model;
     const primary = typeof defaultsModel === "string"
       ? defaultsModel.trim()
@@ -689,7 +423,6 @@ export function resolveCaptureModel(
     }
   }
 
-  // 2. "cheap" or no captureModel: pick cheapest available model
   const defaultsModel = config?.agents?.defaults?.model;
   const primary = typeof defaultsModel === "string"
     ? defaultsModel.trim()
@@ -701,7 +434,6 @@ export function resolveCaptureModel(
     return { provider: defaultProvider, model: CHEAP_MODELS[defaultProvider] };
   }
 
-  // Fallback: use the default model directly
   if (defaultProvider && defaultModel) {
     return { provider: defaultProvider, model: defaultModel };
   }
@@ -709,9 +441,6 @@ export function resolveCaptureModel(
   return undefined;
 }
 
-/**
- * Strip markdown code fences from LLM response.
- */
 function stripCodeFences(s: string): string {
   const trimmed = s.trim();
   const m = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -719,9 +448,6 @@ function stripCodeFences(s: string): string {
   return trimmed;
 }
 
-/**
- * Collect text payloads from runEmbeddedPiAgent result.
- */
 function collectText(payloads: Array<{ text?: string; isError?: boolean }> | undefined): string {
   return (payloads ?? [])
     .filter((p) => !p.isError && typeof p.text === "string")
@@ -730,10 +456,6 @@ function collectText(payloads: Array<{ text?: string; isError?: boolean }> | und
     .trim();
 }
 
-/**
- * Extract knowledge from messages using LLM via runEmbeddedPiAgent.
- * Throws if the LLM call fails (caller should fall back to rule-based).
- */
 export async function extractWithLLM(
   messages: unknown[],
   config: any,
@@ -747,7 +469,6 @@ export async function extractWithLLM(
     throw new Error("No model available for LLM extraction");
   }
 
-  // Build exchange text from messages
   const texts = extractMessageTexts(messages);
   const exchangeText = texts
     .filter((t) => t.role === "user" || t.role === "assistant")
@@ -796,7 +517,6 @@ export async function extractWithLLM(
       throw new Error(`LLM returned non-array: ${typeof parsed}`);
     }
 
-    // Validate and normalize each result
     const results: ExtractionResult[] = [];
     for (const item of parsed) {
       if (!item || typeof item !== "object") continue;
@@ -841,77 +561,50 @@ export async function extractWithLLM(
 // Auto-Capture: Rule-based extraction (Issue #64)
 // ============================================================================
 
-/** Trivial responses that should never be captured */
 const TRIVIAL_RESPONSES = new Set([
   "ok", "ja", "nein", "yes", "no", "sure", "klar", "danke", "thanks",
   "thx", "k", "👍", "👎", "ack", "nope", "yep", "yup", "alright",
   "fine", "gut", "passt", "okay", "hmm", "hm", "ah", "aha",
 ]);
 
-/**
- * Significance patterns that indicate content worth capturing.
- * Each pattern maps to a tag and type.
- */
 const SIGNIFICANCE_RULES: Array<{
   pattern: RegExp;
   tag: string;
   type: "memory" | "process" | "task";
 }> = [
-  // Decisions
   { pattern: /(?:we decided|entschieden|decision:|beschlossen|let'?s go with|wir nehmen|agreed on)/i, tag: "decision", type: "memory" },
   { pattern: /(?:will use|werden nutzen|going forward|ab jetzt|from now on)/i, tag: "decision", type: "memory" },
-
-  // Lessons / Learnings
   { pattern: /(?:learned|gelernt|lesson:|erkenntnis|takeaway|insight|turns out|it seems)/i, tag: "lesson", type: "memory" },
   { pattern: /(?:mistake was|fehler war|should have|hätten sollen|next time)/i, tag: "lesson", type: "memory" },
-
-  // Surprises / Unexpected findings
   { pattern: /(?:surprising|überraschend|unexpected|unerwartet|didn'?t expect|nicht erwartet|plot twist)/i, tag: "surprise", type: "memory" },
-
-  // Commitments / Action items
   { pattern: /(?:i will|ich werde|todo:|action item|must do|muss noch|need to|commit to|verspreche)/i, tag: "commitment", type: "task" },
   { pattern: /(?:deadline|frist|due date|bis zum|by end of|spätestens)/i, tag: "commitment", type: "task" },
-
-  // Process documentation
   { pattern: /(?:the process is|der prozess|steps?:|workflow:|how to|anleitung|recipe:|checklist)/i, tag: "process", type: "process" },
   { pattern: /(?:first,?\s.*then|schritt \d|step \d|1\.\s.*2\.\s)/i, tag: "process", type: "process" },
 ];
 
-/**
- * Patterns that indicate machine/tool output rather than human knowledge.
- * Content matching these should not be captured as significant.
- */
 const NOISE_PATTERNS: RegExp[] = [
-  // Test output (pytest, vitest, jest, etc.)
   /(?:PASSED|FAILED|ERROR)\s+\[?\d+%\]?/i,
   /(?:test_\w+|tests?\/\w+\.(?:py|ts|js))\s*::/,
   /(?:pytest|vitest|jest|mocha)\s+(?:run|--)/i,
   /\d+ passed,?\s*\d* (?:failed|error|warning)/i,
   /^(?:=+\s*(?:test session|ERRORS|FAILURES|short test summary))/m,
-  // Stack traces
   /(?:Traceback \(most recent call last\)|^\s+File ".*", line \d+)/m,
   /^\s+at\s+\S+\s+\(.*:\d+:\d+\)/m,
-  // CLI output / file paths as main content
   /^(?:\/[\w/.-]+){3,}\s*$/m,
-  // Build/CI output
   /(?:npm\s+(?:ERR|WARN)|pip\s+install|cargo\s+build)/i,
   /^(?:warning|error)\[?\w*\]?:\s/m,
 ];
 
-/**
- * Check if text is predominantly machine/tool output (test results, stack traces, etc.).
- * Returns true if the text appears to be noise rather than human knowledge.
- */
 export function isNoiseContent(text: string): boolean {
   let matchCount = 0;
   for (const pattern of NOISE_PATTERNS) {
     if (pattern.test(text)) {
       matchCount++;
-      if (matchCount >= 2) return true; // 2+ noise signals = definitely noise
+      if (matchCount >= 2) return true;
     }
   }
 
-  // Also check: if >50% of lines look like file paths, it's noise
   const lines = text.split("\n").filter((l) => l.trim().length > 0);
   if (lines.length > 3) {
     const pathLines = lines.filter((l) => /^\s*(?:\/[\w/.-]+){2,}/.test(l.trim()));
@@ -921,42 +614,27 @@ export function isNoiseContent(text: string): boolean {
   return false;
 }
 
-/**
- * Pre-filter: Should this exchange even be considered for capture?
- * Returns false for trivial, too-short, system-generated, or noise content.
- */
 export function shouldAttemptCapture(
   exchangeText: string,
   minChars = 100,
 ): boolean {
   const trimmed = exchangeText.trim();
 
-  // Too short
   if (trimmed.length < minChars) return false;
 
-  // Check if it's just trivial responses
   const words = trimmed.toLowerCase().split(/\s+/);
   if (words.length <= 3 && words.every((w) => TRIVIAL_RESPONSES.has(w))) {
     return false;
   }
 
-  // Skip system-generated / injected content
   if (trimmed.includes("<relevant-memories>")) return false;
   if (trimmed.startsWith("<") && trimmed.includes("</")) return false;
 
-  // Skip machine/tool output (test results, stack traces, CI logs)
   if (isNoiseContent(trimmed)) return false;
 
   return true;
 }
 
-/**
- * Extract significance from exchange text using rule-based matching.
- * Returns null if nothing significant is detected.
- *
- * NOTE: This is the rule-based fallback. Primary extraction uses extractWithLLM()
- * via OpenClaw's runEmbeddedPiAgent. Rule-based kicks in when LLM is unavailable.
- */
 export function extractSignificance(
   exchangeText: string,
 ): { tags: string[]; type: "memory" | "process" | "task"; summary: string } | null {
@@ -970,7 +648,6 @@ export function extractSignificance(
 
   if (matched.length === 0) return null;
 
-  // Determine primary type by priority: task > process > memory
   const typePriority: Record<string, number> = { task: 3, process: 2, memory: 1 };
   const primaryType = matched.reduce(
     (best, m) => (typePriority[m.type] > typePriority[best] ? m.type : best),
@@ -979,13 +656,11 @@ export function extractSignificance(
 
   const tags = [...new Set(matched.map((m) => m.tag))];
 
-  // Build a summary: take the most relevant sentences
   const sentences = exchangeText
     .split(/[.!?\n]+/)
     .map((s) => s.trim())
     .filter((s) => s.length > 20 && s.length < 500);
 
-  // Pick sentences that match our significance rules
   const relevantSentences = sentences.filter((s) =>
     SIGNIFICANCE_RULES.some((r) => r.pattern.test(s)),
   );
@@ -1000,9 +675,6 @@ export function extractSignificance(
   return { tags, type: primaryType, summary };
 }
 
-/**
- * Extract text content from OpenClaw message objects.
- */
 export function extractMessageTexts(messages: unknown[]): Array<{ role: string; text: string }> {
   const result: Array<{ role: string; text: string }> = [];
 
@@ -1035,9 +707,6 @@ export function extractMessageTexts(messages: unknown[]): Array<{ role: string; 
   return result;
 }
 
-/**
- * Get the last user message from event messages.
- */
 export function getLastUserMessage(messages: unknown[]): string | null {
   const texts = extractMessageTexts(messages);
   for (let i = texts.length - 1; i >= 0; i--) {
@@ -1061,9 +730,6 @@ interface RankedEntry {
   weightedScore: number;
 }
 
-/**
- * Rerank query results by applying type-based weights.
- */
 export function rerankByTypeWeight(
   results: QueryResult["results"],
   weights: RecallTypeWeights,
@@ -1090,15 +756,53 @@ export function rerankByTypeWeight(
 // Hook helpers
 // ============================================================================
 
-/**
- * Build RunnerOpts from plugin config.
- */
 function buildRunnerOpts(config: PalaiaPluginConfig): RunnerOpts {
   return {
     binaryPath: config.binaryPath,
     workspace: config.workspace,
     timeoutMs: config.timeoutMs,
   };
+}
+
+// ============================================================================
+// /palaia status command — Format helpers
+// ============================================================================
+
+function formatStatusResponse(
+  state: PluginState,
+  stats: Record<string, unknown>,
+  config: PalaiaPluginConfig,
+): string {
+  const lines: string[] = ["Palaia Memory Status", ""];
+
+  // Recall count
+  const sinceDate = state.firstRecallTimestamp
+    ? formatShortDate(state.firstRecallTimestamp)
+    : "n/a";
+  lines.push(`Recalls: ${state.successfulRecalls} successful (since ${sinceDate})`);
+
+  // Store stats from palaia status --json
+  const totalEntries = stats.total_entries ?? stats.totalEntries ?? "?";
+  const hotEntries = stats.hot ?? stats.hotEntries ?? "?";
+  const warmEntries = stats.warm ?? stats.warmEntries ?? "?";
+  lines.push(`Store: ${totalEntries} entries (${hotEntries} hot, ${warmEntries} warm)`);
+
+  // Recall indicator
+  lines.push(`Recall indicator: ${config.showMemorySources ? "ON" : "OFF"}`);
+
+  // Config summary
+  lines.push(`Config: autoCapture=${config.autoCapture}, captureScope=${config.captureScope || "team"}`);
+
+  return lines.join("\n");
+}
+
+// ============================================================================
+// Legacy exports kept for tests
+// ============================================================================
+
+/** Reset turn state (legacy export, now a no-op since TurnState was removed). */
+export function resetTurnState(): void {
+  // No-op: TurnState map was removed. Kept for test compatibility.
 }
 
 // ============================================================================
@@ -1109,12 +813,32 @@ function buildRunnerOpts(config: PalaiaPluginConfig): RunnerOpts {
  * Register lifecycle hooks on the plugin API.
  */
 export function registerHooks(api: any, config: PalaiaPluginConfig): void {
-  debugLog(`registerHooks: called, autoCapture=${config.autoCapture}, memoryInject=${config.memoryInject}, showMemorySources=${config.showMemorySources}, showCaptureConfirm=${config.showCaptureConfirm}`);
   const opts = buildRunnerOpts(config);
 
+  // ── /palaia status command ─────────────────────────────────────
+  api.registerCommand({
+    name: "palaia",
+    description: "Show Palaia memory status",
+    async handler(_args: string) {
+      try {
+        const state = await loadPluginState(config.workspace);
+
+        let stats: Record<string, unknown> = {};
+        try {
+          const statsOutput = await run(["status", "--json"], opts);
+          stats = JSON.parse(statsOutput || "{}");
+        } catch {
+          // Non-fatal
+        }
+
+        return { text: formatStatusResponse(state, stats, config) };
+      } catch (error) {
+        return { text: `Palaia status error: ${error}` };
+      }
+    },
+  });
+
   // ── before_prompt_build (Issue #65: Query-based Recall) ────────
-  // Injects contextually relevant HOT entries into agent system context.
-  // Supports two modes: "query" (semantic search) and "list" (tier-based).
   if (config.memoryInject) {
     api.on("before_prompt_build", async (event: any, _ctx: any) => {
       try {
@@ -1123,13 +847,11 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         let entries: QueryResult["results"] = [];
 
         if (config.recallMode === "query") {
-          // Extract the last user message for contextual query
           const userMessage = event.prompt
             || (event.messages ? getLastUserMessage(event.messages) : null);
 
           if (userMessage && userMessage.length >= 5) {
             try {
-              // palaia query supports --limit but NOT --tier; use --all for tier=all
               const queryArgs: string[] = ["query", userMessage, "--limit", String(limit)];
               if (config.tier === "all") {
                 queryArgs.push("--all");
@@ -1139,14 +861,12 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
                 entries = result.results;
               }
             } catch (queryError) {
-              // Fallback to list mode if query fails
               console.warn(`[palaia] Query recall failed, falling back to list: ${queryError}`);
             }
           }
         }
 
-        // Fallback: list mode (original behavior)
-        // palaia list supports --tier but NOT --limit; use --all for tier=all
+        // Fallback: list mode
         if (entries.length === 0) {
           try {
             const listArgs: string[] = ["list"];
@@ -1160,7 +880,6 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
               entries = result.results;
             }
           } catch {
-            // Non-fatal: if list also fails, agent continues without memory
             return;
           }
         }
@@ -1181,44 +900,6 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           chars += line.length;
         }
 
-        // Track injected entries and recall state (Issue #87)
-        // Session-scoped to prevent cross-session leakage
-        const sessionKey = resolveSessionKey(event, _ctx);
-        const turnState = getTurnState(sessionKey);
-        turnState.lastInjectedEntries = ranked.map((e) => {
-          // Find original entry to get created date
-          const orig = entries.find((o) => o.id === e.id);
-          return {
-            title: e.title,
-            date: (orig as any)?.created || new Date().toISOString(),
-          };
-        });
-
-        // Flag that recall occurred (for emoji reaction in agent_end)
-        turnState.recallOccurred = true;
-
-        // Track turn start time
-        turnState.turnStartMs = Date.now();
-
-        // Capture user message ID and channel for reactions
-        if (event.messages && Array.isArray(event.messages)) {
-          for (let i = event.messages.length - 1; i >= 0; i--) {
-            const msg = event.messages[i] as Record<string, unknown>;
-            if (msg?.role === "user") {
-              if (typeof msg.id === "string") turnState.lastUserMessageId = msg.id;
-              else if (typeof msg.messageId === "string") turnState.lastUserMessageId = msg.messageId;
-              else if (typeof msg.ts === "string") turnState.lastUserMessageId = msg.ts;
-              break;
-            }
-          }
-        }
-        // Capture channel ID from context
-        if (_ctx && typeof _ctx === "object") {
-          const ctx = _ctx as Record<string, unknown>;
-          if (typeof ctx.channelId === "string") turnState.lastChannelId = ctx.channelId;
-          else if (typeof ctx.sessionKey === "string") turnState.lastChannelId = ctx.sessionKey;
-        }
-
         // Update recall counter for satisfaction/transparency nudges (Issue #87)
         let nudgeContext = "";
         try {
@@ -1227,34 +908,33 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           if (!pluginState.firstRecallTimestamp) {
             pluginState.firstRecallTimestamp = new Date().toISOString();
           }
-          const { nudges, updated } = checkNudges(pluginState);
+          const { nudges } = checkNudges(pluginState);
           if (nudges.length > 0) {
             nudgeContext = "\n\n## Agent Nudge (Palaia)\n\n" + nudges.join("\n\n");
           }
-          // Always save: recall count changed, nudges may have updated
           await savePluginState(pluginState, config.workspace);
         } catch {
-          // Non-fatal: nudge tracking failure should not break recall
+          // Non-fatal
         }
 
-        // Use prependContext for per-turn dynamic memory injection
-        return { prependContext: text + nudgeContext };
+        // Return prependContext + appendSystemContext for recall emoji
+        return {
+          prependContext: text + nudgeContext,
+          appendSystemContext: config.showMemorySources
+            ? "You used Palaia memory in this turn. Add 🧠 at the very end of your response (after everything else, on its own line)."
+            : undefined,
+        };
       } catch (error) {
-        // Non-fatal: if memory injection fails, agent continues without it
         console.warn(`[palaia] Memory injection failed: ${error}`);
       }
     });
   }
 
   // ── message_sending (Issue #81: Hint stripping) ──────────────────
-  // Strip <palaia-hint /> tags from outgoing messages.
-  // Footnotes and capture confirms are now handled via emoji reactions
-  // in agent_end (Issue #87 v2) since message_sending is bypassed on Slack.
   api.on("message_sending", (_event: any, _ctx: any) => {
     const content = _event?.content;
     if (typeof content !== "string") return;
 
-    // Strip capture hints
     const { hints, cleanedText } = parsePalaiaHints(content);
     if (hints.length > 0) {
       return { content: cleanedText };
@@ -1262,9 +942,6 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
   });
 
   // ── agent_end (Issue #64 + #81: Auto-Capture with Metadata) ───
-  // Analyzes completed exchanges and captures significant content via palaia CLI.
-  // Strategy: LLM-based extraction first, rule-based fallback if LLM unavailable.
-  // Issue #81 adds: agent attribution, project/scope detection, capture hints.
   if (config.autoCapture) {
     api.on("agent_end", async (event: any, _ctx: any) => {
       if (!event.success || !event.messages || event.messages.length === 0) {
@@ -1272,40 +949,35 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
       }
 
       try {
-        // Resolve agent name from environment
         const agentName = process.env.PALAIA_AGENT || undefined;
 
         const allTexts = extractMessageTexts(event.messages);
 
-        // Check minimum turns requirement
         const userTurns = allTexts.filter((t) => t.role === "user").length;
         if (userTurns < config.captureMinTurns) return;
 
-        // ── Parse capture hints from all messages (Issue #81) ────
+        // Parse capture hints from all messages (Issue #81)
         const collectedHints: PalaiaHint[] = [];
         for (const t of allTexts) {
           const { hints } = parsePalaiaHints(t.text);
           collectedHints.push(...hints);
         }
 
-        // Build exchange text from user + assistant messages
+        // Build exchange text
         const exchangeParts: string[] = [];
         for (const t of allTexts) {
           if (t.role === "user" || t.role === "assistant") {
-            // Strip hints from exchange text for LLM analysis
             const { cleanedText } = parsePalaiaHints(t.text);
             exchangeParts.push(`[${t.role}]: ${cleanedText}`);
           }
         }
         const exchangeText = exchangeParts.join("\n");
 
-        // Pre-filter: skip trivial exchanges (fast, free)
         if (!shouldAttemptCapture(exchangeText)) return;
 
-        // Load known projects for LLM context
         const knownProjects = await loadProjects(opts);
 
-        // Helper: build CLI args with metadata (agent, project, scope)
+        // Helper: build CLI args with metadata
         const buildWriteArgs = (
           content: string,
           type: string,
@@ -1320,18 +992,14 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
             "--tags", tags.join(",") || "auto-capture",
           ];
 
-          // Scope priority: config override > hint > LLM > "team" default
-          // Validate scope — LLM sometimes returns garbage like "y" (Issue #90)
           const scope = sanitizeScope(config.captureScope || itemScope, config.captureScope || "team");
           args.push("--scope", scope);
 
-          // Project priority: config override > hint > LLM
           const project = config.captureProject || itemProject;
           if (project) {
             args.push("--project", project);
           }
 
-          // Agent attribution from env
           if (agentName) {
             args.push("--agent", agentName);
           }
@@ -1339,7 +1007,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           return args;
         };
 
-        // ── LLM-based extraction (primary) ───────────────────────
+        // LLM-based extraction (primary)
         let llmHandled = false;
         try {
           const results = await extractWithLLM(event.messages, api.config, {
@@ -1348,7 +1016,6 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
 
           for (const r of results) {
             if (r.significance >= config.captureMinSignificance) {
-              // Apply hint overrides: hints take priority over LLM results
               const hintForProject = collectedHints.find((h) => h.project);
               const hintForScope = collectedHints.find((h) => h.scope);
 
@@ -1363,10 +1030,6 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
                 effectiveScope,
               );
               await run(args, opts);
-              // Track for capture confirm (Issue #87) — session-scoped
-              const captureSessionKey = resolveSessionKey(event, _ctx);
-              const captureTurnState = getTurnState(captureSessionKey);
-              captureTurnState.lastCapturedSummaries.push(r.content.slice(0, 80));
               console.log(
                 `[palaia] LLM auto-captured: type=${r.type}, significance=${r.significance}, tags=${r.tags.join(",")}, project=${effectiveProject || "none"}, scope=${effectiveScope || "team"}`
               );
@@ -1378,25 +1041,23 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           console.warn(`[palaia] LLM extraction failed, using rule-based fallback: ${llmError}`);
         }
 
-        // ── Rule-based fallback ──────────────────────────────────
+        // Rule-based fallback
         if (!llmHandled) {
           let captureData: { tags: string[]; type: string; summary: string } | null = null;
 
           if (config.captureFrequency === "significant") {
             const significance = extractSignificance(exchangeText);
-            if (!significance) return; // Nothing significant detected
+            if (!significance) return;
             captureData = significance;
           } else {
-            // "every" mode: capture a summary of the exchange
             const summary = exchangeParts
-              .slice(-4) // Last 4 messages
+              .slice(-4)
               .map((p) => p.slice(0, 200))
               .join(" | ")
               .slice(0, 500);
             captureData = { tags: ["auto-capture"], type: "memory", summary };
           }
 
-          // Hint overrides for fallback (no LLM project detection)
           const hintForProject = collectedHints.find((h) => h.project);
           const hintForScope = collectedHints.find((h) => h.scope);
 
@@ -1409,141 +1070,17 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           );
 
           await run(args, opts);
-          // Track for capture confirm (Issue #87) — session-scoped
-          const fallbackSessionKey = resolveSessionKey(event, _ctx);
-          const fallbackTurnState = getTurnState(fallbackSessionKey);
-          fallbackTurnState.lastCapturedSummaries.push(captureData.summary.slice(0, 80));
           console.log(
             `[palaia] Rule-based auto-captured: type=${captureData.type}, tags=${captureData.tags.join(",")}`
           );
         }
-        // ── Emoji Reactions (Issue #87 v2) ────────────────────────
-        // Send reactions on the BOT REPLY (content-matched), not the user message.
-        const reactionSessionKey = resolveSessionKey(event, _ctx);
-        const reactionTurnState = getTurnState(reactionSessionKey);
-
-        debugLog(`agent_end (autoCapture): fired, sessionKey=${reactionSessionKey}, recallOccurred=${reactionTurnState.recallOccurred}, capturedCount=${reactionTurnState.lastCapturedSummaries.length}`);
-
-        // Resolve channel provider for reactions (e.g. "slack", "telegram")
-        const channelProvider = extractChannelFromSessionKey(reactionSessionKey);
-        const channelTarget = extractTargetFromSessionKey(reactionSessionKey);
-
-        // Fallback channel from context
-        let reactionChannel = channelProvider || reactionTurnState.lastChannelId;
-        if (!reactionChannel && _ctx && typeof _ctx === "object") {
-          const ctx = _ctx as Record<string, unknown>;
-          if (typeof ctx.channelId === "string") reactionChannel = ctx.channelId;
-          else if (typeof ctx.sessionKey === "string") reactionChannel = ctx.sessionKey;
-        }
-
-        if (reactionChannel) {
-          // Try to find the bot reply message by content matching
-          let targetMessageId = reactionTurnState.lastUserMessageId; // fallback
-
-          // Extract last assistant message text for content matching
-          const lastAssistantText = (() => {
-            if (!event.messages || !Array.isArray(event.messages)) return undefined;
-            for (let i = event.messages.length - 1; i >= 0; i--) {
-              const msg = event.messages[i] as Record<string, unknown>;
-              if (msg?.role === "assistant" && typeof msg.content === "string") {
-                return msg.content;
-              }
-            }
-            return undefined;
-          })();
-
-          if (lastAssistantText && reactionChannel) {
-            const botReplyId = await findBotReplyByContent(reactionChannel, lastAssistantText, reactionSessionKey);
-            if (botReplyId) {
-              targetMessageId = botReplyId;
-              debugLog(`agent_end: using bot reply ID ${botReplyId}`);
-            } else {
-              debugLog(`agent_end: no bot reply match, falling back to user msg ${targetMessageId}`);
-            }
-          }
-
-          // 💾 Capture confirm reaction
-          if (config.showCaptureConfirm && reactionTurnState.lastCapturedSummaries.length > 0) {
-            sendReaction("floppy_disk", reactionChannel, targetMessageId, channelTarget).catch(() => {});
-          }
-
-          // 🧠 Recall reaction
-          if (config.showMemorySources && reactionTurnState.recallOccurred) {
-            sendReaction("brain", reactionChannel, targetMessageId, channelTarget).catch(() => {});
-          }
-        }
-
-        // Reset turn state after reactions
-        reactionTurnState.lastCapturedSummaries = [];
-        reactionTurnState.lastInjectedEntries = [];
-        reactionTurnState.recallOccurred = false;
-        reactionTurnState.lastUserMessageId = undefined;
       } catch (error) {
-        // Non-fatal: capture failure should never break the agent
         console.warn(`[palaia] Auto-capture failed: ${error}`);
       }
     });
   }
 
-  // ── agent_end: Recall-only reactions (when autoCapture is off) ──
-  // If autoCapture is enabled, reactions are handled inside the autoCapture agent_end hook above.
-  // This hook handles the case where only recall occurred (no capture).
-  if (!config.autoCapture && config.memoryInject) {
-    api.on("agent_end", async (event: any, _ctx: any) => {
-      try {
-        const sessionKey = resolveSessionKey(event, _ctx);
-        const turnState = getTurnState(sessionKey);
-
-        debugLog(`agent_end (recall-only): fired, sessionKey=${sessionKey}, recallOccurred=${turnState.recallOccurred}`);
-
-        const channelProvider = extractChannelFromSessionKey(sessionKey);
-        const channelTarget = extractTargetFromSessionKey(sessionKey);
-
-        let reactionChannel = channelProvider || turnState.lastChannelId;
-        if (!reactionChannel && _ctx && typeof _ctx === "object") {
-          const ctx = _ctx as Record<string, unknown>;
-          if (typeof ctx.channelId === "string") reactionChannel = ctx.channelId;
-          else if (typeof ctx.sessionKey === "string") reactionChannel = ctx.sessionKey;
-        }
-
-        if (reactionChannel && config.showMemorySources && turnState.recallOccurred) {
-          let targetMessageId = turnState.lastUserMessageId;
-
-          // Try content-match for bot reply
-          const lastAssistantText = (() => {
-            if (!event.messages || !Array.isArray(event.messages)) return undefined;
-            for (let i = event.messages.length - 1; i >= 0; i--) {
-              const msg = event.messages[i] as Record<string, unknown>;
-              if (msg?.role === "assistant" && typeof msg.content === "string") {
-                return msg.content;
-              }
-            }
-            return undefined;
-          })();
-
-          if (lastAssistantText && reactionChannel) {
-            const botReplyId = await findBotReplyByContent(reactionChannel, lastAssistantText, sessionKey);
-            if (botReplyId) {
-              targetMessageId = botReplyId;
-              debugLog(`agent_end (recall-only): using bot reply ID ${botReplyId}`);
-            }
-          }
-
-          sendReaction("brain", reactionChannel, targetMessageId, channelTarget).catch(() => {});
-        }
-
-        // Reset
-        turnState.recallOccurred = false;
-        turnState.lastUserMessageId = undefined;
-        turnState.lastInjectedEntries = [];
-      } catch {
-        // Non-fatal
-      }
-    });
-  }
-
   // ── Startup Recovery Service ───────────────────────────────────
-  // Replays pending WAL entries on plugin startup.
   api.registerService({
     id: "palaia-recovery",
     start: async () => {
