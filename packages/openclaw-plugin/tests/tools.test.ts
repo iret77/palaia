@@ -81,9 +81,9 @@ describe("tools", () => {
       expect(result.content[0].text).toContain("Source: hot/abc-123.md");
       expect(result.content[0].text).toContain("score: 0.92");
 
-      // Verify CLI args
+      // Verify CLI args (default maxResults is 10)
       expect(mockRunJson).toHaveBeenCalledWith(
-        ["query", "test", "--limit", "5"],
+        ["query", "test", "--limit", "10"],
         expect.any(Object)
       );
     });

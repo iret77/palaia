@@ -67,16 +67,9 @@ describe("runner", () => {
 
   describe("runJson", () => {
     it("parses valid JSON output", async () => {
+      const { access } = await import("node:fs/promises");
+      vi.mocked(access).mockResolvedValueOnce(undefined); // allow binaryPath check
       const jsonOutput = JSON.stringify({ results: [{ id: "abc" }] });
-      setupExecFile(jsonOutput);
-      resetCache();
-      // Pre-seed binary cache
-      setupExecFile(jsonOutput);
-
-      // Need to detect binary first
-      setupExecFile("palaia 0.3.0\n");
-      await detectBinary();
-
       setupExecFile(jsonOutput);
       const result = await runJson<{ results: any[] }>(["query", "test"], {
         binaryPath: "palaia",
@@ -86,6 +79,8 @@ describe("runner", () => {
     });
 
     it("throws on invalid JSON", async () => {
+      const { access } = await import("node:fs/promises");
+      vi.mocked(access).mockResolvedValueOnce(undefined); // allow binaryPath check
       setupExecFile("not json at all");
       await expect(
         runJson(["query", "test"], { binaryPath: "palaia" })
@@ -95,6 +90,8 @@ describe("runner", () => {
 
   describe("run", () => {
     it("throws on non-zero exit code", async () => {
+      const { access } = await import("node:fs/promises");
+      vi.mocked(access).mockResolvedValueOnce(undefined); // allow binaryPath check
       setupExecFile("", "Something failed", 1);
       await expect(
         run(["query", "test"], { binaryPath: "palaia" })
@@ -104,6 +101,8 @@ describe("runner", () => {
 
   describe("recover", () => {
     it("returns result on success", async () => {
+      const { access } = await import("node:fs/promises");
+      vi.mocked(access).mockResolvedValueOnce(undefined); // allow binaryPath check
       const jsonOutput = JSON.stringify({ replayed: 2, errors: 0 });
       setupExecFile(jsonOutput);
       const result = await recover({ binaryPath: "palaia" });
