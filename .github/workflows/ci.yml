@@ -33,3 +33,17 @@ jobs:
 
       - name: Run tests
         run: pytest tests/ -v
+
+  test-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        working-directory: packages/openclaw-plugin
+        run: npm ci
+      - name: Run plugin tests
+        working-directory: packages/openclaw-plugin
+        run: npx vitest run
