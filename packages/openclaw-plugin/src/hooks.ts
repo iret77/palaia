@@ -1084,20 +1084,33 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
 
     // H-3: Warn if no embedding provider beyond BM25
     try {
-      const statusJson = await run(["status", "--json"], { ...opts, timeoutMs: 3000 });
-      const status = JSON.parse(statusJson || "{}");
-      const chain = status.embedding_chain || status.embeddingChain || [];
-      const hasSemanticProvider = Array.isArray(chain)
-        ? chain.some((p: string) => p !== "bm25")
-        : false;
-      if (!hasSemanticProvider) {
-        console.warn(
-          "[palaia] No embedding provider configured. Semantic search is inactive (BM25 keyword-only). " +
-          "Run 'pip install palaia[fastembed]' and 'palaia doctor --fix' for better recall quality."
+      const statusJson = await run(["status", "--json"], { ...opts, timeoutMs: 5000 });
+      if (statusJson && statusJson.trim()) {
+        const status = JSON.parse(statusJson);
+        // embedding_chain can be at top level OR nested under config
+        const chain = status.embedding_chain
+          || status.embeddingChain
+          || status.config?.embedding_chain
+          || status.config?.embeddingChain
+          || [];
+        const hasSemanticProvider = Array.isArray(chain)
+          ? chain.some((p: string) => p !== "bm25")
+          : false;
+        // Also check embedding_provider as a fallback signal
+        const hasProviderConfig = !!(
+          status.embedding_provider
+          || status.config?.embedding_provider
         );
+        if (!hasSemanticProvider && !hasProviderConfig) {
+          console.warn(
+            "[palaia] No embedding provider configured. Semantic search is inactive (BM25 keyword-only). " +
+            "Run 'pip install palaia[fastembed]' and 'palaia doctor --fix' for better recall quality."
+          );
+        }
       }
+      // If statusJson is empty/null, skip warning (CLI may not be available)
     } catch {
-      // Non-fatal — status check failed, skip warning
+      // Non-fatal — status check failed, skip warning (avoid false positive)
     }
   })();
 
