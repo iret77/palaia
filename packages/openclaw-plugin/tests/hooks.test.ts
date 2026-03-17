@@ -716,7 +716,7 @@ describe("checkNudges", () => {
     };
     const { nudges, updated } = checkNudges(state);
     expect(nudges).toHaveLength(1);
-    expect(nudges[0]).toContain("zufrieden");
+    expect(nudges[0]).toContain("happy with the memory system");
     expect(updated).toBe(true);
     expect(state.satisfactionNudged).toBe(true);
   });

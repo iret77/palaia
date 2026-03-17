@@ -210,7 +210,7 @@ class TestNudgeMessages:
         tracker = NudgeTracker(palaia_root)
         msg = tracker.get_nudge_message("write_without_type")
         assert msg is not None
-        assert "Speichere diesen Hinweis" in msg
+        assert "Save this hint" in msg
 
     def test_unknown_pattern_returns_none(self, palaia_root):
         tracker = NudgeTracker(palaia_root)
@@ -230,7 +230,7 @@ class TestNudgeMessages:
         tracker = NudgeTracker(palaia_root)
         msg = tracker.get_nudge_message("satisfaction_check")
         assert msg is not None
-        assert "zufrieden" in msg
+        assert "happy with the memory system" in msg
         assert "doctor" in msg
 
     def test_transparency_preference_pattern(self, palaia_root):

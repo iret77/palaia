@@ -9,6 +9,7 @@
 import { Type } from "@sinclair/typebox";
 import { runJson, type RunnerOpts } from "./runner.js";
 import type { PalaiaPluginConfig } from "./config.js";
+import { sanitizeScope, isValidScope } from "./hooks.js";
 
 /** Shape returned by `palaia query --json` */
 interface QueryResult {
@@ -230,7 +231,17 @@ export function registerTools(api: any, config: PalaiaPluginConfig): void {
       ) {
         const args: string[] = ["write", params.content];
         if (params.scope) {
-          args.push("--scope", params.scope);
+          if (!isValidScope(params.scope)) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Invalid scope "${params.scope}". Valid scopes: private, team, public, shared:<name>`,
+                },
+              ],
+            };
+          }
+          args.push("--scope", sanitizeScope(params.scope));
         }
         if (params.tags && params.tags.length > 0) {
           args.push("--tags", params.tags.join(","));

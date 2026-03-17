@@ -164,10 +164,23 @@ export async function run(
     cmdArgs = [...args];
   }
 
-  const result = await execCommand(cmd, cmdArgs, {
+  let result = await execCommand(cmd, cmdArgs, {
     timeoutMs,
     cwd: opts.workspace,
   });
+
+  // Retry once on lock/timeout errors (L-5: concurrent CLI write safety)
+  if (result.exitCode !== 0) {
+    const errMsg = result.stderr.trim() || result.stdout.trim();
+    const errLower = errMsg.toLowerCase();
+    if (errLower.includes("lock") || errLower.includes("timeout")) {
+      await new Promise((r) => setTimeout(r, 500));
+      result = await execCommand(cmd, cmdArgs, {
+        timeoutMs,
+        cwd: opts.workspace,
+      });
+    }
+  }
 
   if (result.exitCode !== 0) {
     const errMsg = result.stderr.trim() || result.stdout.trim();

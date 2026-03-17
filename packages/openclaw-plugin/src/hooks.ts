@@ -35,6 +35,15 @@ const DEFAULT_PLUGIN_STATE: PluginState = {
   firstRecallTimestamp: null,
 };
 
+/**
+ * Load plugin state from disk.
+ *
+ * Note: No file locking is applied here. The plugin-state.json file stores
+ * non-critical counters (recall count, nudge flags). In the worst case of a
+ * race condition between multiple agents, a nudge fires one recall too early
+ * or too late. This is acceptable given the low-stakes nature of the data
+ * and the complexity cost of adding advisory locks in Node.js.
+ */
 async function loadPluginState(workspace?: string): Promise<PluginState> {
   const dir = workspace || process.cwd();
   const statePath = path.join(dir, ".palaia", "plugin-state.json");
@@ -67,6 +76,8 @@ interface TurnState {
   lastInboundChannelId: string | null;
   channelProvider: string | null;
   capturedInThisTurn: boolean;
+  /** Timestamp when this entry was created (for TTL-based pruning). */
+  createdAt: number;
 }
 
 function createDefaultTurnState(): TurnState {
@@ -76,7 +87,32 @@ function createDefaultTurnState(): TurnState {
     lastInboundChannelId: null,
     channelProvider: null,
     capturedInThisTurn: false,
+    createdAt: Date.now(),
   };
+}
+
+/** Maximum age for turn state entries before they are pruned (5 minutes). */
+const TURN_STATE_TTL_MS = 5 * 60 * 1000;
+/** Maximum age for inbound message entries before they are pruned (5 minutes). */
+const INBOUND_MESSAGE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Remove stale entries from turnStateBySession and lastInboundMessageByChannel.
+ * Called at the start of before_prompt_build to prevent memory leaks from
+ * sessions that were killed/crashed without firing agent_end.
+ */
+export function pruneStaleEntries(): void {
+  const now = Date.now();
+  for (const [key, state] of turnStateBySession) {
+    if (now - state.createdAt > TURN_STATE_TTL_MS) {
+      turnStateBySession.delete(key);
+    }
+  }
+  for (const [key, entry] of lastInboundMessageByChannel) {
+    if (now - entry.timestamp > INBOUND_MESSAGE_TTL_MS) {
+      lastInboundMessageByChannel.delete(key);
+    }
+  }
 }
 
 /**
@@ -386,15 +422,15 @@ const TRANSPARENCY_RECALL_THRESHOLD = 50;
 const TRANSPARENCY_DAYS_THRESHOLD = 7;
 
 const SATISFACTION_NUDGE_TEXT =
-  "Dein User nutzt Palaia jetzt seit einer Weile. " +
-  "Frag ihn dezent, ob er mit dem Memory-System zufrieden ist. " +
-  "Bei Problemen: schlage `palaia doctor` vor.";
+  "Your user has been using Palaia for a while now. " +
+  "Ask them casually if they're happy with the memory system. " +
+  "If there are issues, suggest `palaia doctor`.";
 
 const TRANSPARENCY_NUDGE_TEXT =
-  "Dein User sieht jetzt seit einigen Tagen Memory-Footnotes und Capture-Bestätigungen. " +
-  "Frag ihn einmalig: 'Möchtest du die Memory-Quellenangaben und Speicher-Bestätigungen " +
-  "weiterhin sehen, oder soll ich sie ausblenden? Du kannst das jederzeit wieder ändern.' " +
-  "Je nach Antwort: `palaia config set showMemorySources true/false` und " +
+  "Your user has been seeing memory Footnotes and capture confirmations for several days. " +
+  "Ask them once: 'Would you like to keep seeing memory source references and capture " +
+  "confirmations, or should I hide them? You can change this anytime.' " +
+  "Based on their answer: `palaia config set showMemorySources true/false` and " +
   "`palaia config set showCaptureConfirm true/false`";
 
 /**
@@ -1026,6 +1062,45 @@ export function resetTurnState(): void {
 export function registerHooks(api: any, config: PalaiaPluginConfig): void {
   const opts = buildRunnerOpts(config);
 
+  // ── Startup checks (H-2, H-3) ─────────────────────────────────
+  (async () => {
+    // H-2: Warn if no agent is configured
+    if (!process.env.PALAIA_AGENT) {
+      try {
+        const statusOut = await run(["config", "get", "agent"], { ...opts, timeoutMs: 3000 });
+        if (!statusOut.trim()) {
+          console.warn(
+            "[palaia] No agent configured. Set PALAIA_AGENT env var or run 'palaia init --agent <name>'. " +
+            "Auto-captured entries will have no agent attribution."
+          );
+        }
+      } catch {
+        console.warn(
+          "[palaia] No agent configured. Set PALAIA_AGENT env var or run 'palaia init --agent <name>'. " +
+          "Auto-captured entries will have no agent attribution."
+        );
+      }
+    }
+
+    // H-3: Warn if no embedding provider beyond BM25
+    try {
+      const statusJson = await run(["status", "--json"], { ...opts, timeoutMs: 3000 });
+      const status = JSON.parse(statusJson || "{}");
+      const chain = status.embedding_chain || status.embeddingChain || [];
+      const hasSemanticProvider = Array.isArray(chain)
+        ? chain.some((p: string) => p !== "bm25")
+        : false;
+      if (!hasSemanticProvider) {
+        console.warn(
+          "[palaia] No embedding provider configured. Semantic search is inactive (BM25 keyword-only). " +
+          "Run 'pip install palaia[fastembed]' and 'palaia doctor --fix' for better recall quality."
+        );
+      }
+    } catch {
+      // Non-fatal — status check failed, skip warning
+    }
+  })();
+
   // ── /palaia status command ─────────────────────────────────────
   api.registerCommand({
     name: "palaia-status",
@@ -1071,6 +1146,9 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
   // ── before_prompt_build (Issue #65: Query-based Recall) ────────
   if (config.memoryInject) {
     api.on("before_prompt_build", async (event: any, ctx: any) => {
+      // Prune stale entries to prevent memory leaks from crashed sessions (C-2)
+      pruneStaleEntries();
+
       try {
         const maxChars = config.maxInjectedChars || 4000;
         const limit = Math.min(config.maxResults || 10, 20);
@@ -1283,7 +1361,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
                 effectiveProject,
                 effectiveScope,
               );
-              await run(args, opts);
+              await run(args, { ...opts, timeoutMs: 10_000 });
               console.log(
                 `[palaia] LLM auto-captured: type=${r.type}, significance=${r.significance}, tags=${r.tags.join(",")}, project=${effectiveProject || "none"}, scope=${effectiveScope || "team"}`
               );
@@ -1323,7 +1401,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
             hintForScope?.scope,
           );
 
-          await run(args, opts);
+          await run(args, { ...opts, timeoutMs: 10_000 });
           console.log(
             `[palaia] Rule-based auto-captured: type=${captureData.type}, tags=${captureData.tags.join(",")}`
           );

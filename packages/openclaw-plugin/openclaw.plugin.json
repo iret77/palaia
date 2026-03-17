@@ -49,8 +49,26 @@
       },
       "captureMinTurns": {
         "type": "number",
-        "default": 2,
+        "default": 1,
         "description": "Minimum exchange turns before capture is attempted"
+      },
+      "captureModel": {
+        "type": "string",
+        "description": "Model override for LLM-based extraction (e.g. 'anthropic/claude-haiku-4', 'cheap')"
+      },
+      "captureMinSignificance": {
+        "type": "number",
+        "default": 0.3,
+        "description": "Minimum significance score (0.0-1.0) for LLM-extracted items to be captured"
+      },
+      "captureScope": {
+        "type": "string",
+        "default": "team",
+        "description": "Static scope override for auto-capture (private|team|public|shared:<name>)"
+      },
+      "captureProject": {
+        "type": "string",
+        "description": "Static project override for auto-capture"
       },
       "showMemorySources": {
         "type": "boolean",

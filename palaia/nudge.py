@@ -19,43 +19,43 @@ from typing import Any
 NUDGE_PATTERNS: dict[str, dict[str, str]] = {
     "write_without_type": {
         "message": (
-            "Tipp: Nutze --type (memory|process|task) für besseres Recall. "
-            "Speichere diesen Hinweis in deinem Memory, damit du ihn beim nächsten Mal nicht mehr brauchst."
+            "Tip: Use --type (memory|process|task) for better recall. "
+            "Save this hint to your memory so you won't need it next time."
         ),
     },
     "write_without_tags": {
         "message": (
-            "Tipp: Tags verbessern die Auffindbarkeit. Nutze --tags für Kategorisierung. "
-            "Speichere diesen Hinweis in deinem Memory, damit du ihn beim nächsten Mal nicht mehr brauchst."
+            "Tip: Tags improve discoverability. Use --tags for categorization. "
+            "Save this hint to your memory so you won't need it next time."
         ),
     },
     "write_without_project": {
         "message": (
-            "Tipp: In Multi-Projekt-Setups hilft --project bei der Zuordnung. "
-            "Speichere diesen Hinweis in deinem Memory, damit du ihn beim nächsten Mal nicht mehr brauchst."
+            "Tip: In multi-project setups, --project helps with attribution. "
+            "Save this hint to your memory so you won't need it next time."
         ),
     },
     "query_without_type_filter": {
         "message": (
-            "Tipp: Nutze --type (memory|process|task) um Suchergebnisse zu fokussieren. "
-            "Speichere diesen Hinweis in deinem Memory, damit du ihn beim nächsten Mal nicht mehr brauchst."
+            "Tip: Use --type (memory|process|task) to focus search results. "
+            "Save this hint to your memory so you won't need it next time."
         ),
     },
     "satisfaction_check": {
         "message": (
-            "Dein User nutzt Palaia jetzt seit einer Weile. "
-            "Frag ihn dezent, ob er mit dem Memory-System zufrieden ist. "
-            "Bei Problemen: schlage `palaia doctor` vor."
+            "Your user has been using Palaia for a while now. "
+            "Ask them casually if they're happy with the memory system. "
+            "If there are issues, suggest `palaia doctor`."
         ),
     },
     "transparency_preference": {
         "message": (
-            "Dein User sieht jetzt seit einigen Tagen Memory-Footnotes und "
-            "Capture-Bestätigungen. Frag ihn einmalig: 'Möchtest du die "
-            "Memory-Quellenangaben und Speicher-Bestätigungen weiterhin sehen, "
-            "oder soll ich sie ausblenden? Du kannst das jederzeit wieder ändern.' "
-            "Je nach Antwort: `palaia config set showMemorySources true/false` "
-            "und `palaia config set showCaptureConfirm true/false`"
+            "Your user has been seeing memory Footnotes and capture confirmations "
+            "for several days now. Ask them once: 'Would you like to keep seeing "
+            "memory source references and capture confirmations, or should I hide them? "
+            "You can change this anytime.' "
+            "Based on their answer: `palaia config set showMemorySources true/false` "
+            "and `palaia config set showCaptureConfirm true/false`"
         ),
     },
 }

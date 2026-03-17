@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.0.0] — 2026-03-17
+
+### Breaking Changes
+- **Palaia 2.0 is OpenClaw-specific.** Plugin architecture replaces standalone hooks. The CLI still works standalone for manual `palaia write`/`palaia query`, but Auto-Capture and Auto-Recall require the OpenClaw plugin.
+- Plugin config path is now `plugins.entries.palaia.config` (not `plugins.config.palaia`).
+- Default `captureMinTurns` changed from 2 to 1 in plugin config.
+
+### Features
+- **Auto-Capture** (`agent_end` hook) — Automatically captures significant conversation exchanges as memory entries after each agent session. No manual `palaia write` required.
+- **Auto-Recall** (`before_prompt_build` hook) — Automatically injects relevant memories into agent context before each prompt. No manual `palaia query` required.
+- **LLM-based Extraction** — Uses a cheap embedded LLM (e.g. claude-haiku-4, gpt-4.1-mini, gemini-2.0-flash) to extract structured knowledge from conversations. Falls back to rule-based extraction if unavailable.
+- **Session-isolated TurnState** — Per-session state tracking prevents cross-contamination in multi-agent setups.
+- **Emoji Reactions (Slack)** — Brain emoji (recall) and floppy disk emoji (capture) on messages when memory is used.
+- **Capture Hints** — Agents can include `<palaia-hint project="X" scope="Y" />` in responses to guide Auto-Capture metadata.
+- **Adaptive Nudging with Graduation** — CLI nudges agents toward best practices (--type, --tags). Nudges graduate after 3 consecutive successes. Regression detection re-activates them.
+- **Significance Tagging** — 7 tags auto-detected: decision, lesson, surprise, commitment, correction, preference, fact.
+- **Knowledge Packages** — `palaia package export/import` for portable knowledge transfer between environments.
+- **Temporal Queries** — `palaia query --before <date> --after <date>` for time-filtered search.
+- **Cross-Project Queries** — `palaia query --cross-project` searches across all projects.
+- **Process Runner** — `palaia process run <id>` for interactive execution of stored process entries.
+- **Bounded GC** — `palaia gc --dry-run --budget <n>` for controlled, predictable garbage collection.
+- **`/palaia-status` Command** — OpenClaw slash command showing recall count, store stats, and config summary.
+- **Memory Footnotes** — Agent responses include source attribution when memories are used.
+- **Capture Confirmations** — Visual feedback when exchanges are saved to memory.
+
+### Migration from 1.x
+- Run `palaia doctor --fix` to migrate configuration from 1.x to 2.0.
+- New config keys (`captureModel`, `captureMinSignificance`, `captureScope`, `captureProject`, `captureMinTurns`, `captureFrequency`) are auto-added with sensible defaults.
+- Existing entries are fully preserved — no data migration required.
+- The OpenClaw plugin config schema now includes all capture-related keys.
+
 ## [1.9.0] — 2026-03-14
 
 ### Features

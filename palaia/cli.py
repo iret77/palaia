@@ -676,13 +676,19 @@ def cmd_init(args):
     detected = detect_providers()
     detected_map = {p["name"]: p["available"] for p in detected}
 
+    # Build embedding chain. Priority: cloud APIs first (fastest at query time),
+    # then local providers as fallback. This is the *chain order* (what gets
+    # tried first at query time), NOT the *detection order* in embeddings.py
+    # (which is: ollama → sentence-transformers → fastembed → openai → gemini → bm25).
     chain = []
     if detected_map.get("openai"):
         chain.append("openai")
-    if detected_map.get("sentence-transformers"):
-        chain.append("sentence-transformers")
-    elif detected_map.get("fastembed"):
+    if detected_map.get("gemini"):
+        chain.append("gemini")
+    if detected_map.get("fastembed"):
         chain.append("fastembed")
+    elif detected_map.get("sentence-transformers"):
+        chain.append("sentence-transformers")
     elif detected_map.get("ollama"):
         chain.append("ollama")
     chain.append("bm25")  # always last
@@ -1596,6 +1602,27 @@ def cmd_status(args):
     if bm25_only:
         print("\nNote: Semantic search is not enabled. Results are keyword-based only.")
         print("  Run 'palaia detect' to see available providers.")
+
+    # OpenClaw Plugin detection (L-2)
+    plugin_detected = False
+    try:
+        plugin_config_candidates = [
+            root.parent / "openclaw.json",
+            Path.home() / ".openclaw" / "openclaw.json",
+        ]
+        env_config = os.environ.get("OPENCLAW_CONFIG")
+        if env_config:
+            plugin_config_candidates.insert(0, Path(env_config))
+        for candidate in plugin_config_candidates:
+            if candidate.exists():
+                cfg_data = json.loads(candidate.read_text())
+                if "palaia" in json.dumps(cfg_data.get("plugins", {})):
+                    plugin_detected = True
+                    break
+    except Exception:
+        pass
+    plugin_status = "active" if plugin_detected else "not detected"
+    print(f"\nOpenClaw Plugin: {plugin_status}")
 
     return 0
 
