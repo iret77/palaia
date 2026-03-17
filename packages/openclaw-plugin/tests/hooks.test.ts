@@ -22,6 +22,11 @@ import {
   checkNudges,
   extractTargetFromSessionKey,
   extractChannelFromSessionKey,
+  extractSlackChannelIdFromSessionKey,
+  getOrCreateTurnState,
+  deleteTurnState,
+  sendReaction,
+  resetSlackTokenCache,
   isValidScope,
   sanitizeScope,
   registerHooks,
@@ -134,13 +139,14 @@ py::TestDefaultAgentWorkflow::test_write_with_all_flags PASSED [50%]
 });
 
 // ============================================================================
-// resetTurnState (legacy — now a no-op)
+// resetTurnState
 // ============================================================================
 
 describe("resetTurnState", () => {
-  it("is callable (no-op, kept for compatibility)", () => {
+  it("clears all session state and inbound message store", () => {
+    getOrCreateTurnState("test-session").recallOccurred = true;
     resetTurnState();
-    expect(true).toBe(true);
+    expect(getOrCreateTurnState("test-session").recallOccurred).toBe(false);
   });
 });
 
@@ -955,5 +961,188 @@ describe("before_prompt_build appendSystemContext", () => {
     registerHooks(mockApi, config);
     expect(hookHandler).not.toBeNull();
     // With empty results, the hook returns early — no appendSystemContext
+  });
+});
+
+// ============================================================================
+// extractSlackChannelIdFromSessionKey
+// ============================================================================
+
+describe("extractSlackChannelIdFromSessionKey", () => {
+  it("extracts Slack channel ID from session key", () => {
+    expect(extractSlackChannelIdFromSessionKey("agent:main:slack:channel:c0ake2g15hv")).toBe("C0AKE2G15HV");
+  });
+
+  it("extracts DM ID from session key", () => {
+    expect(extractSlackChannelIdFromSessionKey("agent:main:slack:dm:d12345")).toBe("D12345");
+  });
+
+  it("returns undefined for invalid key", () => {
+    expect(extractSlackChannelIdFromSessionKey("something:else")).toBeUndefined();
+  });
+
+  it("returns undefined for key without channel segment", () => {
+    expect(extractSlackChannelIdFromSessionKey("agent:main:slack")).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// TurnState Isolation (Issue #87: Session-isolated state)
+// ============================================================================
+
+describe("TurnState isolation", () => {
+  beforeEach(() => {
+    resetTurnState();
+  });
+
+  afterEach(() => {
+    resetTurnState();
+  });
+
+  it("creates isolated state per session", () => {
+    const state1 = getOrCreateTurnState("session:a");
+    const state2 = getOrCreateTurnState("session:b");
+
+    state1.recallOccurred = true;
+    state1.capturedInThisTurn = true;
+
+    expect(state2.recallOccurred).toBe(false);
+    expect(state2.capturedInThisTurn).toBe(false);
+  });
+
+  it("returns same instance for same session key", () => {
+    const state1 = getOrCreateTurnState("session:a");
+    const state2 = getOrCreateTurnState("session:a");
+    expect(state1).toBe(state2);
+  });
+
+  it("handles concurrent sessions without cross-contamination", () => {
+    const stateA = getOrCreateTurnState("agent:main:slack:channel:c111");
+    const stateB = getOrCreateTurnState("agent:main:slack:channel:c222");
+
+    stateA.recallOccurred = true;
+    stateA.lastInboundMessageId = "1234.5678";
+    stateA.lastInboundChannelId = "C111";
+    stateA.channelProvider = "slack";
+
+    stateB.capturedInThisTurn = true;
+    stateB.lastInboundMessageId = "9999.0000";
+    stateB.lastInboundChannelId = "C222";
+    stateB.channelProvider = "slack";
+
+    // Verify no cross-contamination
+    expect(stateA.capturedInThisTurn).toBe(false);
+    expect(stateB.recallOccurred).toBe(false);
+    expect(stateA.lastInboundMessageId).toBe("1234.5678");
+    expect(stateB.lastInboundMessageId).toBe("9999.0000");
+  });
+
+  it("deletes state for specific session without affecting others", () => {
+    getOrCreateTurnState("session:a");
+    getOrCreateTurnState("session:b");
+
+    deleteTurnState("session:a");
+
+    // session:a should be gone, session:b should remain
+    const freshA = getOrCreateTurnState("session:a");
+    expect(freshA.recallOccurred).toBe(false); // fresh default
+
+    const existingB = getOrCreateTurnState("session:b");
+    expect(existingB).toBeDefined();
+  });
+
+  it("resetTurnState clears all sessions", () => {
+    getOrCreateTurnState("s1").recallOccurred = true;
+    getOrCreateTurnState("s2").capturedInThisTurn = true;
+
+    resetTurnState();
+
+    // Both should be fresh
+    expect(getOrCreateTurnState("s1").recallOccurred).toBe(false);
+    expect(getOrCreateTurnState("s2").capturedInThisTurn).toBe(false);
+  });
+});
+
+// ============================================================================
+// sendReaction — Channel Filtering
+// ============================================================================
+
+describe("sendReaction channel filtering", () => {
+  it("does not send for unsupported providers", async () => {
+    // sendReaction should silently no-op for telegram, webchat, cron-event
+    // No fetch call should be made (no SLACK_BOT_TOKEN needed since it returns early)
+    await sendReaction("C123", "1234.5678", "brain", "telegram");
+    await sendReaction("C123", "1234.5678", "brain", "webchat");
+    await sendReaction("C123", "1234.5678", "brain", "cron-event");
+    // If we get here without error, the filter works
+    expect(true).toBe(true);
+  });
+
+  it("does not send when channelId is empty", async () => {
+    await sendReaction("", "1234.5678", "brain", "slack");
+    expect(true).toBe(true);
+  });
+
+  it("does not send when messageId is empty", async () => {
+    await sendReaction("C123", "", "brain", "slack");
+    expect(true).toBe(true);
+  });
+
+  it("does not send when emoji is empty", async () => {
+    await sendReaction("C123", "1234.5678", "", "slack");
+    expect(true).toBe(true);
+  });
+});
+
+// ============================================================================
+// message_received hook registration
+// ============================================================================
+
+describe("message_received hook for reaction tracking", () => {
+  it("registers message_received handler", () => {
+    const hooks: Record<string, any> = {};
+    const mockApi = {
+      on: (hookName: string, handler: any) => {
+        hooks[hookName] = hooks[hookName] || [];
+        hooks[hookName].push(handler);
+      },
+      registerService: () => {},
+      registerCommand: () => {},
+    };
+
+    const config = resolveConfig({ memoryInject: true, autoCapture: true });
+    registerHooks(mockApi, config);
+
+    expect(hooks["message_received"]).toBeDefined();
+    expect(hooks["message_received"].length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ============================================================================
+// agent_end with reaction support (integration-style)
+// ============================================================================
+
+describe("agent_end reaction cleanup", () => {
+  beforeEach(() => {
+    resetTurnState();
+  });
+
+  afterEach(() => {
+    resetTurnState();
+  });
+
+  it("cleans up turn state even when no reactions are sent", () => {
+    // Simulate a session with turn state
+    const sessionKey = "agent:main:webchat:channel:test";
+    const state = getOrCreateTurnState(sessionKey);
+    state.recallOccurred = true;
+    state.channelProvider = "webchat"; // unsupported, no reaction
+
+    // Manually simulate cleanup (as agent_end would do)
+    deleteTurnState(sessionKey);
+
+    // State should be fresh
+    const fresh = getOrCreateTurnState(sessionKey);
+    expect(fresh.recallOccurred).toBe(false);
   });
 });

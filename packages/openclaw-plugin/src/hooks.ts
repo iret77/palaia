@@ -6,6 +6,7 @@
  * - agent_end: Auto-capture of significant exchanges (Issue #64).
  *   Now with LLM-based extraction via OpenClaw's runEmbeddedPiAgent,
  *   falling back to rule-based extraction if the LLM is unavailable.
+ * - message_received: Captures inbound message ID for emoji reactions.
  * - palaia-recovery service: Replays WAL on startup.
  * - /palaia command: Show memory status.
  */
@@ -54,6 +55,51 @@ async function savePluginState(state: PluginState, workspace?: string): Promise<
     // Non-fatal
   }
 }
+
+// ============================================================================
+// Session-isolated Turn State (Issue #87: Emoji Reactions)
+// ============================================================================
+
+/** Per-session turn state for tracking recall/capture across hooks. */
+interface TurnState {
+  recallOccurred: boolean;
+  lastInboundMessageId: string | null;
+  lastInboundChannelId: string | null;
+  channelProvider: string | null;
+  capturedInThisTurn: boolean;
+}
+
+function createDefaultTurnState(): TurnState {
+  return {
+    recallOccurred: false,
+    lastInboundMessageId: null,
+    lastInboundChannelId: null,
+    channelProvider: null,
+    capturedInThisTurn: false,
+  };
+}
+
+/**
+ * Session-isolated turn state map. Keyed by sessionKey.
+ * Set in before_prompt_build / message_received, consumed + deleted in agent_end.
+ * NEVER use global variables for turn data — race condition with multi-agent.
+ */
+const turnStateBySession = new Map<string, TurnState>();
+
+// ============================================================================
+// Inbound Message ID Store (for emoji reactions)
+// ============================================================================
+
+/**
+ * Stores the most recent inbound message ID per channel.
+ * Keyed by channelId (e.g. "C0AKE2G15HV"), value is the message ts.
+ * Written by message_received, consumed by agent_end.
+ * Entries are short-lived and cleaned up after agent_end.
+ */
+const lastInboundMessageByChannel = new Map<string, { messageId: string; provider: string; timestamp: number }>();
+
+/** Channels that support emoji reactions. */
+const REACTION_SUPPORTED_PROVIDERS = new Set(["slack", "discord"]);
 
 // ============================================================================
 // Scope Validation (Issue #90)
@@ -105,6 +151,169 @@ export function extractChannelFromSessionKey(sessionKey: string): string | undef
     return parts[2];
   }
   return undefined;
+}
+
+// ============================================================================
+// Emoji Reaction Helpers (Issue #87: Reactions)
+// ============================================================================
+
+/**
+ * Extract the Slack channel ID from a session key.
+ * e.g. "agent:main:slack:channel:c0ake2g15hv" → "C0AKE2G15HV"
+ */
+export function extractSlackChannelIdFromSessionKey(sessionKey: string): string | undefined {
+  const parts = sessionKey.split(":");
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (parts[i] === "channel" || parts[i] === "dm") {
+      return parts[i + 1].toUpperCase();
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Resolve the session key for the current turn from available ctx.
+ * Tries ctx.sessionKey first, then falls back to sessionId.
+ */
+function resolveSessionKeyFromCtx(ctx: any): string | undefined {
+  const sk = ctx?.sessionKey?.trim?.();
+  if (sk) return sk;
+  const sid = ctx?.sessionId?.trim?.();
+  return sid || undefined;
+}
+
+/**
+ * Get or create turn state for a session.
+ */
+export function getOrCreateTurnState(sessionKey: string): TurnState {
+  let state = turnStateBySession.get(sessionKey);
+  if (!state) {
+    state = createDefaultTurnState();
+    turnStateBySession.set(sessionKey, state);
+  }
+  return state;
+}
+
+/**
+ * Delete turn state for a session (cleanup after agent_end).
+ */
+export function deleteTurnState(sessionKey: string): void {
+  turnStateBySession.delete(sessionKey);
+}
+
+/**
+ * Send an emoji reaction to a message via the Slack Web API (or Discord API).
+ * Only fires for supported channels (slack, discord). Silently no-ops for others.
+ *
+ * For Slack, calls reactions.add via the @slack/web-api client.
+ * Requires SLACK_BOT_TOKEN in the environment.
+ */
+export async function sendReaction(
+  channelId: string,
+  messageId: string,
+  emoji: string,
+  provider: string,
+): Promise<void> {
+  if (!channelId || !messageId || !emoji) return;
+  if (!REACTION_SUPPORTED_PROVIDERS.has(provider)) return;
+
+  if (provider === "slack") {
+    await sendSlackReaction(channelId, messageId, emoji);
+  }
+  // Discord: future implementation
+}
+
+/** Cached Slack bot token resolved from env or OpenClaw config. */
+let _cachedSlackToken: string | null | undefined;
+
+/**
+ * Resolve the Slack bot token from environment or OpenClaw config file.
+ * Caches the result for the lifetime of the process.
+ */
+async function resolveSlackBotToken(): Promise<string | null> {
+  if (_cachedSlackToken !== undefined) return _cachedSlackToken;
+
+  // 1) Environment variable
+  const envToken = process.env.SLACK_BOT_TOKEN?.trim();
+  if (envToken) {
+    _cachedSlackToken = envToken;
+    return envToken;
+  }
+
+  // 2) OpenClaw config file
+  try {
+    const configPaths = [
+      path.join(os.homedir(), ".openclaw", "openclaw.json"),
+      process.env.OPENCLAW_CONFIG || "",
+    ].filter(Boolean);
+
+    for (const configPath of configPaths) {
+      try {
+        const raw = await fs.readFile(configPath, "utf-8");
+        const config = JSON.parse(raw);
+        const token = config?.channels?.slack?.botToken?.trim();
+        if (token) {
+          _cachedSlackToken = token;
+          return token;
+        }
+      } catch {
+        // Try next path
+      }
+    }
+  } catch {
+    // Fallthrough
+  }
+
+  _cachedSlackToken = null;
+  return null;
+}
+
+/** Reset cached token (for testing). */
+export function resetSlackTokenCache(): void {
+  _cachedSlackToken = undefined;
+}
+
+async function sendSlackReaction(
+  channelId: string,
+  messageId: string,
+  emoji: string,
+): Promise<void> {
+  const token = await resolveSlackBotToken();
+  if (!token) {
+    console.warn("[palaia] Cannot send Slack reaction: no bot token found");
+    return;
+  }
+
+  const normalizedEmoji = emoji.replace(/^:/, "").replace(/:$/, "");
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch("https://slack.com/api/reactions.add", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        channel: channelId,
+        timestamp: messageId,
+        name: normalizedEmoji,
+      }),
+      signal: controller.signal,
+    });
+    const data = await response.json() as { ok: boolean; error?: string };
+    if (!data.ok && data.error !== "already_reacted") {
+      console.warn(`[palaia] Slack reaction failed: ${data.error} (${normalizedEmoji} on ${channelId})`);
+    }
+  } catch (err) {
+    if ((err as Error).name !== "AbortError") {
+      console.warn(`[palaia] Slack reaction error (${normalizedEmoji}): ${err}`);
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // ============================================================================
@@ -800,9 +1009,11 @@ function formatStatusResponse(
 // Legacy exports kept for tests
 // ============================================================================
 
-/** Reset turn state (legacy export, now a no-op since TurnState was removed). */
+/** Reset all turn state, inbound message store, and cached tokens (for testing and cleanup). */
 export function resetTurnState(): void {
-  // No-op: TurnState map was removed. Kept for test compatibility.
+  turnStateBySession.clear();
+  lastInboundMessageByChannel.clear();
+  resetSlackTokenCache();
 }
 
 // ============================================================================
@@ -838,9 +1049,28 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
     },
   });
 
+  // ── message_received (capture inbound message ID for reactions) ─
+  api.on("message_received", (event: any, ctx: any) => {
+    try {
+      const messageId = event?.metadata?.messageId;
+      const provider = event?.metadata?.provider;
+      const channelId = ctx?.channelId;
+
+      if (messageId && channelId && provider && REACTION_SUPPORTED_PROVIDERS.has(provider)) {
+        lastInboundMessageByChannel.set(channelId, {
+          messageId: String(messageId),
+          provider,
+          timestamp: Date.now(),
+        });
+      }
+    } catch {
+      // Non-fatal — never block message flow
+    }
+  });
+
   // ── before_prompt_build (Issue #65: Query-based Recall) ────────
   if (config.memoryInject) {
-    api.on("before_prompt_build", async (event: any, _ctx: any) => {
+    api.on("before_prompt_build", async (event: any, ctx: any) => {
       try {
         const maxChars = config.maxInjectedChars || 4000;
         const limit = Math.min(config.maxResults || 10, 20);
@@ -917,6 +1147,27 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           // Non-fatal
         }
 
+        // Track recall in session-isolated turn state for emoji reactions
+        const sessionKey = resolveSessionKeyFromCtx(ctx);
+        if (sessionKey) {
+          const turnState = getOrCreateTurnState(sessionKey);
+          turnState.recallOccurred = true;
+
+          // Populate channel info from sessionKey for reaction routing
+          const provider = extractChannelFromSessionKey(sessionKey);
+          if (provider) turnState.channelProvider = provider;
+          const slackChannel = extractSlackChannelIdFromSessionKey(sessionKey);
+          if (slackChannel) turnState.lastInboundChannelId = slackChannel;
+
+          // Try to get the inbound message ID from the message_received store
+          if (slackChannel) {
+            const inbound = lastInboundMessageByChannel.get(slackChannel);
+            if (inbound && (Date.now() - inbound.timestamp) < 30_000) {
+              turnState.lastInboundMessageId = inbound.messageId;
+            }
+          }
+        }
+
         // Return prependContext + appendSystemContext for recall emoji
         return {
           prependContext: text + nudgeContext,
@@ -941,12 +1192,15 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
     }
   });
 
-  // ── agent_end (Issue #64 + #81: Auto-Capture with Metadata) ───
+  // ── agent_end (Issue #64 + #81: Auto-Capture with Metadata + Reactions) ───
   if (config.autoCapture) {
-    api.on("agent_end", async (event: any, _ctx: any) => {
+    api.on("agent_end", async (event: any, ctx: any) => {
       if (!event.success || !event.messages || event.messages.length === 0) {
         return;
       }
+
+      // Resolve session key for turn state
+      const sessionKey = resolveSessionKeyFromCtx(ctx);
 
       try {
         const agentName = process.env.PALAIA_AGENT || undefined;
@@ -1074,8 +1328,74 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
             `[palaia] Rule-based auto-captured: type=${captureData.type}, tags=${captureData.tags.join(",")}`
           );
         }
+
+        // Mark that capture occurred in this turn
+        if (sessionKey) {
+          const turnState = getOrCreateTurnState(sessionKey);
+          turnState.capturedInThisTurn = true;
+        }
       } catch (error) {
         console.warn(`[palaia] Auto-capture failed: ${error}`);
+      }
+
+      // ── Emoji Reactions (Issue #87) ──────────────────────────
+      // Send reactions AFTER capture completes, using turn state.
+      if (sessionKey) {
+        try {
+          const turnState = turnStateBySession.get(sessionKey);
+          if (turnState) {
+            const provider = turnState.channelProvider
+              || extractChannelFromSessionKey(sessionKey)
+              || (ctx?.channelId as string | undefined);
+            const channelId = turnState.lastInboundChannelId
+              || extractSlackChannelIdFromSessionKey(sessionKey);
+            const messageId = turnState.lastInboundMessageId;
+
+            if (provider && REACTION_SUPPORTED_PROVIDERS.has(provider) && channelId && messageId) {
+              // Capture confirmation: 💾
+              if (turnState.capturedInThisTurn && config.showCaptureConfirm) {
+                await sendReaction(channelId, messageId, "floppy_disk", provider);
+              }
+
+              // Recall indicator: 🧠
+              if (turnState.recallOccurred && config.showMemorySources) {
+                await sendReaction(channelId, messageId, "brain", provider);
+              }
+            }
+          }
+        } catch (reactionError) {
+          console.warn(`[palaia] Reaction sending failed: ${reactionError}`);
+        } finally {
+          // Always clean up turn state
+          deleteTurnState(sessionKey);
+        }
+      }
+    });
+  }
+
+  // ── agent_end: Recall-only reactions (when autoCapture is off) ─
+  if (!config.autoCapture && config.showMemorySources) {
+    api.on("agent_end", async (_event: any, ctx: any) => {
+      const sessionKey = resolveSessionKeyFromCtx(ctx);
+      if (!sessionKey) return;
+
+      try {
+        const turnState = turnStateBySession.get(sessionKey);
+        if (turnState?.recallOccurred) {
+          const provider = turnState.channelProvider
+            || extractChannelFromSessionKey(sessionKey);
+          const channelId = turnState.lastInboundChannelId
+            || extractSlackChannelIdFromSessionKey(sessionKey);
+          const messageId = turnState.lastInboundMessageId;
+
+          if (provider && REACTION_SUPPORTED_PROVIDERS.has(provider) && channelId && messageId) {
+            await sendReaction(channelId, messageId, "brain", provider);
+          }
+        }
+      } catch (err) {
+        console.warn(`[palaia] Recall reaction failed: ${err}`);
+      } finally {
+        deleteTurnState(sessionKey);
       }
     });
   }
