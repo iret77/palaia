@@ -867,6 +867,16 @@ def _check_plugin_defaults_upgrade(palaia_root: Path | None) -> dict[str, Any]:
     # recallMode: list → query (only if user has the old default)
     if plugin_config.get("recallMode") == "list":
         upgradeable.append("recallMode: list → query")
+    # showMemorySources: false → true (v2.0 transparency feature, default is true)
+    if plugin_config.get("showMemorySources") is False:
+        upgradeable.append("showMemorySources: false → true")
+    # showCaptureConfirm: false → true (v2.0 transparency feature, default is true)
+    if plugin_config.get("showCaptureConfirm") is False:
+        upgradeable.append("showCaptureConfirm: false → true")
+    # captureMinSignificance: old value > 0.5 → 0.3 (v2.0 default is 0.3 — more inclusive)
+    min_sig = plugin_config.get("captureMinSignificance")
+    if isinstance(min_sig, (int, float)) and min_sig > 0.5:
+        upgradeable.append(f"captureMinSignificance: {min_sig} → 0.3")
 
     if not upgradeable:
         return {
@@ -1109,6 +1119,16 @@ def apply_fixes(palaia_root: Path | None, results: list[dict[str, Any]]) -> list
             if plugin_config.get("recallMode") == "list":
                 plugin_config["recallMode"] = "query"
                 upgraded.append("recallMode: list → query")
+            if plugin_config.get("showMemorySources") is False:
+                plugin_config["showMemorySources"] = True
+                upgraded.append("showMemorySources: false → true")
+            if plugin_config.get("showCaptureConfirm") is False:
+                plugin_config["showCaptureConfirm"] = True
+                upgraded.append("showCaptureConfirm: false → true")
+            min_sig = plugin_config.get("captureMinSignificance")
+            if isinstance(min_sig, (int, float)) and min_sig > 0.5:
+                plugin_config["captureMinSignificance"] = 0.3
+                upgraded.append(f"captureMinSignificance: {min_sig} → 0.3")
 
             if upgraded:
                 config["plugin_config"] = plugin_config

@@ -52,8 +52,8 @@ class PackageManager:
         entries = []
         for meta, body, _tier in project_entries:
             entry_data: dict = {"content": body}
-            # Copy relevant metadata
-            for key in ("type", "tags", "scope", "title", "created", "significance_tags"):
+            # Copy relevant metadata (including agent for attribution preservation, Issue #85)
+            for key in ("type", "tags", "scope", "title", "created", "significance_tags", "agent"):
                 if key in meta and meta[key]:
                     entry_data[key] = meta[key]
             # Ensure type is always present
@@ -158,6 +158,8 @@ class PackageManager:
             entry_type = entry_data.get("type")
             scope = entry_data.get("scope")
             title = entry_data.get("title")
+            # Issue #85: preserve original agent from package, fall back to --agent flag
+            effective_agent = agent or entry_data.get("agent")
 
             self.store.write(
                 body=content,
@@ -166,7 +168,7 @@ class PackageManager:
                 title=title,
                 project=project,
                 entry_type=entry_type,
-                agent=agent,
+                agent=effective_agent,
             )
             imported += 1
 
