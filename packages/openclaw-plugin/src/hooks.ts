@@ -721,6 +721,7 @@ For each piece of knowledge, return a JSON array of objects:
 - "scope": "private" (personal preference, agent-specific), "team" (shared knowledge), or "public" (documentation)
 
 Only extract genuinely significant knowledge. Skip small talk, acknowledgments, routine exchanges.
+Do NOT extract if similar knowledge was likely captured in a recent exchange. Prefer quality over quantity. Skip routine status updates and acknowledgments.
 Return empty array [] if nothing is worth remembering.
 Return ONLY valid JSON, no markdown fences.`;
 
@@ -1051,6 +1052,10 @@ export function extractSignificance(
   }
 
   if (matched.length === 0) return null;
+
+  // Require at least 2 different significance tags for rule-based capture
+  const uniqueTags = new Set(matched.map((m) => m.tag));
+  if (uniqueTags.size < 2) return null;
 
   const typePriority: Record<string, number> = { task: 3, process: 2, memory: 1 };
   const primaryType = matched.reduce(
@@ -1633,16 +1638,20 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
               const effectiveProject = hintForProject?.project || r.project;
               const effectiveScope = hintForScope?.scope || r.scope;
 
+              // Always include auto-capture tag for GC identification
+              const tags = [...r.tags];
+              if (!tags.includes("auto-capture")) tags.push("auto-capture");
+
               const args = buildWriteArgs(
                 r.content,
                 r.type,
-                r.tags,
+                tags,
                 effectiveProject,
                 effectiveScope,
               );
               await run(args, { ...opts, timeoutMs: 10_000 });
               console.log(
-                `[palaia] LLM auto-captured: type=${r.type}, significance=${r.significance}, tags=${r.tags.join(",")}, project=${effectiveProject || "none"}, scope=${effectiveScope || "team"}`
+                `[palaia] LLM auto-captured: type=${r.type}, significance=${r.significance}, tags=${tags.join(",")}, project=${effectiveProject || "none"}, scope=${effectiveScope || "team"}`
               );
             }
           }
@@ -1689,7 +1698,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           }
         }
 
-        // Rule-based fallback
+        // Rule-based fallback (max 1 per turn)
         if (!llmHandled) {
           let captureData: { tags: string[]; type: string; summary: string } | null = null;
 
@@ -1706,6 +1715,11 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
               .join(" | ")
               .slice(0, 500);
             captureData = { tags: ["auto-capture"], type: "memory", summary };
+          }
+
+          // Always include auto-capture tag for GC identification
+          if (!captureData.tags.includes("auto-capture")) {
+            captureData.tags.push("auto-capture");
           }
 
           const hintForProject = collectedHints.find((h) => h.project);

@@ -75,7 +75,7 @@ export const DEFAULT_CONFIG: PalaiaPluginConfig = {
   autoCapture: true,
   captureFrequency: "significant",
   captureMinTurns: 2,
-  captureMinSignificance: 0.3,
+  captureMinSignificance: 0.5,
   showMemorySources: true,
   showCaptureConfirm: true,
   recallMode: "query",
