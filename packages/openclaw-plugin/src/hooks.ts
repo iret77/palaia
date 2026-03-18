@@ -138,6 +138,16 @@ const lastInboundMessageByChannel = new Map<string, { messageId: string; provide
 const REACTION_SUPPORTED_PROVIDERS = new Set(["slack", "discord"]);
 
 // ============================================================================
+// Logger (Issue: api.logger integration)
+// ============================================================================
+
+/** Module-level logger — defaults to console, replaced by api.logger in registerHooks. */
+let logger: { info: (...args: any[]) => void; warn: (...args: any[]) => void } = {
+  info: (...args: any[]) => console.log(...args),
+  warn: (...args: any[]) => console.warn(...args),
+};
+
+// ============================================================================
 // Scope Validation (Issue #90)
 // ============================================================================
 
@@ -350,7 +360,7 @@ async function sendSlackReaction(
 ): Promise<void> {
   const token = await resolveSlackBotToken();
   if (!token) {
-    console.warn("[palaia] Cannot send Slack reaction: no bot token found");
+    logger.warn("[palaia] Cannot send Slack reaction: no bot token found");
     return;
   }
 
@@ -375,11 +385,11 @@ async function sendSlackReaction(
     });
     const data = await response.json() as { ok: boolean; error?: string };
     if (!data.ok && data.error !== "already_reacted") {
-      console.warn(`[palaia] Slack reaction failed: ${data.error} (${normalizedEmoji} on ${channelId})`);
+      logger.warn(`[palaia] Slack reaction failed: ${data.error} (${normalizedEmoji} on ${channelId})`);
     }
   } catch (err) {
     if ((err as Error).name !== "AbortError") {
-      console.warn(`[palaia] Slack reaction error (${normalizedEmoji}): ${err}`);
+      logger.warn(`[palaia] Slack reaction error (${normalizedEmoji}): ${err}`);
     }
   } finally {
     clearTimeout(timeout);
@@ -792,7 +802,7 @@ export function resolveCaptureModel(
     if (parts.length >= 2) {
       if (!_captureModelFallbackWarned) {
         _captureModelFallbackWarned = true;
-        console.warn(`[palaia] No captureModel configured — using primary model. Set captureModel in plugin config for cost savings.`);
+        logger.warn(`[palaia] No captureModel configured — using primary model. Set captureModel in plugin config for cost savings.`);
       }
       return { provider: parts[0], model: parts.slice(1).join("/") };
     }
@@ -1284,6 +1294,11 @@ export function resetTurnState(): void {
  * Register lifecycle hooks on the plugin API.
  */
 export function registerHooks(api: any, config: PalaiaPluginConfig): void {
+  // Store api.logger for module-wide use (integrates into OpenClaw log system)
+  if (api.logger && typeof api.logger.info === "function") {
+    logger = api.logger;
+  }
+
   const opts = buildRunnerOpts(config);
 
   // ── Startup checks (H-2, H-3) ─────────────────────────────────
@@ -1293,13 +1308,13 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
       try {
         const statusOut = await run(["config", "get", "agent"], { ...opts, timeoutMs: 3000 });
         if (!statusOut.trim()) {
-          console.warn(
+          logger.warn(
             "[palaia] No agent configured. Set PALAIA_AGENT env var or run 'palaia init --agent <name>'. " +
             "Auto-captured entries will have no agent attribution."
           );
         }
       } catch {
-        console.warn(
+        logger.warn(
           "[palaia] No agent configured. Set PALAIA_AGENT env var or run 'palaia init --agent <name>'. " +
           "Auto-captured entries will have no agent attribution."
         );
@@ -1326,7 +1341,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           || status.config?.embedding_provider
         );
         if (!hasSemanticProvider && !hasProviderConfig) {
-          console.warn(
+          logger.warn(
             "[palaia] No embedding provider configured. Semantic search is inactive (BM25 keyword-only). " +
             "Run 'pip install palaia[fastembed]' and 'palaia doctor --fix' for better recall quality."
           );
@@ -1425,7 +1440,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
                 entries = result.results;
               }
             } catch (queryError) {
-              console.warn(`[palaia] Query recall failed, falling back to list: ${queryError}`);
+              logger.warn(`[palaia] Query recall failed, falling back to list: ${queryError}`);
             }
           }
         }
@@ -1536,7 +1551,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
             : undefined,
         };
       } catch (error) {
-        console.warn(`[palaia] Memory injection failed: ${error}`);
+        logger.warn(`[palaia] Memory injection failed: ${error}`);
       }
     });
   }
@@ -1649,7 +1664,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
                   (p) => p.name.toLowerCase() === validatedProject!.toLowerCase(),
                 );
                 if (!isKnown) {
-                  console.log(`[palaia] Auto-capture: unknown project "${validatedProject}" ignored`);
+                  logger.info(`[palaia] Auto-capture: unknown project "${validatedProject}" ignored`);
                   validatedProject = null;
                 }
               }
@@ -1666,7 +1681,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
                 effectiveScope,
               );
               await run(args, { ...opts, timeoutMs: 10_000 });
-              console.log(
+              logger.info(
                 `[palaia] LLM auto-captured: type=${r.type}, significance=${r.significance}, tags=${tags.join(",")}, project=${validatedProject || "none"}, scope=${effectiveScope || "team"}`
               );
             }
@@ -1691,7 +1706,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
             // captureModel is broken — try primary model as fallback
             if (!_captureModelFailoverWarned) {
               _captureModelFailoverWarned = true;
-              console.warn(`[palaia] WARNING: captureModel failed (${errStr}). Using primary model as fallback. Please update captureModel in your config.`);
+              logger.warn(`[palaia] WARNING: captureModel failed (${errStr}). Using primary model as fallback. Please update captureModel in your config.`);
             }
             try {
               // Retry without captureModel → resolveCaptureModel will use primary model
@@ -1702,13 +1717,13 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
               llmHandled = true;
             } catch (fallbackError) {
               if (!_llmImportFailureLogged) {
-                console.warn(`[palaia] LLM extraction failed (primary model fallback also failed): ${fallbackError}`);
+                logger.warn(`[palaia] LLM extraction failed (primary model fallback also failed): ${fallbackError}`);
                 _llmImportFailureLogged = true;
               }
             }
           } else {
             if (!_llmImportFailureLogged) {
-              console.warn(`[palaia] LLM extraction failed, using rule-based fallback: ${llmError}`);
+              logger.warn(`[palaia] LLM extraction failed, using rule-based fallback: ${llmError}`);
               _llmImportFailureLogged = true;
             }
           }
@@ -1750,7 +1765,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           );
 
           await run(args, { ...opts, timeoutMs: 10_000 });
-          console.log(
+          logger.info(
             `[palaia] Rule-based auto-captured: type=${captureData.type}, tags=${captureData.tags.join(",")}`
           );
         }
@@ -1762,7 +1777,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         } else {
         }
       } catch (error) {
-        console.warn(`[palaia] Auto-capture failed: ${error}`);
+        logger.warn(`[palaia] Auto-capture failed: ${error}`);
       }
 
       // ── Emoji Reactions (Issue #87) ──────────────────────────
@@ -1794,7 +1809,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
             }
           }
         } catch (reactionError) {
-          console.warn(`[palaia] Reaction sending failed: ${reactionError}`);
+          logger.warn(`[palaia] Reaction sending failed: ${reactionError}`);
         } finally {
           // Always clean up turn state
           deleteTurnState(sessionKey);
@@ -1824,7 +1839,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           }
         }
       } catch (err) {
-        console.warn(`[palaia] Recall reaction failed: ${err}`);
+        logger.warn(`[palaia] Recall reaction failed: ${err}`);
       } finally {
         deleteTurnState(sessionKey);
       }
@@ -1837,10 +1852,10 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
     start: async () => {
       const result = await recover(opts);
       if (result.replayed > 0) {
-        console.log(`[palaia] WAL recovery: replayed ${result.replayed} entries`);
+        logger.info(`[palaia] WAL recovery: replayed ${result.replayed} entries`);
       }
       if (result.errors > 0) {
-        console.warn(`[palaia] WAL recovery completed with ${result.errors} error(s)`);
+        logger.warn(`[palaia] WAL recovery completed with ${result.errors} error(s)`);
       }
     },
   });
