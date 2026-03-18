@@ -1475,12 +1475,26 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         // Apply type-weighted reranking
         const ranked = rerankByTypeWeight(entries, config.recallTypeWeight);
 
-        // Build context string with char budget
+        // Build context string with char budget (compact format for token efficiency)
+        const SCOPE_SHORT: Record<string, string> = { team: "t", private: "p", public: "pub" };
+        const TYPE_SHORT: Record<string, string> = { memory: "m", process: "pr", task: "tk" };
+
         let text = "## Active Memory (Palaia)\n\n";
         let chars = text.length;
 
         for (const entry of ranked) {
-          const line = `**${entry.title}** [${entry.scope}/${entry.type}]\n${entry.body}\n\n`;
+          const scopeKey = SCOPE_SHORT[entry.scope] || entry.scope;
+          const typeKey = TYPE_SHORT[entry.type] || entry.type;
+          const prefix = `[${scopeKey}/${typeKey}]`;
+
+          // If body starts with title (common), skip title to save tokens
+          let line: string;
+          if (entry.body.toLowerCase().startsWith(entry.title.toLowerCase())) {
+            line = `${prefix} ${entry.body}\n\n`;
+          } else {
+            line = `${prefix} ${entry.title}\n${entry.body}\n\n`;
+          }
+
           if (chars + line.length > maxChars) break;
           text += line;
           chars += line.length;

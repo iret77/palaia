@@ -33,7 +33,7 @@
       },
       "maxInjectedChars": {
         "type": "number",
-        "default": 8000,
+        "default": 4000,
         "description": "Max characters for injected memory context"
       },
       "autoCapture": {
@@ -118,7 +118,7 @@
     },
     "maxInjectedChars": {
       "label": "Max Injected Characters",
-      "description": "Maximum characters of memory context injected per prompt (recommended: 8000)"
+      "description": "Maximum characters of memory context injected per prompt (recommended: 4000)"
     },
     "autoCapture": {
       "label": "Auto-Capture",

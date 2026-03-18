@@ -71,7 +71,7 @@ export const DEFAULT_CONFIG: PalaiaPluginConfig = {
   maxResults: 10,
   timeoutMs: 3000,
   memoryInject: true,
-  maxInjectedChars: 8000,
+  maxInjectedChars: 4000,
   autoCapture: true,
   captureFrequency: "significant",
   captureMinTurns: 2,
