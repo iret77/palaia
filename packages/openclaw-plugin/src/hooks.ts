@@ -1120,6 +1120,83 @@ export function getLastUserMessage(messages: unknown[]): string | null {
 }
 
 // ============================================================================
+// Recall Query Builder (Issue #65 upgrade: robust user message extraction)
+// ============================================================================
+
+/** Day-of-week prefixes used as system markers in messages. */
+const DAY_PREFIXES = ["[Mon ", "[Tue ", "[Wed ", "[Thu ", "[Fri ", "[Sat ", "[Sun "];
+
+/**
+ * Clean a raw message string by removing system markers, JSON blocks,
+ * and other noise that degrades semantic search quality.
+ */
+export function cleanMessageForQuery(text: string): string {
+  let cleaned = text;
+
+  // Remove JSON code blocks (```json ... ```)
+  cleaned = cleaned.replace(/```json[\s\S]*?```/gi, "");
+
+  // Remove lines starting with system markers
+  cleaned = cleaned
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trimStart();
+      if (trimmed.startsWith("System:")) return false;
+      if (trimmed.startsWith("[Queued")) return false;
+      if (trimmed.startsWith("[Inter-session")) return false;
+      for (const prefix of DAY_PREFIXES) {
+        if (trimmed.startsWith(prefix)) return false;
+      }
+      return true;
+    })
+    .join("\n")
+    .trim();
+
+  return cleaned;
+}
+
+/**
+ * Build a recall query from message history.
+ *
+ * - Always uses actual user messages (ignores event.prompt which may be stale/synthetic).
+ * - If the last user message is short (< 30 chars), prepends the previous user message
+ *   for better semantic context ("Ja", "OK", "Status" alone are poor queries).
+ * - Strips system markers, JSON blocks, and other noise.
+ * - Hard-caps at 500 characters.
+ *
+ * Returns empty string if nothing usable remains.
+ */
+export function buildRecallQuery(messages: unknown[]): string {
+  const texts = extractMessageTexts(messages);
+  const userMessages: string[] = [];
+  for (let i = texts.length - 1; i >= 0 && userMessages.length < 2; i--) {
+    if (texts[i].role === "user") {
+      const cleaned = cleanMessageForQuery(texts[i].text);
+      if (cleaned) userMessages.unshift(cleaned);
+    }
+  }
+
+  if (userMessages.length === 0) return "";
+
+  const lastMsg = userMessages[userMessages.length - 1];
+
+  // If the last user message is very short, include previous for context
+  let query: string;
+  if (lastMsg.length < 30 && userMessages.length > 1) {
+    query = `${userMessages[userMessages.length - 2]} ${lastMsg}`;
+  } else {
+    query = lastMsg;
+  }
+
+  // Hard cap at 500 characters
+  if (query.length > 500) {
+    query = query.slice(0, 500);
+  }
+
+  return query.trim();
+}
+
+// ============================================================================
 // Query-based Recall: Type-weighted reranking (Issue #65)
 // ============================================================================
 
@@ -1345,8 +1422,9 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         let entries: QueryResult["results"] = [];
 
         if (config.recallMode === "query") {
-          const userMessage = event.prompt
-            || (event.messages ? getLastUserMessage(event.messages) : null);
+          const userMessage = event.messages
+            ? buildRecallQuery(event.messages)
+            : (event.prompt || null);
 
           if (userMessage && userMessage.length >= 5) {
             try {
