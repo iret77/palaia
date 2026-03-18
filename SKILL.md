@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "2.0.3"
+version: "2.0.4"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   Replaces built-in memory-core with semantic search, projects, and scope-based access control.
@@ -465,7 +465,8 @@ Find your npm global path with: `npm root -g`
 |-----|-------------|
 | `workspace` | Path to the OpenClaw workspace (where `.palaia/` lives) |
 | `memoryInject` | Inject memories into agent context (default: `true`) |
-| `maxInjectedChars` | Max characters for injected context (default: `8000`) |
+| `maxInjectedChars` | Max characters for injected context (default: `4000`) |
+| `recallMinScore` | Minimum score for relevant recall results (default: `0.7`) |
 | `autoCapture` | Capture significant exchanges automatically (default: `true`) |
 | `captureFrequency` | `"every"` or `"significant"` (default: `"significant"`) |
 | `captureMinTurns` | Minimum exchange turns before capture (default: 2) |
@@ -526,13 +527,23 @@ Auto-capture runs automatically after every agent turn (when `autoCapture: true`
 
 ### When to Use Manual Write vs Auto-Capture
 
-**Auto-capture replaces routine captures.** It runs automatically — you don't need to explicitly save every decision or learning. It handles the 80% case.
+**Auto-Capture** handles conversation knowledge automatically: decisions mentioned in chat, facts discussed, lessons learned during work. You don't need to save these — Palaia does it for you.
 
-**Manual `palaia write` remains valuable for:**
-- Conscious decisions (ADRs): `palaia write "We decided..." --type memory --tags decision`
-- Processes and checklists: `palaia write "Deploy steps: 1. ... 2. ..." --type process`
-- Deliberate knowledge structuring with explicit tags and scopes
-- Entries that MUST belong to a specific project/scope (auto-capture may misassign)
+**Manual `palaia write` is for structured knowledge that Auto-Capture cannot create:**
+
+| Use Case | Command | Why Manual? |
+|----------|---------|-------------|
+| Step-by-step procedure | `palaia write "1. Build 2. Test 3. Deploy" --type process` | Structure matters |
+| Task with owner/deadline | `palaia write "fix auth" --type task --priority high --assignee Elliot` | Structured fields |
+| Project setup | `palaia project create myproject` | Explicit organization |
+| Knowledge from external source | `palaia write "API limit: 100/min" --type memory --project api` | Not from conversation |
+
+**Do NOT manually write:**
+- Facts, decisions, or preferences that came up in the current conversation (auto-captured)
+- "We decided to use X" after discussing X (auto-captured)
+- Status updates or progress notes (auto-captured if significant)
+
+**Rule of thumb:** If it just happened in conversation → trust Auto-Capture. If it needs structure (steps, fields, project assignment) → write manually.
 
 ### Capture Hints
 

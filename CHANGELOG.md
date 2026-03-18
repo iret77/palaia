@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.0.4] — 2026-03-18
+
+### Quality Release
+
+- **Recall pipeline**: Robust query building from actual user messages (ignores synthetic `event.prompt`). Short messages auto-expand with prior context. System markers and JSON blocks filtered.
+- **Score handling**: `recallMinScore` config key (default: 0.7). Brain emoji suppressed on list-fallback.
+- **Capture quality**: `captureMinSignificance` default raised to 0.5. Rule-based fallback requires 2+ significance tags. LLM prompt includes dedup hint. All auto-captured entries tagged `auto-capture`.
+- **Guardrails**: Unknown projects rejected in auto-capture. Scope capped at `team` (no public from LLM).
+- **Usage nudge**: Persistent compact instruction injected per prompt (~30 tokens).
+- **Duplicate guard**: Manual writes checked against existing entries (score > 0.8, last 24h) before writing.
+- **Token efficiency**: Compact injection format (`[t/m]` instead of `[team/memory]`). `maxInjectedChars` default: 4000 (was 8000).
+- **SKILL.md**: Clear manual-vs-auto guidance table.
+
 ## [2.0.3] — 2026-03-18
 
 ### Fixes
