@@ -54,6 +54,10 @@ export interface PalaiaPluginConfig {
   recallMode: "list" | "query";
   /** Type-aware weighting for recall results */
   recallTypeWeight: RecallTypeWeights;
+
+  // ── Recall Quality (Issue #65) ───────────────────────────────
+  /** Minimum score for a recall result to be considered relevant (default: 0.7) */
+  recallMinScore: number;
 }
 
 export const DEFAULT_RECALL_TYPE_WEIGHTS: RecallTypeWeights = {
@@ -76,6 +80,7 @@ export const DEFAULT_CONFIG: PalaiaPluginConfig = {
   showCaptureConfirm: true,
   recallMode: "query",
   recallTypeWeight: { ...DEFAULT_RECALL_TYPE_WEIGHTS },
+  recallMinScore: 0.7,
 };
 
 /**

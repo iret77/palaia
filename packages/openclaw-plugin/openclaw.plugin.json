@@ -86,6 +86,11 @@
         "default": "query",
         "description": "Recall mode: list (context-independent) or query (context-relevant)"
       },
+      "recallMinScore": {
+        "type": "number",
+        "default": 0.7,
+        "description": "Minimum score for a recall result to be considered relevant (default: 0.7)"
+      },
       "recallTypeWeight": {
         "type": "object",
         "default": { "process": 1.5, "task": 1.2, "memory": 1.0 },

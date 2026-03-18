@@ -1442,8 +1442,10 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           }
         }
 
-        // Fallback: list mode
+        // Fallback: list mode (no emoji — list-based recall is not query-relevant)
+        let isListFallback = false;
         if (entries.length === 0) {
+          isListFallback = true;
           try {
             const listArgs: string[] = ["list"];
             if (config.tier === "all") {
@@ -1495,9 +1497,9 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
 
         // Track recall in session-isolated turn state for emoji reactions
         // Only flag recall as meaningful if at least one result scores above threshold
-        const RECALL_RELEVANCE_THRESHOLD = 0.7;
-        const hasRelevantRecall = entries.some(
-          (e) => typeof e.score === "number" && e.score >= RECALL_RELEVANCE_THRESHOLD,
+        // List-fallback never triggers brain emoji (not query-relevant)
+        const hasRelevantRecall = !isListFallback && entries.some(
+          (e) => typeof e.score === "number" && e.score >= config.recallMinScore,
         );
         const sessionKey = resolveSessionKeyFromCtx(ctx);
         if (sessionKey && hasRelevantRecall) {
