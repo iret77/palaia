@@ -786,7 +786,6 @@ export function resolveCaptureModel(
         _captureModelFallbackWarned = true;
         console.warn(`[palaia] No captureModel configured — using primary model. Set captureModel in plugin config for cost savings.`);
       }
-      console.log(`[palaia][debug] resolveCaptureModel: using primary model=${primary}`);
       return { provider: parts[0], model: parts.slice(1).join("/") };
     }
   }
@@ -1258,7 +1257,6 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         ?? (resolveSessionKeyFromCtx(ctx) ? extractSlackChannelIdFromSessionKey(resolveSessionKeyFromCtx(ctx)!) : undefined);
       const sessionKey = resolveSessionKeyFromCtx(ctx);
 
-      console.log(`[palaia][debug] message_received: messageId=${messageId}, provider=${provider}, channelId=${channelId}, sessionKey=${sessionKey ?? "null"}, event.metadata.to=${event?.metadata?.to ?? "null"}, ctx.conversationId=${ctx?.conversationId ?? "null"}`);
 
       if (messageId && channelId && provider && REACTION_SUPPORTED_PROVIDERS.has(provider)) {
         // Normalize channelId to UPPERCASE for consistent lookups
@@ -1269,7 +1267,6 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           provider,
           timestamp: Date.now(),
         });
-        console.log(`[palaia][debug] message_received: stored messageId=${messageId} for normalizedChannelId=${normalizedChannelId}`);
 
         // Also populate turnState if sessionKey is available
         if (sessionKey) {
@@ -1277,7 +1274,6 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           turnState.lastInboundMessageId = String(messageId);
           turnState.lastInboundChannelId = normalizedChannelId;
           turnState.channelProvider = provider;
-          console.log(`[palaia][debug] message_received: set turnState messageId=${messageId} for session=${sessionKey}`);
         }
       }
     } catch {
@@ -1420,10 +1416,8 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
       const sessionKey = resolveSessionKeyFromCtx(ctx);
 
       // DEBUG: always log agent_end firing
-      console.log(`[palaia][debug] agent_end fired: success=${event.success}, messages=${event.messages?.length ?? 0}, sessionKey=${sessionKey ?? "null"}`);
 
       if (!event.success || !event.messages || event.messages.length === 0) {
-        console.log(`[palaia][debug] agent_end ABORT: success=${event.success}, messages=${event.messages?.length ?? 0} — guard clause`);
         return;
       }
 
@@ -1431,11 +1425,9 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         const agentName = process.env.PALAIA_AGENT || undefined;
 
         const allTexts = extractMessageTexts(event.messages);
-        console.log(`[palaia][debug] extractMessageTexts: ${allTexts.length} text blocks, roles=[${allTexts.map(t => t.role).join(",")}]`);
 
         const userTurns = allTexts.filter((t) => t.role === "user").length;
         if (userTurns < config.captureMinTurns) {
-          console.log(`[palaia][debug] agent_end ABORT: userTurns=${userTurns} < captureMinTurns=${config.captureMinTurns}`);
           return;
         }
 
@@ -1457,10 +1449,8 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         const exchangeText = exchangeParts.join("\n");
 
         if (!shouldAttemptCapture(exchangeText)) {
-          console.log(`[palaia][debug] agent_end ABORT: shouldAttemptCapture=false, exchangeText.length=${exchangeText.length}`);
           return;
         }
-        console.log(`[palaia][debug] shouldAttemptCapture=true, exchangeText.length=${exchangeText.length}`);
 
         const knownProjects = await loadProjects(opts);
 
@@ -1523,10 +1513,8 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
             }
           }
 
-          console.log(`[palaia][debug] LLM extraction returned ${results.length} results, significances=[${results.map(r => r.significance).join(",")}]`);
           llmHandled = true;
         } catch (llmError) {
-          console.log(`[palaia][debug] LLM extraction FAILED: ${llmError}`);
           if (!_llmImportFailureLogged) {
             console.warn(`[palaia] LLM extraction failed, using rule-based fallback: ${llmError}`);
             _llmImportFailureLogged = true;
@@ -1535,16 +1523,13 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
 
         // Rule-based fallback
         if (!llmHandled) {
-          console.log(`[palaia][debug] Entering rule-based fallback (captureFrequency=${config.captureFrequency})`);
           let captureData: { tags: string[]; type: string; summary: string } | null = null;
 
           if (config.captureFrequency === "significant") {
             const significance = extractSignificance(exchangeText);
             if (!significance) {
-              console.log(`[palaia][debug] agent_end ABORT: rule-based extractSignificance returned null — no significance patterns matched`);
               return;
             }
-            console.log(`[palaia][debug] rule-based significance matched: tags=[${significance.tags.join(",")}], type=${significance.type}`);
             captureData = significance;
           } else {
             const summary = exchangeParts
@@ -1576,9 +1561,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         if (sessionKey) {
           const turnState = getOrCreateTurnState(sessionKey);
           turnState.capturedInThisTurn = true;
-          console.log(`[palaia][debug] capturedInThisTurn=true for session=${sessionKey}`);
         } else {
-          console.log(`[palaia][debug] WARNING: no sessionKey — capturedInThisTurn NOT set, floppy_disk reaction will NOT fire`);
         }
       } catch (error) {
         console.warn(`[palaia] Auto-capture failed: ${error}`);
@@ -1589,7 +1572,6 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
       if (sessionKey) {
         try {
           const turnState = turnStateBySession.get(sessionKey);
-          console.log(`[palaia][debug] Reaction phase: sessionKey=${sessionKey}, turnState=${turnState ? JSON.stringify({ captured: turnState.capturedInThisTurn, recall: turnState.recallOccurred, channelId: turnState.lastInboundChannelId, messageId: turnState.lastInboundMessageId, provider: turnState.channelProvider }) : "null"}`);
           if (turnState) {
             const provider = turnState.channelProvider
               || extractChannelFromSessionKey(sessionKey)
@@ -1599,12 +1581,10 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
               || extractSlackChannelIdFromSessionKey(sessionKey);
             const messageId = turnState.lastInboundMessageId;
 
-            console.log(`[palaia][debug] Reaction routing: provider=${provider}, channelId=${channelId}, messageId=${messageId}, showCaptureConfirm=${config.showCaptureConfirm}, showMemorySources=${config.showMemorySources}`);
 
             if (provider && REACTION_SUPPORTED_PROVIDERS.has(provider) && channelId && messageId) {
               // Capture confirmation: 💾
               if (turnState.capturedInThisTurn && config.showCaptureConfirm) {
-                console.log(`[palaia][debug] Sending floppy_disk reaction to ${channelId}/${messageId}`);
                 await sendReaction(channelId, messageId, "floppy_disk", provider);
               }
 
@@ -1613,7 +1593,6 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
                 await sendReaction(channelId, messageId, "brain", provider);
               }
             } else {
-              console.log(`[palaia][debug] Reaction SKIPPED: provider=${provider}, supported=${provider ? REACTION_SUPPORTED_PROVIDERS.has(provider) : false}, channelId=${channelId}, messageId=${messageId}`);
             }
           }
         } catch (reactionError) {
