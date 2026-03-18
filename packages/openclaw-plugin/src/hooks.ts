@@ -825,21 +825,27 @@ function collectText(payloads: Array<{ text?: string; isError?: boolean }> | und
  * then hard-cap at maxChars from the end (newest messages kept).
  */
 export function trimToRecentExchanges(
-  texts: Array<{ role: string; text: string }>,
+  texts: Array<{ role: string; text: string; provenance?: string }>,
   maxPairs = 5,
   maxChars = 10_000,
-): Array<{ role: string; text: string }> {
+): Array<{ role: string; text: string; provenance?: string }> {
   // Filter to only user + assistant messages (skip tool, toolResult, system, etc.)
   const exchanges = texts.filter((t) => t.role === "user" || t.role === "assistant");
 
   // Keep the last N pairs (a pair = one user + one assistant message)
+  // Only count external_user messages as real user turns.
+  // System-injected user messages (inter_session, internal_system) don't count as conversation turns.
   // Walk backwards, count pairs
   let pairCount = 0;
   let lastRole = "";
   let cutIndex = 0; // default: keep everything
   for (let i = exchanges.length - 1; i >= 0; i--) {
-    // Count a new pair when we see a user message after having seen an assistant
-    if (exchanges[i].role === "user" && lastRole === "assistant") {
+    const isRealUser = exchanges[i].role === "user" && (
+      exchanges[i].provenance === "external_user" ||
+      !exchanges[i].provenance // backward compat: no provenance = treat as real user
+    );
+    // Count a new pair when we see a real user message after having seen an assistant
+    if (isRealUser && lastRole === "assistant") {
       pairCount++;
       if (pairCount > maxPairs) {
         cutIndex = i + 1; // keep from next message onwards
@@ -1087,8 +1093,8 @@ export function extractSignificance(
   return { tags, type: primaryType, summary };
 }
 
-export function extractMessageTexts(messages: unknown[]): Array<{ role: string; text: string }> {
-  const result: Array<{ role: string; text: string }> = [];
+export function extractMessageTexts(messages: unknown[]): Array<{ role: string; text: string; provenance?: string }> {
+  const result: Array<{ role: string; text: string; provenance?: string }> = [];
 
   for (const msg of messages) {
     if (!msg || typeof msg !== "object") continue;
@@ -1096,8 +1102,12 @@ export function extractMessageTexts(messages: unknown[]): Array<{ role: string; 
     const role = m.role;
     if (!role || typeof role !== "string") continue;
 
+    // Extract provenance kind (string or object with .kind)
+    const rawProvenance = (m as any).provenance?.kind ?? (m as any).provenance;
+    const provenance = typeof rawProvenance === "string" ? rawProvenance : undefined;
+
     if (typeof m.content === "string" && m.content.trim()) {
-      result.push({ role, text: m.content.trim() });
+      result.push({ role, text: m.content.trim(), provenance });
       continue;
     }
 
@@ -1110,7 +1120,7 @@ export function extractMessageTexts(messages: unknown[]): Array<{ role: string; 
           typeof block.text === "string" &&
           block.text.trim()
         ) {
-          result.push({ role, text: block.text.trim() });
+          result.push({ role, text: block.text.trim(), provenance });
         }
       }
     }
