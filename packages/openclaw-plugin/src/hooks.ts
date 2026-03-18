@@ -1301,7 +1301,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
 
   const opts = buildRunnerOpts(config);
 
-  // ── Startup checks (H-2, H-3) ─────────────────────────────────
+  // ── Startup checks (H-2, H-3, captureModel validation) ────────
   (async () => {
     // H-2: Warn if no agent is configured
     if (!process.env.PALAIA_AGENT) {
@@ -1350,6 +1350,19 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
       // If statusJson is empty/null, skip warning (CLI may not be available)
     } catch {
       // Non-fatal — status check failed, skip warning (avoid false positive)
+    }
+
+    // Validate captureModel auth at plugin startup via modelAuth API
+    if (config.captureModel && api.runtime?.modelAuth) {
+      try {
+        const resolved = resolveCaptureModel(api.config, config.captureModel);
+        if (resolved?.provider) {
+          const key = await api.runtime.modelAuth.resolveApiKeyForProvider({ provider: resolved.provider, cfg: api.config });
+          if (!key) {
+            logger.warn(`[palaia] captureModel provider "${resolved.provider}" has no API key — auto-capture LLM extraction will fail`);
+          }
+        }
+      } catch { /* non-fatal */ }
     }
   })();
 
