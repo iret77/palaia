@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.0.1] — 2026-03-18
+
+### Patch
+- Includes all v2.0.0 post-release fixes (SKILL.md plugin install step, fastembed cache integrity, captureModel resilience, sliding window fix).
+- Re-publish for PyPI/npm with latest HEAD.
+
 ## [2.0.0] — 2026-03-17
 
 ### Breaking Changes
