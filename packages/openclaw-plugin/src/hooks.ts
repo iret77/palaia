@@ -265,6 +265,13 @@ let _cachedSlackToken: string | null | undefined;
 /**
  * Resolve the Slack bot token from environment or OpenClaw config file.
  * Caches the result for the lifetime of the process.
+ *
+ * Resolution order:
+ * 1. SLACK_BOT_TOKEN env var (explicit override)
+ * 2. OpenClaw config: channels.slack.botToken (standard single-account)
+ * 3. OpenClaw config: channels.slack.accounts.default.botToken (multi-account)
+ *
+ * Config path: OPENCLAW_CONFIG env var → ~/.openclaw/openclaw.json
  */
 async function resolveSlackBotToken(): Promise<string | null> {
   if (_cachedSlackToken !== undefined) return _cachedSlackToken;
@@ -276,28 +283,33 @@ async function resolveSlackBotToken(): Promise<string | null> {
     return envToken;
   }
 
-  // 2) OpenClaw config file
-  try {
-    const configPaths = [
-      path.join(os.homedir(), ".openclaw", "openclaw.json"),
-      process.env.OPENCLAW_CONFIG || "",
-    ].filter(Boolean);
+  // 2) OpenClaw config file — OPENCLAW_CONFIG takes precedence over default path
+  const configPaths = [
+    process.env.OPENCLAW_CONFIG || "",
+    path.join(os.homedir(), ".openclaw", "openclaw.json"),
+  ].filter(Boolean);
 
-    for (const configPath of configPaths) {
-      try {
-        const raw = await fs.readFile(configPath, "utf-8");
-        const config = JSON.parse(raw);
-        const token = config?.channels?.slack?.botToken?.trim();
-        if (token) {
-          _cachedSlackToken = token;
-          return token;
-        }
-      } catch {
-        // Try next path
+  for (const configPath of configPaths) {
+    try {
+      const raw = await fs.readFile(configPath, "utf-8");
+      const config = JSON.parse(raw);
+
+      // 2a) Standard path: channels.slack.botToken
+      const directToken = config?.channels?.slack?.botToken?.trim();
+      if (directToken) {
+        _cachedSlackToken = directToken;
+        return directToken;
       }
+
+      // 2b) Multi-account path: channels.slack.accounts.default.botToken
+      const accountToken = config?.channels?.slack?.accounts?.default?.botToken?.trim();
+      if (accountToken) {
+        _cachedSlackToken = accountToken;
+        return accountToken;
+      }
+    } catch {
+      // Try next path
     }
-  } catch {
-    // Fallthrough
   }
 
   _cachedSlackToken = null;
@@ -589,22 +601,74 @@ export interface ExtractionResult {
 type RunEmbeddedPiAgentFn = (params: Record<string, unknown>) => Promise<unknown>;
 
 let _embeddedPiAgentLoader: Promise<RunEmbeddedPiAgentFn> | null = null;
+/** Whether the LLM import failure has already been logged (to avoid spam). */
+let _llmImportFailureLogged = false;
 
-async function loadRunEmbeddedPiAgent(): Promise<RunEmbeddedPiAgentFn> {
+/**
+ * Resolve the path to OpenClaw's extensionAPI module.
+ * Uses multiple strategies for portability across installation layouts.
+ */
+function resolveExtensionAPIPath(): string | null {
+  // Strategy 1: require.resolve with openclaw package exports
   try {
-    const mod = await import("../../../src/agents/pi-embedded-runner.js");
-    if (typeof (mod as any).runEmbeddedPiAgent === "function") {
-      return (mod as any).runEmbeddedPiAgent;
-    }
+    return require.resolve("openclaw/dist/extensionAPI.js");
   } catch {
-    // ignore
+    // Not resolvable via standard module resolution
   }
 
-  const distPath = "../../../dist/extensionAPI.js";
-  const mod = (await import(distPath)) as { runEmbeddedPiAgent?: unknown };
+  // Strategy 2: Resolve openclaw main entry, then navigate to dist/extensionAPI.js
+  try {
+    const openclawMain = require.resolve("openclaw");
+    const candidate = path.join(path.dirname(openclawMain), "extensionAPI.js");
+    if (require("node:fs").existsSync(candidate)) return candidate;
+  } catch {
+    // openclaw not resolvable at all
+  }
+
+  // Strategy 3: Sibling in global node_modules (plugin installed alongside openclaw)
+  try {
+    const thisFile = typeof __dirname !== "undefined" ? __dirname : path.dirname(new URL(import.meta.url).pathname);
+    // Walk up from plugin src/dist to node_modules, then into openclaw
+    let dir = thisFile;
+    for (let i = 0; i < 6; i++) {
+      const candidate = path.join(dir, "openclaw", "dist", "extensionAPI.js");
+      if (require("node:fs").existsSync(candidate)) return candidate;
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  } catch {
+    // Traversal failed
+  }
+
+  // Strategy 4: Well-known global install paths
+  const globalCandidates = [
+    path.join(os.homedir(), ".openclaw", "node_modules", "openclaw", "dist", "extensionAPI.js"),
+    "/home/linuxbrew/.linuxbrew/lib/node_modules/openclaw/dist/extensionAPI.js",
+    "/usr/local/lib/node_modules/openclaw/dist/extensionAPI.js",
+    "/usr/lib/node_modules/openclaw/dist/extensionAPI.js",
+  ];
+  for (const candidate of globalCandidates) {
+    try {
+      if (require("node:fs").existsSync(candidate)) return candidate;
+    } catch {
+      // skip
+    }
+  }
+
+  return null;
+}
+
+async function loadRunEmbeddedPiAgent(): Promise<RunEmbeddedPiAgentFn> {
+  const resolved = resolveExtensionAPIPath();
+  if (!resolved) {
+    throw new Error("Could not locate openclaw/dist/extensionAPI.js — tried module resolution, sibling lookup, and global paths");
+  }
+
+  const mod = (await import(resolved)) as { runEmbeddedPiAgent?: unknown };
   const fn = (mod as any).runEmbeddedPiAgent;
   if (typeof fn !== "function") {
-    throw new Error("runEmbeddedPiAgent not available in this OpenClaw installation");
+    throw new Error(`runEmbeddedPiAgent not exported from ${resolved}`);
   }
   return fn as RunEmbeddedPiAgentFn;
 }
@@ -619,6 +683,12 @@ export function getEmbeddedPiAgent(): Promise<RunEmbeddedPiAgentFn> {
 /** Reset cached loader (for testing). */
 export function resetEmbeddedPiAgentLoader(): void {
   _embeddedPiAgentLoader = null;
+  _llmImportFailureLogged = false;
+}
+
+/** Override the cached loader with a custom promise (for testing). */
+export function setEmbeddedPiAgentLoader(loader: Promise<RunEmbeddedPiAgentFn> | null): void {
+  _embeddedPiAgentLoader = loader;
 }
 
 const EXTRACTION_SYSTEM_PROMPT_BASE = `You are a knowledge extraction engine. Analyze the following conversation exchange and identify information worth remembering long-term.
@@ -1383,7 +1453,10 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
 
           llmHandled = true;
         } catch (llmError) {
-          console.warn(`[palaia] LLM extraction failed, using rule-based fallback: ${llmError}`);
+          if (!_llmImportFailureLogged) {
+            console.warn(`[palaia] LLM extraction failed, using rule-based fallback: ${llmError}`);
+            _llmImportFailureLogged = true;
+          }
         }
 
         // Rule-based fallback

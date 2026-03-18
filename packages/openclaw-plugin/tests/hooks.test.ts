@@ -30,6 +30,7 @@ import {
   isValidScope,
   sanitizeScope,
   registerHooks,
+  setEmbeddedPiAgentLoader,
   type ExtractionResult,
   type PalaiaHint,
 } from "../src/hooks.js";
@@ -449,6 +450,10 @@ describe("extractWithLLM", () => {
   ];
 
   it("throws when runEmbeddedPiAgent is unavailable", async () => {
+    // Use the test setter to simulate a system where openclaw is not installed
+    setEmbeddedPiAgentLoader(
+      Promise.reject(new Error("Could not locate openclaw/dist/extensionAPI.js")),
+    );
     await expect(extractWithLLM(sampleMessages, mockConfig)).rejects.toThrow();
   });
 
