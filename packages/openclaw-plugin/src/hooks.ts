@@ -1231,9 +1231,14 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
     try {
       const messageId = event?.metadata?.messageId;
       const provider = event?.metadata?.provider;
-      const channelId = ctx?.channelId;
 
-      console.log(`[palaia][debug] message_received: messageId=${messageId}, provider=${provider}, channelId=${channelId}`);
+      // ctx.channelId returns the provider name ("slack"), NOT the actual channel ID.
+      // Extract the real channel ID from the session key instead.
+      const sessionKey = resolveSessionKeyFromCtx(ctx);
+      const channelId = (sessionKey ? extractSlackChannelIdFromSessionKey(sessionKey) : undefined)
+        ?? ctx?.channelId;
+
+      console.log(`[palaia][debug] message_received: messageId=${messageId}, provider=${provider}, channelId=${channelId}, sessionKey=${sessionKey ?? "null"}`);
 
       if (messageId && channelId && provider && REACTION_SUPPORTED_PROVIDERS.has(provider)) {
         // Normalize channelId to UPPERCASE for consistent lookups
@@ -1247,7 +1252,6 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         console.log(`[palaia][debug] message_received: stored messageId=${messageId} for normalizedChannelId=${normalizedChannelId}`);
 
         // Also populate turnState if sessionKey is available
-        const sessionKey = resolveSessionKeyFromCtx(ctx);
         if (sessionKey) {
           const turnState = getOrCreateTurnState(sessionKey);
           turnState.lastInboundMessageId = String(messageId);
