@@ -31,6 +31,7 @@ import {
   sanitizeScope,
   registerHooks,
   setEmbeddedPiAgentLoader,
+  trimToRecentExchanges,
   type ExtractionResult,
   type PalaiaHint,
 } from "../src/hooks.js";
@@ -452,6 +453,80 @@ describe("resolveCaptureModel", () => {
     const result = resolveCaptureModel(config, "cheap");
     // No fallbacks → use primary
     expect(result).toEqual({ provider: "google", model: "gemini-2.5-pro" });
+  });
+});
+
+// ============================================================================
+// trimToRecentExchanges (Issue: LLM timeout on long sessions)
+// ============================================================================
+
+describe("trimToRecentExchanges", () => {
+  it("returns empty array for empty input", () => {
+    expect(trimToRecentExchanges([])).toEqual([]);
+  });
+
+  it("passes through short conversations unchanged", () => {
+    const texts = [
+      { role: "user", text: "Hello" },
+      { role: "assistant", text: "Hi there" },
+    ];
+    expect(trimToRecentExchanges(texts)).toEqual(texts);
+  });
+
+  it("filters out non-user/assistant roles", () => {
+    const texts = [
+      { role: "user", text: "Hello" },
+      { role: "toolResult", text: "tool output that is very long" },
+      { role: "assistant", text: "Here's what I found" },
+    ];
+    const result = trimToRecentExchanges(texts);
+    expect(result.every((t) => t.role === "user" || t.role === "assistant")).toBe(true);
+    expect(result).toHaveLength(2);
+  });
+
+  it("keeps only the last N pairs from a long conversation", () => {
+    const texts: Array<{ role: string; text: string }> = [];
+    for (let i = 0; i < 20; i++) {
+      texts.push({ role: "user", text: `Question ${i}` });
+      texts.push({ role: "assistant", text: `Answer ${i}` });
+    }
+    // Default maxPairs = 5 → last 5 pairs = 10 messages
+    const result = trimToRecentExchanges(texts);
+    expect(result.length).toBeLessThanOrEqual(12); // 5 pairs + some slack
+    expect(result[result.length - 1].text).toBe("Answer 19");
+    expect(result[result.length - 2].text).toBe("Question 19");
+  });
+
+  it("enforces hard char cap", () => {
+    const texts = [
+      { role: "user", text: "A".repeat(3000) },
+      { role: "assistant", text: "B".repeat(3000) },
+      { role: "user", text: "C".repeat(3000) },
+      { role: "assistant", text: "D".repeat(3000) },
+    ];
+    const result = trimToRecentExchanges(texts, 5, 6100);
+    // Should trim from the front to stay under 6100 chars
+    const totalChars = result.reduce((s, t) => s + t.text.length + t.role.length + 5, 0);
+    expect(totalChars).toBeLessThanOrEqual(6100);
+    // Should keep the newest messages
+    expect(result[result.length - 1].text).toBe("D".repeat(3000));
+  });
+
+  it("handles interleaved toolResult messages correctly", () => {
+    const texts = [
+      { role: "user", text: "Q1" },
+      { role: "assistant", text: "A1" },
+      { role: "toolResult", text: "tool stuff" },
+      { role: "user", text: "Q2" },
+      { role: "toolResult", text: "more tool stuff" },
+      { role: "assistant", text: "A2" },
+      { role: "user", text: "Q3" },
+      { role: "assistant", text: "A3" },
+    ];
+    const result = trimToRecentExchanges(texts, 2);
+    expect(result.every((t) => t.role === "user" || t.role === "assistant")).toBe(true);
+    // Should have last 2 pairs at most
+    expect(result.length).toBeLessThanOrEqual(6);
   });
 });
 

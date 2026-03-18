@@ -808,6 +808,52 @@ function collectText(payloads: Array<{ text?: string; isError?: boolean }> | und
     .trim();
 }
 
+/**
+ * Trim message texts to a recent window for LLM extraction.
+ * Only extract from recent exchanges — full history causes LLM timeouts
+ * and dilutes extraction quality.
+ *
+ * Strategy: keep last N user+assistant pairs (skip toolResult roles),
+ * then hard-cap at maxChars from the end (newest messages kept).
+ */
+export function trimToRecentExchanges(
+  texts: Array<{ role: string; text: string }>,
+  maxPairs = 5,
+  maxChars = 10_000,
+): Array<{ role: string; text: string }> {
+  // Filter to only user + assistant messages (skip tool, toolResult, system, etc.)
+  const exchanges = texts.filter((t) => t.role === "user" || t.role === "assistant");
+
+  // Keep the last N pairs (a pair = one user + one assistant message)
+  // Walk backwards, count pairs
+  let pairCount = 0;
+  let lastRole = "";
+  let cutIndex = 0; // default: keep everything
+  for (let i = exchanges.length - 1; i >= 0; i--) {
+    // Count a new pair when we see a user message after having seen an assistant
+    if (exchanges[i].role === "user" && lastRole === "assistant") {
+      pairCount++;
+      if (pairCount > maxPairs) {
+        cutIndex = i + 1; // keep from next message onwards
+        break;
+      }
+    }
+    if (exchanges[i].role !== lastRole) {
+      lastRole = exchanges[i].role;
+    }
+  }
+  let trimmed = exchanges.slice(cutIndex);
+
+  // Hard cap: max chars from the end (keep newest)
+  let totalChars = trimmed.reduce((sum, t) => sum + t.text.length + t.role.length + 5, 0);
+  while (totalChars > maxChars && trimmed.length > 1) {
+    const removed = trimmed.shift()!;
+    totalChars -= removed.text.length + removed.role.length + 5;
+  }
+
+  return trimmed;
+}
+
 export async function extractWithLLM(
   messages: unknown[],
   config: any,
@@ -821,9 +867,11 @@ export async function extractWithLLM(
     throw new Error("No model available for LLM extraction");
   }
 
-  const texts = extractMessageTexts(messages);
-  const exchangeText = texts
-    .filter((t) => t.role === "user" || t.role === "assistant")
+  const allTexts = extractMessageTexts(messages);
+  // Only extract from recent exchanges — full history causes LLM timeouts
+  // and dilutes extraction quality
+  const recentTexts = trimToRecentExchanges(allTexts);
+  const exchangeText = recentTexts
     .map((t) => `[${t.role}]: ${t.text}`)
     .join("\n");
 
@@ -1438,13 +1486,15 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           collectedHints.push(...hints);
         }
 
-        // Build exchange text
+        // Only extract from recent exchanges — full history causes LLM timeouts
+        // and dilutes extraction quality
+        const recentTexts = trimToRecentExchanges(allTexts);
+
+        // Build exchange text from recent window only
         const exchangeParts: string[] = [];
-        for (const t of allTexts) {
-          if (t.role === "user" || t.role === "assistant") {
-            const { cleanedText } = parsePalaiaHints(t.text);
-            exchangeParts.push(`[${t.role}]: ${cleanedText}`);
-          }
+        for (const t of recentTexts) {
+          const { cleanedText } = parsePalaiaHints(t.text);
+          exchangeParts.push(`[${t.role}]: ${cleanedText}`);
         }
         const exchangeText = exchangeParts.join("\n");
 
