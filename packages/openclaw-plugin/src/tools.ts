@@ -7,7 +7,7 @@
  */
 
 import { Type } from "@sinclair/typebox";
-import { runJson, type RunnerOpts } from "./runner.js";
+import { run, runJson, type RunnerOpts } from "./runner.js";
 import type { PalaiaPluginConfig } from "./config.js";
 import { sanitizeScope, isValidScope } from "./hooks.js";
 
@@ -217,6 +217,12 @@ export function registerTools(api: any, config: PalaiaPluginConfig): void {
             description: "Title for the entry",
           })
         ),
+        force: Type.Optional(
+          Type.Boolean({
+            description: "Skip duplicate check and write anyway",
+            default: false,
+          })
+        ),
       }),
       async execute(
         _id: string,
@@ -227,8 +233,47 @@ export function registerTools(api: any, config: PalaiaPluginConfig): void {
           type?: string;
           project?: string;
           title?: string;
+          force?: boolean;
         }
       ) {
+        // Duplicate guard: check for similar recent entries before writing
+        if (!params.force) {
+          try {
+            const dupCheckResult = await runJson<QueryResult>(
+              ["query", params.content, "--limit", "5"],
+              { ...opts, timeoutMs: 2000 },
+            );
+            if (dupCheckResult && Array.isArray(dupCheckResult.results)) {
+              const now = Date.now();
+              const oneDayMs = 24 * 60 * 60 * 1000;
+              for (const r of dupCheckResult.results) {
+                if (r.score > 0.8) {
+                  // Check if created in last 24h — use any available date field
+                  const meta = r as any;
+                  const createdStr = meta.created_at || meta.createdAt || meta.date || "";
+                  if (createdStr) {
+                    const createdTime = new Date(createdStr).getTime();
+                    if (!isNaN(createdTime) && (now - createdTime) < oneDayMs) {
+                      const title = r.title || (r.content || r.body || "").slice(0, 60);
+                      const dateStr = new Date(createdTime).toISOString().split("T")[0];
+                      return {
+                        content: [
+                          {
+                            type: "text" as const,
+                            text: `Similar entry already exists (score: ${r.score.toFixed(2)}, created: ${dateStr}): '${title}'. Use palaia edit ${r.id} to update, or confirm with --force to write anyway.`,
+                          },
+                        ],
+                      };
+                    }
+                  }
+                }
+              }
+            }
+          } catch {
+            // Duplicate check timed out or failed — proceed with write
+          }
+        }
+
         const args: string[] = ["write", params.content];
         if (params.scope) {
           if (!isValidScope(params.scope)) {
