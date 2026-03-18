@@ -208,6 +208,25 @@ export function extractSlackChannelIdFromSessionKey(sessionKey: string): string 
 }
 
 /**
+ * Extract the real Slack channel ID from event metadata or ctx.
+ * OpenClaw stores the channel in "channel:C0AKE2G15HV" format in:
+ *   - event.metadata.to
+ *   - event.metadata.originatingTo
+ *   - ctx.conversationId
+ *
+ * ctx.channelId is the PROVIDER NAME ("slack"), not the channel ID.
+ * ctx.sessionKey is null during message_received.
+ */
+export function extractChannelIdFromEvent(event: any, ctx: any): string | undefined {
+  const rawTo = event?.metadata?.to
+    ?? event?.metadata?.originatingTo
+    ?? ctx?.conversationId
+    ?? "";
+  const match = String(rawTo).match(/^(?:channel|dm|group):([A-Z0-9]+)$/i);
+  return match ? match[1].toUpperCase() : undefined;
+}
+
+/**
  * Resolve the session key for the current turn from available ctx.
  * Tries ctx.sessionKey first, then falls back to sessionId.
  */
@@ -1233,12 +1252,13 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
       const provider = event?.metadata?.provider;
 
       // ctx.channelId returns the provider name ("slack"), NOT the actual channel ID.
-      // Extract the real channel ID from the session key instead.
+      // ctx.sessionKey is null during message_received.
+      // Extract the real channel ID from event.metadata.to / ctx.conversationId.
+      const channelId = extractChannelIdFromEvent(event, ctx)
+        ?? (resolveSessionKeyFromCtx(ctx) ? extractSlackChannelIdFromSessionKey(resolveSessionKeyFromCtx(ctx)!) : undefined);
       const sessionKey = resolveSessionKeyFromCtx(ctx);
-      const channelId = (sessionKey ? extractSlackChannelIdFromSessionKey(sessionKey) : undefined)
-        ?? ctx?.channelId;
 
-      console.log(`[palaia][debug] message_received: messageId=${messageId}, provider=${provider}, channelId=${channelId}, sessionKey=${sessionKey ?? "null"}`);
+      console.log(`[palaia][debug] message_received: messageId=${messageId}, provider=${provider}, channelId=${channelId}, sessionKey=${sessionKey ?? "null"}, event.metadata.to=${event?.metadata?.to ?? "null"}, ctx.conversationId=${ctx?.conversationId ?? "null"}`);
 
       if (messageId && channelId && provider && REACTION_SUPPORTED_PROVIDERS.has(provider)) {
         // Normalize channelId to UPPERCASE for consistent lookups
@@ -1353,10 +1373,11 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           const turnState = getOrCreateTurnState(sessionKey);
           turnState.recallOccurred = true;
 
-          // Populate channel info from sessionKey for reaction routing
+          // Populate channel info — prefer event metadata, fall back to sessionKey
           const provider = extractChannelFromSessionKey(sessionKey);
           if (provider) turnState.channelProvider = provider;
-          const slackChannel = extractSlackChannelIdFromSessionKey(sessionKey);
+          const slackChannel = extractChannelIdFromEvent(event, ctx)
+            ?? extractSlackChannelIdFromSessionKey(sessionKey);
           if (slackChannel) turnState.lastInboundChannelId = slackChannel;
 
           // Try to get the inbound message ID from the message_received store
@@ -1574,6 +1595,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
               || extractChannelFromSessionKey(sessionKey)
               || (ctx?.channelId as string | undefined);
             const channelId = turnState.lastInboundChannelId
+              || extractChannelIdFromEvent(event, ctx)
               || extractSlackChannelIdFromSessionKey(sessionKey);
             const messageId = turnState.lastInboundMessageId;
 
@@ -1616,6 +1638,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           const provider = turnState.channelProvider
             || extractChannelFromSessionKey(sessionKey);
           const channelId = turnState.lastInboundChannelId
+            || extractChannelIdFromEvent(_event, ctx)
             || extractSlackChannelIdFromSessionKey(sessionKey);
           const messageId = turnState.lastInboundMessageId;
 
