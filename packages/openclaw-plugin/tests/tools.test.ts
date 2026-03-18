@@ -168,6 +168,9 @@ describe("tools", () => {
 
   describe("memory_write", () => {
     it("writes and returns confirmation", async () => {
+      // First call: duplicate guard query (returns no duplicates)
+      mockRunJson.mockResolvedValueOnce({ results: [] });
+      // Second call: actual write
       mockRunJson.mockResolvedValueOnce({
         id: "new-456",
         tier: "hot",
@@ -190,6 +193,8 @@ describe("tools", () => {
     });
 
     it("works without optional params", async () => {
+      // Duplicate guard query
+      mockRunJson.mockResolvedValueOnce({ results: [] });
       mockRunJson.mockResolvedValueOnce({
         id: "new-789",
         tier: "hot",
@@ -208,6 +213,8 @@ describe("tools", () => {
     });
 
     it("passes --type, --project, --title params (Issue #82)", async () => {
+      // Duplicate guard query
+      mockRunJson.mockResolvedValueOnce({ results: [] });
       mockRunJson.mockResolvedValueOnce({
         id: "new-type-1",
         tier: "hot",

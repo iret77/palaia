@@ -157,42 +157,49 @@ describe("resetTurnState", () => {
 // ============================================================================
 
 describe("extractSignificance", () => {
-  it("detects decisions", () => {
-    const text = "We decided to use TypeScript for the frontend. It provides better type safety.";
+  it("detects decisions (requires 2+ tags)", () => {
+    const text = "We decided to use TypeScript for the frontend. I learned that it provides better type safety for our codebase.";
     const result = extractSignificance(text);
     expect(result).not.toBeNull();
     expect(result!.tags).toContain("decision");
+    expect(result!.tags).toContain("lesson");
     expect(result!.type).toBe("memory");
   });
 
-  it("detects lessons", () => {
-    const text = "I learned that caching needs to be invalidated on deploy. The mistake was using stale cache keys.";
+  it("detects lessons with corrections (requires 2+ tags)", () => {
+    const text = "I learned that caching needs to be invalidated on deploy. The mistake was using stale cache keys. We decided to always flush on release.";
     const result = extractSignificance(text);
     expect(result).not.toBeNull();
     expect(result!.tags).toContain("lesson");
   });
 
-  it("detects commitments as task type", () => {
-    const text = "I will refactor the authentication module by end of week. The deadline is Friday.";
+  it("detects commitments as task type (requires 2+ tags)", () => {
+    const text = "We decided on a new approach. I will refactor the authentication module by end of week. The deadline is Friday.";
     const result = extractSignificance(text);
     expect(result).not.toBeNull();
     expect(result!.tags).toContain("commitment");
     expect(result!.type).toBe("task");
   });
 
-  it("detects process documentation", () => {
-    const text = "The process is: first run the linter, then run tests, then push to staging. Step 1 validates formatting.";
+  it("detects process documentation (requires 2+ tags)", () => {
+    const text = "We decided to document it. The process is: first run the linter, then run tests, then push to staging. Step 1 validates formatting.";
     const result = extractSignificance(text);
     expect(result).not.toBeNull();
     expect(result!.tags).toContain("process");
     expect(result!.type).toBe("process");
   });
 
-  it("detects surprises", () => {
-    const text = "This was surprising: the API returns 200 even on validation errors. I didn't expect that behavior at all.";
+  it("detects surprises with lessons (requires 2+ tags)", () => {
+    const text = "This was surprising: the API returns 200 even on validation errors. I learned that you can't trust HTTP status codes blindly.";
     const result = extractSignificance(text);
     expect(result).not.toBeNull();
     expect(result!.tags).toContain("surprise");
+  });
+
+  it("returns null for single-tag match (needs 2+ different tags)", () => {
+    const text = "We decided to use TypeScript for the frontend. It provides better type safety.";
+    const result = extractSignificance(text);
+    expect(result).toBeNull();
   });
 
   it("returns null for insignificant text", () => {
@@ -216,7 +223,7 @@ describe("extractSignificance", () => {
   });
 
   it("truncates summary to 500 chars", () => {
-    const longText = "We decided to " + "implement ".repeat(100) + "the new feature.";
+    const longText = "We decided to " + "implement ".repeat(100) + "the new feature. I learned something from this.";
     const result = extractSignificance(longText);
     if (result) {
       expect(result.summary.length).toBeLessThanOrEqual(500);
