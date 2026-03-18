@@ -153,10 +153,13 @@ export function isValidScope(s: string): boolean {
 
 /**
  * Sanitize a scope value — returns the value if valid, otherwise fallback.
+ * Enforces: LLM may suggest private or team, but NEVER public (unless explicitly configured).
  */
-export function sanitizeScope(rawScope: string | null | undefined, fallback = "team"): string {
-  if (rawScope && isValidScope(rawScope)) return rawScope;
-  return fallback;
+export function sanitizeScope(rawScope: string | null | undefined, fallback = "team", allowPublic = false): string {
+  if (!rawScope || !isValidScope(rawScope)) return fallback;
+  // Block public scope unless explicitly allowed (config-level override)
+  if (rawScope === "public" && !allowPublic) return fallback;
+  return rawScope;
 }
 
 // ============================================================================
@@ -1613,7 +1616,10 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
             "--tags", tags.join(",") || "auto-capture",
           ];
 
-          const scope = sanitizeScope(config.captureScope || itemScope, config.captureScope || "team");
+          // Scope guardrail: config.captureScope overrides everything; otherwise max team (no public)
+          const scope = config.captureScope
+            ? sanitizeScope(config.captureScope, "team", true)
+            : sanitizeScope(itemScope, "team", false);
           args.push("--scope", scope);
 
           const project = config.captureProject || itemProject;
@@ -1638,6 +1644,18 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
               const effectiveProject = hintForProject?.project || r.project;
               const effectiveScope = hintForScope?.scope || r.scope;
 
+              // Project validation: reject unknown projects
+              let validatedProject = effectiveProject;
+              if (validatedProject && knownProjects.length > 0) {
+                const isKnown = knownProjects.some(
+                  (p) => p.name.toLowerCase() === validatedProject!.toLowerCase(),
+                );
+                if (!isKnown) {
+                  console.log(`[palaia] Auto-capture: unknown project "${validatedProject}" ignored`);
+                  validatedProject = null;
+                }
+              }
+
               // Always include auto-capture tag for GC identification
               const tags = [...r.tags];
               if (!tags.includes("auto-capture")) tags.push("auto-capture");
@@ -1646,12 +1664,12 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
                 r.content,
                 r.type,
                 tags,
-                effectiveProject,
+                validatedProject,
                 effectiveScope,
               );
               await run(args, { ...opts, timeoutMs: 10_000 });
               console.log(
-                `[palaia] LLM auto-captured: type=${r.type}, significance=${r.significance}, tags=${tags.join(",")}, project=${effectiveProject || "none"}, scope=${effectiveScope || "team"}`
+                `[palaia] LLM auto-captured: type=${r.type}, significance=${r.significance}, tags=${tags.join(",")}, project=${validatedProject || "none"}, scope=${effectiveScope || "team"}`
               );
             }
           }
