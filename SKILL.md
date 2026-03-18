@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "2.0.0"
+version: "2.0.2"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   Replaces built-in memory-core with semantic search, projects, and scope-based access control.

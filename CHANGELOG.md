@@ -2,10 +2,16 @@
 
 ## [2.0.2] — 2026-03-18
 
-### Patch
-- Includes all v2.0.0 post-release fixes (SKILL.md plugin install step, fastembed cache integrity, captureModel resilience, sliding window fix).
-- Re-publish for PyPI/npm with latest HEAD.
-- Fix: npm plugin version sync.
+### Summary
+Consolidation release for Palaia 2.0. Includes the full v2.0 feature set (Auto-Capture, Auto-Recall, LLM-based extraction, session-isolated TurnState, significance tagging, knowledge packages, temporal queries, bounded GC) plus all post-release fixes.
+
+### Fixes since 2.0.0
+- SKILL.md plugin install step corrected.
+- Fastembed cache integrity fix.
+- `captureModel` resilience — graceful fallback when configured model is unavailable.
+- Sliding window fix for turn counting in Auto-Capture.
+- npm plugin version sync.
+- All version references aligned (pyproject.toml, package.json, __init__.py, SKILL.md).
 
 ## [2.0.0] — 2026-03-17
 
