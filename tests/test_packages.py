@@ -224,7 +224,8 @@ class TestImportAgentAttribution:
         # Verify entries have the agent set
         all_entries = store.all_entries_unfiltered(include_cold=True)
         agent_entries = [
-            meta for meta, body, tier in all_entries
+            meta
+            for meta, body, tier in all_entries
             if meta.get("project") == "agent-test" and meta.get("agent") == "Elliot"
         ]
         assert len(agent_entries) == 2

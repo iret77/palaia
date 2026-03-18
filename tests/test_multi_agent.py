@@ -1,16 +1,12 @@
 """Tests for multi-agent agent resolution (resolve_agent, init multi-agent, private scope guard)."""
 
-import json
 import os
-import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from palaia.config import (
     DEFAULT_CONFIG,
-    find_palaia_root,
     load_config,
     resolve_agent,
     save_config,
@@ -131,7 +127,6 @@ class TestCmdWritePrivateScope:
     def test_team_write_without_agent_in_multi_agent_ok(self, multi_agent_root):
         """Team write in multi-agent setup without PALAIA_AGENT should succeed."""
         from palaia.cli import cmd_write
-        from palaia.store import Store
 
         class Args:
             text = "team content that is long enough to not be trivial"

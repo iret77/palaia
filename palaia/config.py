@@ -233,10 +233,7 @@ def resolve_agent(palaia_root: Path | None = None, require: bool = False) -> str
             return config_agent
 
     if require:
-        raise ValueError(
-            "Cannot resolve agent identity. "
-            "Set PALAIA_AGENT env var or run 'palaia init --agent NAME'."
-        )
+        raise ValueError("Cannot resolve agent identity. Set PALAIA_AGENT env var or run 'palaia init --agent NAME'.")
     return None
 
 
