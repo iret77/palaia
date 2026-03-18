@@ -1486,6 +1486,10 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           chars += line.length;
         }
 
+        // Persistent usage nudge — compact guidance for the agent
+        const USAGE_NUDGE = "[palaia] auto-capture=on. Manual write: --type process (SOPs/checklists) or --type task (todos with assignee/deadline) only. Conversation knowledge is auto-captured — do not duplicate with manual writes.";
+        text += USAGE_NUDGE + "\n\n";
+
         // Update recall counter for satisfaction/transparency nudges (Issue #87)
         let nudgeContext = "";
         try {
