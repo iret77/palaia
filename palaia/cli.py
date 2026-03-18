@@ -695,13 +695,13 @@ def cmd_init(args):
 
     config["embedding_chain"] = chain
 
-    # Store agent identity if provided
-    if agent_name:
-        config["agent"] = agent_name
-
     # Multi-agent detection
     agents = _detect_agents()
     if len(agents) > 1:
+        # Multi-agent: do NOT bake a static agent into config.
+        # Each agent must set PALAIA_AGENT env var at runtime.
+        config["agent"] = None
+        config["multi_agent"] = True
         store_mode = getattr(args, "store_mode", None)
         if store_mode == "isolated":
             config["store_mode"] = "isolated"
@@ -712,11 +712,16 @@ def cmd_init(args):
             print(f"Found {len(agents)} agents: {', '.join(agents)}")
             print(f"  Using shared store at {target}")
             print("  All agents will see team-scoped entries.")
-            print("  Use --agent flag when writing so entries are attributed correctly.")
+            print("  Each agent MUST set PALAIA_AGENT env var for correct attribution.")
             if store_mode is None:
                 print("  (Use 'palaia init --isolated' for separate stores per agent)")
-    elif len(agents) == 1:
-        print(f"Found 1 agent: {agents[0]}")
+    else:
+        # Single-agent or no agents: store identity if provided
+        if agent_name:
+            config["agent"] = agent_name
+        config["multi_agent"] = False
+        if len(agents) == 1:
+            print(f"Found 1 agent: {agents[0]}")
         config["store_mode"] = "shared"
 
     config["store_version"] = __version__
@@ -818,6 +823,20 @@ def cmd_write(args):
     # Resolve agent from config if not explicitly set
     agent = _resolve_agent(args)
     instance = _resolve_instance_for_write(args)
+
+    # Private scope requires an agent identity — reject early
+    scope = getattr(args, "scope", None) or "team"
+    if scope == "private" and (not agent or agent == "default"):
+        # Check if this is a real multi-agent setup without explicit agent
+        config = load_config(root)
+        if config.get("multi_agent") and not os.environ.get("PALAIA_AGENT"):
+            print(
+                "Error: Cannot write with scope 'private' without an agent identity. "
+                "Private entries are only accessible to their owning agent. "
+                "Set PALAIA_AGENT env var or run 'palaia init --agent NAME'.",
+                file=sys.stderr,
+            )
+            return 1
 
     entry_type = getattr(args, "type", None)
     entry_id = store.write(

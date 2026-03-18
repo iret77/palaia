@@ -76,6 +76,51 @@ def _check_agent_identity(palaia_root: Path | None) -> dict[str, Any]:
     }
 
 
+def _check_multi_agent_static(palaia_root: Path | None) -> dict[str, Any]:
+    """Check for static agent in multi-agent setups."""
+    if palaia_root is None:
+        return {
+            "name": "multi_agent_static",
+            "label": "Multi-agent setup",
+            "status": "skip",
+            "message": "Not initialized",
+        }
+
+    from palaia.config import load_config
+
+    config = load_config(palaia_root)
+    is_multi = config.get("multi_agent", False)
+    static_agent = config.get("agent")
+
+    if not is_multi:
+        return {
+            "name": "multi_agent_static",
+            "label": "Multi-agent setup",
+            "status": "ok",
+            "message": "Single-agent or not detected",
+        }
+
+    if static_agent:
+        return {
+            "name": "multi_agent_static",
+            "label": "Multi-agent setup",
+            "status": "warn",
+            "message": (
+                f"Multi-agent setup detected but config.json has a static agent '{static_agent}'. "
+                "This agent is used as fallback when PALAIA_AGENT is not set. "
+                "In multi-agent setups, each agent should set PALAIA_AGENT explicitly."
+            ),
+            "fix": "Remove static agent: palaia config set agent '' — or ensure all agents set PALAIA_AGENT env var.",
+        }
+
+    return {
+        "name": "multi_agent_static",
+        "label": "Multi-agent setup",
+        "status": "ok",
+        "message": "Multi-agent setup, no static agent (correct)",
+    }
+
+
 def _check_embedding_chain(palaia_root: Path | None) -> dict[str, Any]:
     """Check configured embedding chain and verify providers are actually installed."""
     if palaia_root is None:
@@ -965,6 +1010,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
     results = [
         _check_palaia_init(palaia_root),
         _check_agent_identity(palaia_root),
+        _check_multi_agent_static(palaia_root),
         _check_store_version(palaia_root),
         _check_version_available(palaia_root),
         _check_embedding_chain(palaia_root),

@@ -203,6 +203,43 @@ def remove_alias(palaia_root: Path, from_name: str) -> bool:
     return True
 
 
+def resolve_agent(palaia_root: Path | None = None, require: bool = False) -> str | None:
+    """Resolve the current agent identity.
+
+    Resolution chain:
+    1. PALAIA_AGENT environment variable (set per-agent in multi-agent setups)
+    2. config.json agent field (static, set during init)
+    3. None (no agent identity)
+
+    Args:
+        palaia_root: Path to .palaia directory. Auto-detected if None.
+        require: If True, raise ValueError when no agent can be resolved.
+
+    Returns:
+        Agent name or None.
+    """
+    # 1. Environment variable (highest priority)
+    env_agent = os.environ.get("PALAIA_AGENT", "").strip()
+    if env_agent:
+        return env_agent
+
+    # 2. Config file
+    if palaia_root is None:
+        palaia_root = find_palaia_root()
+    if palaia_root is not None:
+        config = load_config(palaia_root)
+        config_agent = config.get("agent")
+        if config_agent:
+            return config_agent
+
+    if require:
+        raise ValueError(
+            "Cannot resolve agent identity. "
+            "Set PALAIA_AGENT env var or run 'palaia init --agent NAME'."
+        )
+    return None
+
+
 def resolve_agent_with_aliases(agent: str, aliases: dict[str, str]) -> set[str]:
     """Resolve an agent name to a set of all names that should match.
 
