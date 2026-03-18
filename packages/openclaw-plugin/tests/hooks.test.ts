@@ -384,34 +384,62 @@ describe("resolveCaptureModel", () => {
     expect(result).toEqual({ provider: "anthropic", model: "claude-haiku-4" });
   });
 
-  it("resolves 'cheap' to cheapest model for anthropic", () => {
-    const config = { agents: { defaults: { model: "anthropic/claude-sonnet-4" } } };
+  it("resolves 'cheap' to last fallback model (cheapest) when fallbacks present", () => {
+    const config = {
+      agents: {
+        defaults: {
+          model: {
+            primary: "anthropic/claude-sonnet-4-6",
+            fallbacks: ["anthropic/claude-opus-4-6", "anthropic/claude-haiku-4-5"],
+          },
+        },
+      },
+    };
     const result = resolveCaptureModel(config, "cheap");
-    expect(result).toEqual({ provider: "anthropic", model: "claude-haiku-4" });
+    // Last fallback is the cheapest
+    expect(result).toEqual({ provider: "anthropic", model: "claude-haiku-4-5" });
   });
 
-  it("resolves 'cheap' to cheapest model for openai", () => {
+  it("resolves 'cheap' to primary when no fallbacks (openai)", () => {
     const config = { agents: { defaults: { model: "openai/gpt-4.1" } } };
     const result = resolveCaptureModel(config, "cheap");
-    expect(result).toEqual({ provider: "openai", model: "gpt-4.1-mini" });
+    expect(result).toEqual({ provider: "openai", model: "gpt-4.1" });
   });
 
-  it("resolves 'cheap' to cheapest model for google", () => {
+  it("resolves 'cheap' to primary when no fallbacks (google)", () => {
     const config = { agents: { defaults: { model: "google/gemini-2.5-pro" } } };
     const result = resolveCaptureModel(config, "cheap");
-    expect(result).toEqual({ provider: "google", model: "gemini-2.0-flash" });
+    expect(result).toEqual({ provider: "google", model: "gemini-2.5-pro" });
   });
 
-  it("falls back to default model for unknown provider with 'cheap'", () => {
-    const config = { agents: { defaults: { model: "custom-provider/custom-model" } } };
+  it("resolves 'cheap' to last fallback for any provider (no static mapping)", () => {
+    const config = {
+      agents: {
+        defaults: {
+          model: {
+            primary: "custom-provider/big-model",
+            fallbacks: ["custom-provider/small-model"],
+          },
+        },
+      },
+    };
     const result = resolveCaptureModel(config, "cheap");
-    expect(result).toEqual({ provider: "custom-provider", model: "custom-model" });
+    expect(result).toEqual({ provider: "custom-provider", model: "small-model" });
   });
 
-  it("resolves undefined captureModel as 'cheap'", () => {
-    const config = { agents: { defaults: { model: "anthropic/claude-sonnet-4" } } };
+  it("resolves undefined captureModel to last fallback when fallbacks present", () => {
+    const config = {
+      agents: {
+        defaults: {
+          model: {
+            primary: "anthropic/claude-sonnet-4-6",
+            fallbacks: ["anthropic/claude-haiku-4-5"],
+          },
+        },
+      },
+    };
     const result = resolveCaptureModel(config, undefined);
-    expect(result).toEqual({ provider: "anthropic", model: "claude-haiku-4" });
+    expect(result).toEqual({ provider: "anthropic", model: "claude-haiku-4-5" });
   });
 
   it("returns undefined when no config available", () => {
@@ -419,10 +447,11 @@ describe("resolveCaptureModel", () => {
     expect(result).toBeUndefined();
   });
 
-  it("handles model as primary object", () => {
+  it("handles model as primary object without fallbacks", () => {
     const config = { agents: { defaults: { model: { primary: "google/gemini-2.5-pro" } } } };
     const result = resolveCaptureModel(config, "cheap");
-    expect(result).toEqual({ provider: "google", model: "gemini-2.0-flash" });
+    // No fallbacks → use primary
+    expect(result).toEqual({ provider: "google", model: "gemini-2.5-pro" });
   });
 });
 

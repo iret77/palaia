@@ -713,21 +713,27 @@ function buildExtractionPrompt(projects: CachedProject[]): string {
   return `${EXTRACTION_SYSTEM_PROMPT_BASE}\n\nKnown projects: ${projectList}`;
 }
 
-const CHEAP_MODELS: Record<string, string> = {
-  anthropic: "claude-haiku-4",
-  openai: "gpt-4.1-mini",
-  google: "gemini-2.0-flash",
-};
-
+/**
+ * Resolve the model to use for LLM-based capture extraction.
+ *
+ * Strategy (no static model mapping — user config is the source of truth):
+ * 1. If captureModel is set explicitly (e.g. "anthropic/claude-haiku-4-5"): use it directly.
+ * 2. If captureModel is "cheap" or unset: take the LAST fallback from user config
+ *    (config.agents.defaults.model.fallbacks), as that is typically the cheapest.
+ * 3. If no fallbacks exist: use the primary model (config.agents.defaults.model.primary).
+ * 4. Never fall back to static model IDs — model IDs change and not every user has Anthropic.
+ */
 export function resolveCaptureModel(
   config: any,
   captureModel?: string,
 ): { provider: string; model: string } | undefined {
+  // Case 1: explicit model ID provided (not "cheap")
   if (captureModel && captureModel !== "cheap") {
     const parts = captureModel.split("/");
     if (parts.length >= 2) {
       return { provider: parts[0], model: parts.slice(1).join("/") };
     }
+    // No slash — treat as model name with provider from primary config
     const defaultsModel = config?.agents?.defaults?.model;
     const primary = typeof defaultsModel === "string"
       ? defaultsModel.trim()
@@ -738,19 +744,36 @@ export function resolveCaptureModel(
     }
   }
 
+  // Case 2: "cheap" or unset — dynamically resolve from user config
   const defaultsModel = config?.agents?.defaults?.model;
-  const primary = typeof defaultsModel === "string"
-    ? defaultsModel.trim()
-    : (defaultsModel?.primary?.trim() ?? "");
-  const defaultProvider = primary.split("/")[0];
-  const defaultModel = primary.split("/").slice(1).join("/");
 
-  if (defaultProvider && CHEAP_MODELS[defaultProvider]) {
-    return { provider: defaultProvider, model: CHEAP_MODELS[defaultProvider] };
+  // Try fallbacks first — last entry is typically cheapest
+  const fallbacks: unknown = typeof defaultsModel === "object" && defaultsModel !== null
+    ? defaultsModel.fallbacks
+    : undefined;
+
+  if (Array.isArray(fallbacks) && fallbacks.length > 0) {
+    const lastFallback = String(fallbacks[fallbacks.length - 1]).trim();
+    const parts = lastFallback.split("/");
+    if (parts.length >= 2) {
+      console.log(`[palaia][debug] resolveCaptureModel: using last fallback model=${lastFallback}`);
+      return { provider: parts[0], model: parts.slice(1).join("/") };
+    }
   }
 
-  if (defaultProvider && defaultModel) {
-    return { provider: defaultProvider, model: defaultModel };
+  // Case 3: no fallbacks — use primary model
+  const primary = typeof defaultsModel === "string"
+    ? defaultsModel.trim()
+    : (typeof defaultsModel === "object" && defaultsModel !== null
+      ? String(defaultsModel.primary ?? "").trim()
+      : "");
+
+  if (primary) {
+    const parts = primary.split("/");
+    if (parts.length >= 2) {
+      console.log(`[palaia][debug] resolveCaptureModel: using primary model=${primary}`);
+      return { provider: parts[0], model: parts.slice(1).join("/") };
+    }
   }
 
   return undefined;
@@ -1214,12 +1237,28 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
       const provider = event?.metadata?.provider;
       const channelId = ctx?.channelId;
 
+      console.log(`[palaia][debug] message_received: messageId=${messageId}, provider=${provider}, channelId=${channelId}`);
+
       if (messageId && channelId && provider && REACTION_SUPPORTED_PROVIDERS.has(provider)) {
-        lastInboundMessageByChannel.set(channelId, {
+        // Normalize channelId to UPPERCASE for consistent lookups
+        // (extractSlackChannelIdFromSessionKey returns uppercase)
+        const normalizedChannelId = String(channelId).toUpperCase();
+        lastInboundMessageByChannel.set(normalizedChannelId, {
           messageId: String(messageId),
           provider,
           timestamp: Date.now(),
         });
+        console.log(`[palaia][debug] message_received: stored messageId=${messageId} for normalizedChannelId=${normalizedChannelId}`);
+
+        // Also populate turnState if sessionKey is available
+        const sessionKey = resolveSessionKeyFromCtx(ctx);
+        if (sessionKey) {
+          const turnState = getOrCreateTurnState(sessionKey);
+          turnState.lastInboundMessageId = String(messageId);
+          turnState.lastInboundChannelId = normalizedChannelId;
+          turnState.channelProvider = provider;
+          console.log(`[palaia][debug] message_received: set turnState messageId=${messageId} for session=${sessionKey}`);
+        }
       }
     } catch {
       // Non-fatal — never block message flow
