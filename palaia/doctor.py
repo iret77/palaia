@@ -1079,6 +1079,37 @@ def _check_capture_model() -> dict[str, Any]:
 
             capture_model = palaia_config.get("captureModel")
             if capture_model:
+                # Validate that the provider has an auth profile configured
+                provider_name = capture_model.split("/")[0] if "/" in capture_model else None
+                if provider_name:
+                    auth_profiles = oc_config.get("auth", {}).get("profiles", {})
+                    # Check if any auth profile matches the provider
+                    provider_has_auth = any(
+                        provider_name.lower() in str(profile_key).lower()
+                        or provider_name.lower() in str(profile_val).lower()
+                        for profile_key, profile_val in (
+                            auth_profiles.items() if isinstance(auth_profiles, dict) else []
+                        )
+                    )
+                    # Also check for provider-specific env vars or top-level auth keys
+                    provider_auth_keys = oc_config.get("auth", {})
+                    has_provider_section = provider_name.lower() in str(provider_auth_keys).lower()
+
+                    if not provider_has_auth and not has_provider_section:
+                        return {
+                            "name": "capture_model",
+                            "label": "Capture model",
+                            "status": "warn",
+                            "message": (
+                                f"captureModel provider '{provider_name}' has no auth profile "
+                                "configured — capture may fail"
+                            ),
+                            "details": {
+                                "captureModel": capture_model,
+                                "provider": provider_name,
+                            },
+                        }
+
                 return {
                     "name": "capture_model",
                     "label": "Capture model",

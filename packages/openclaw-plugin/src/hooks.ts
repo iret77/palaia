@@ -735,9 +735,13 @@ function buildExtractionPrompt(projects: CachedProject[]): string {
 /** Whether the captureModel fallback warning has already been logged (to avoid spam). */
 let _captureModelFallbackWarned = false;
 
+/** Whether the captureModel→primary model fallback warning has been logged (max 1x per gateway lifetime). */
+let _captureModelFailoverWarned = false;
+
 /** Reset captureModel fallback warning flag (for testing). */
 export function resetCaptureModelFallbackWarning(): void {
   _captureModelFallbackWarned = false;
+  _captureModelFailoverWarned = false;
 }
 
 /**
@@ -1534,13 +1538,8 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           return args;
         };
 
-        // LLM-based extraction (primary)
-        let llmHandled = false;
-        try {
-          const results = await extractWithLLM(event.messages, api.config, {
-            captureModel: config.captureModel,
-          }, knownProjects);
-
+        // Helper: store LLM extraction results
+        const storeLLMResults = async (results: ExtractionResult[]) => {
           for (const r of results) {
             if (r.significance >= config.captureMinSignificance) {
               const hintForProject = collectedHints.find((h) => h.project);
@@ -1562,12 +1561,46 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
               );
             }
           }
+        };
 
+        // LLM-based extraction (primary)
+        let llmHandled = false;
+        try {
+          const results = await extractWithLLM(event.messages, api.config, {
+            captureModel: config.captureModel,
+          }, knownProjects);
+
+          await storeLLMResults(results);
           llmHandled = true;
         } catch (llmError) {
-          if (!_llmImportFailureLogged) {
-            console.warn(`[palaia] LLM extraction failed, using rule-based fallback: ${llmError}`);
-            _llmImportFailureLogged = true;
+          // Check if this is a model-availability error (not a generic import failure)
+          const errStr = String(llmError);
+          const isModelError = /FailoverError|Unknown model|unknown model|401|403|model.*not found|not_found|model_not_found/i.test(errStr);
+
+          if (isModelError && config.captureModel) {
+            // captureModel is broken — try primary model as fallback
+            if (!_captureModelFailoverWarned) {
+              _captureModelFailoverWarned = true;
+              console.warn(`[palaia] WARNING: captureModel failed (${errStr}). Using primary model as fallback. Please update captureModel in your config.`);
+            }
+            try {
+              // Retry without captureModel → resolveCaptureModel will use primary model
+              const fallbackResults = await extractWithLLM(event.messages, api.config, {
+                captureModel: undefined,
+              }, knownProjects);
+              await storeLLMResults(fallbackResults);
+              llmHandled = true;
+            } catch (fallbackError) {
+              if (!_llmImportFailureLogged) {
+                console.warn(`[palaia] LLM extraction failed (primary model fallback also failed): ${fallbackError}`);
+                _llmImportFailureLogged = true;
+              }
+            }
+          } else {
+            if (!_llmImportFailureLogged) {
+              console.warn(`[palaia] LLM extraction failed, using rule-based fallback: ${llmError}`);
+              _llmImportFailureLogged = true;
+            }
           }
         }
 
