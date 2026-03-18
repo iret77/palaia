@@ -1416,8 +1416,13 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         }
 
         // Track recall in session-isolated turn state for emoji reactions
+        // Only flag recall as meaningful if at least one result scores above threshold
+        const RECALL_RELEVANCE_THRESHOLD = 0.7;
+        const hasRelevantRecall = entries.some(
+          (e) => typeof e.score === "number" && e.score >= RECALL_RELEVANCE_THRESHOLD,
+        );
         const sessionKey = resolveSessionKeyFromCtx(ctx);
-        if (sessionKey) {
+        if (sessionKey && hasRelevantRecall) {
           const turnState = getOrCreateTurnState(sessionKey);
           turnState.recallOccurred = true;
 
