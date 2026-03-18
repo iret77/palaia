@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.6] — 2026-03-18
+
+### Clean Recall Queries via Envelope Stripping
+
+- **Channel envelope stripping**: New `stripChannelEnvelope()` and `stripSystemPrefix()` functions strip OpenClaw channel envelopes (`[Slack 2026-03-18 ...]`, `System: [...] Slack message in #channel from User:`) from message text before building recall queries. Covers all channel providers (Slack, Telegram, Discord, WhatsApp, Signal, Teams, Matrix, iMessage, etc.).
+- **Recall query overhaul**: `buildRecallQuery()` now filters `inter_session` and `internal_system` provenance messages, strips envelopes, skips system-only content (edited/deleted notifications, queued messages, auto-tags), and walks backwards to find actual user content. Prevents envelope metadata from polluting semantic search (timeouts, false-high scores).
+- **`isSystemOnlyContent()` helper**: Identifies messages that are purely system artifacts (no user text) — edited notifications, inter-session messages, queued prefixes, auto-tags.
+
 ## [2.0.5] — 2026-03-18
 
 ### Provenance-based Message Recognition + API Hygiene

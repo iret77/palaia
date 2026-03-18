@@ -1154,44 +1154,122 @@ export function getLastUserMessage(messages: unknown[]): string | null {
 }
 
 // ============================================================================
-// Recall Query Builder (provenance-based, Issue #65 upgrade)
+// Channel Envelope Stripping (v2.0.6)
 // ============================================================================
 
 /**
- * Build a recall query from message history using provenance to identify real user input.
+ * Strip OpenClaw channel envelope from message text.
+ * Matches the pattern: [TIMESTAMP] or [CHANNEL TIMESTAMP] prefix
+ * that OpenClaw adds to inbound messages from all channels.
+ * Based on OpenClaw's internal stripEnvelope() logic.
+ */
+const ENVELOPE_PREFIX_RE = /^\[([^\]]+)\]\s*/;
+const ENVELOPE_CHANNELS = [
+  "WebChat", "WhatsApp", "Telegram", "Signal", "Slack",
+  "Discord", "Google Chat", "iMessage", "Teams", "Matrix",
+  "Zalo", "Zalo Personal", "BlueBubbles",
+];
+
+function looksLikeEnvelopeHeader(header: string): boolean {
+  // ISO timestamp pattern
+  if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z\b/.test(header)) return true;
+  // Space-separated timestamp
+  if (/\d{4}-\d{2}-\d{2} \d{2}:\d{2}\b/.test(header)) return true;
+  // Channel prefix
+  return ENVELOPE_CHANNELS.some(ch => header.startsWith(`${ch} `));
+}
+
+export function stripChannelEnvelope(text: string): string {
+  const match = text.match(ENVELOPE_PREFIX_RE);
+  if (!match) return text;
+  if (!looksLikeEnvelopeHeader(match[1] ?? "")) return text;
+  return text.slice(match[0].length);
+}
+
+/**
+ * Strip "System: [timestamp] Channel message in #channel from User: " prefix.
+ * OpenClaw wraps inbound messages with this pattern for all channel providers.
+ */
+const SYSTEM_PREFIX_RE = /^System:\s*\[\d{4}-\d{2}-\d{2}[^\]]*\]\s*(?:Slack message|Telegram message|Discord message|WhatsApp message|Signal message|message).*?(?:from \w+:\s*)?/i;
+
+export function stripSystemPrefix(text: string): string {
+  const match = text.match(SYSTEM_PREFIX_RE);
+  if (match) return text.slice(match[0].length);
+  return text;
+}
+
+// ============================================================================
+// Recall Query Builder (v2.0.6: envelope-aware, provenance-based)
+// ============================================================================
+
+/**
+ * Messages that are purely system content (no user text).
+ * Used to skip edited notifications, sync events, inter-session messages, etc.
+ */
+function isSystemOnlyContent(text: string): boolean {
+  if (!text) return true;
+  if (text.startsWith("System:")) return true;
+  if (text.startsWith("[Queued")) return true;
+  if (text.startsWith("[Inter-session")) return true;
+  if (/^Slack message (edited|deleted)/.test(text)) return true;
+  if (/^\[auto\]/.test(text)) return true;
+  if (text.length < 3) return true;
+  return false;
+}
+
+/**
+ * Build a recall query from message history.
  *
- * - Prefers external_user messages (real human input from Slack/Telegram).
+ * v2.0.6: Strips OpenClaw channel envelopes (System: [...] Slack message from ...:)
+ * and inter-session prefixes before building the query. This prevents envelope
+ * metadata from polluting semantic search and causing timeouts / false-high scores.
+ *
+ * - Filters out inter_session and internal_system provenance messages.
  * - Falls back to any user message for backward compat (OpenClaw without provenance).
- * - If the last user message is short (< 30 chars), prepends the previous for context.
+ * - Strips channel envelopes and system prefixes from message text.
+ * - Skips system-only content (edited notifications, sync events).
+ * - Short messages (< 30 chars): prepends previous for context.
  * - Hard-caps at 500 characters.
- *
- * Provenance makes the old heuristic cleaners (DAY_PREFIXES, system marker stripping) obsolete.
  */
 export function buildRecallQuery(messages: unknown[]): string {
   const texts = extractMessageTexts(messages);
 
-  // Prefer external_user messages (real human input)
-  const externalUserMsgs = texts.filter(
-    t => t.role === "user" && t.provenance === "external_user"
+  // Step 1: Filter out inter_session messages (sub-agent results, sessions_send)
+  const candidates = texts.filter(
+    t => t.role === "user" && t.provenance !== "inter_session" && t.provenance !== "internal_system"
   );
 
-  // Fallback: any user message (backward compat for OpenClaw without provenance)
-  const userMsgs = externalUserMsgs.length > 0
-    ? externalUserMsgs
+  // Fallback: if no messages without provenance, use all user messages
+  const userMsgs = candidates.length > 0
+    ? candidates
     : texts.filter(t => t.role === "user");
 
   if (userMsgs.length === 0) return "";
 
-  const lastMsg = userMsgs[userMsgs.length - 1].text.trim();
+  // Step 2: Strip envelopes from the last user message(s)
+  let lastText = stripSystemPrefix(stripChannelEnvelope(userMsgs[userMsgs.length - 1].text.trim()));
 
-  // Short messages: include previous for context
-  if (lastMsg.length < 30 && userMsgs.length > 1) {
-    const prevMsg = userMsgs[userMsgs.length - 2].text.trim();
-    const combined = `${prevMsg} ${lastMsg}`.slice(0, 500);
-    return combined;
+  // Skip system-only messages (edited notifications, sync events, etc.)
+  // Walk backwards to find a message with actual content
+  let idx = userMsgs.length - 1;
+  while (idx >= 0 && (!lastText || isSystemOnlyContent(lastText))) {
+    idx--;
+    if (idx >= 0) {
+      lastText = stripSystemPrefix(stripChannelEnvelope(userMsgs[idx].text.trim()));
+    }
   }
 
-  return lastMsg.slice(0, 500);
+  if (!lastText) return "";
+
+  // Step 3: Short messages → include previous for context
+  if (lastText.length < 30 && idx > 0) {
+    const prevText = stripSystemPrefix(stripChannelEnvelope(userMsgs[idx - 1].text.trim()));
+    if (prevText && !isSystemOnlyContent(prevText)) {
+      return `${prevText} ${lastText}`.slice(0, 500);
+    }
+  }
+
+  return lastText.slice(0, 500);
 }
 
 // ============================================================================
