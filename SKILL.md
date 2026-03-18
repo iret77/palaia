@@ -125,15 +125,53 @@ The npm plugin wires Palaia into OpenClaw's memory slot — without it, Auto-Cap
 npm install -g @byte5ai/palaia@latest
 ```
 
-Now activate the plugin in OpenClaw. **Use `openclaw config set` — do NOT edit `openclaw.json` manually.**
+Now activate the plugin in OpenClaw.
+
+**[INSTRUCTION for LLM]:** Do NOT blindly overwrite plugin config arrays with `openclaw config set`.
+Arrays like `plugins.allow` and `plugins.load.paths` may already contain other plugins (telegram, slack, clawsy-bridge...).
+Overwriting them destroys the existing configuration. Always read first, then append if missing.
+
+**Preferred: Use gateway config.patch (deep-merges, safest)**
+
+If you have access to the gateway tool, use `config.patch` — it deep-merges instead of overwriting:
+
+```
+# First, read existing values to avoid duplicates
+PALAIA_PATH="$(npm root -g)/@byte5ai/palaia"
+existingAllow = gateway(action="config.get", key="plugins.allow")  // e.g. ["telegram","slack"]
+existingPaths = gateway(action="config.get", key="plugins.load.paths")  // e.g. ["/path/to/telegram"]
+
+# Then patch (only add palaia if not already present)
+gateway(action="config.patch", raw=JSON.stringify({
+  plugins: {
+    load: { paths: [...existingPaths, palaiaPath] },
+    allow: [...existingAllow, "palaia"],
+    slots: { memory: "palaia" },
+    entries: { palaia: { enabled: true } }
+  }
+}), note="Palaia plugin activated")
+```
+
+**Alternative: Safe shell approach (reads existing config, adds palaia, never overwrites)**
 
 ```bash
-# Resolve the plugin path dynamically
 PALAIA_PATH="$(npm root -g)/@byte5ai/palaia"
 
-# Patch OpenClaw config
-openclaw config set plugins.load.paths "[\"$PALAIA_PATH\"]"
-openclaw config set plugins.allow '["palaia"]'
+# Add to plugins.allow (only if not already present)
+CURRENT_ALLOW=$(openclaw config get plugins.allow 2>/dev/null || echo '[]')
+if ! echo "$CURRENT_ALLOW" | grep -q '"palaia"'; then
+  NEW_ALLOW=$(echo "$CURRENT_ALLOW" | python3 -c "import sys,json; a=json.load(sys.stdin); a.append('palaia'); print(json.dumps(a))")
+  openclaw config set plugins.allow "$NEW_ALLOW"
+fi
+
+# Add to plugins.load.paths (only if not already present)
+CURRENT_PATHS=$(openclaw config get plugins.load.paths 2>/dev/null || echo '[]')
+if ! echo "$CURRENT_PATHS" | grep -q "$PALAIA_PATH"; then
+  NEW_PATHS=$(echo "$CURRENT_PATHS" | python3 -c "import sys,json,os; a=json.load(sys.stdin); a.append(os.environ['PALAIA_PATH']); print(json.dumps(a))")
+  openclaw config set plugins.load.paths "$NEW_PATHS"
+fi
+
+# Set memory slot (safe — single value, not array)
 openclaw config set plugins.slots.memory palaia
 ```
 
