@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.5] — 2026-03-18
+
+### Provenance-based Message Recognition + API Hygiene
+
+- **Provenance pipeline**: `extractMessageTexts()` now propagates `provenance` field from OpenClaw messages (`external_user`, `inter_session`, `internal_system`). All dependent functions updated.
+- **Recall query**: `buildRecallQuery()` rewritten to prefer `external_user` messages for recall queries. System-injected user messages no longer pollute search. Removes obsolete `cleanMessageForQuery()` and `DAY_PREFIXES` heuristics.
+- **getLastUserMessage**: Prefers `external_user` provenance, falls back to any user message for backward compatibility.
+- **trimToRecentExchanges**: Only counts `external_user` messages as real conversation turns.
+- **Logger integration**: All `console.log/warn` replaced with `api.logger.info/warn` for OpenClaw log system integration (level filtering, subsystem tags).
+- **captureModel validation**: Validates API key availability at plugin startup via `api.runtime.modelAuth.resolveApiKeyForProvider()`. Warns early if auto-capture LLM extraction will fail.
+
 ## [2.0.4] — 2026-03-18
 
 ### Quality Release
