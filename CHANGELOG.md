@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.3] — 2026-03-18
+
+### Fixes
+- Brain emoji only appears on relevant recall (score >= 0.7), not on every message
+- Safe plugin activation: config arrays are read-then-appended, never overwritten
+- All version references synced
+
 ## [2.0.2] — 2026-03-18
 
 ### Summary
