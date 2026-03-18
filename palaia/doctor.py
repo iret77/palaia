@@ -1138,6 +1138,98 @@ def _check_capture_model() -> dict[str, Any]:
     }
 
 
+def _check_embedding_model_integrity(palaia_root: Path | None) -> dict[str, Any]:
+    """Check fastembed model cache integrity (corrupted symlinks cause ONNX errors)."""
+    if palaia_root is None:
+        return {
+            "name": "embedding_model_integrity",
+            "label": "Embedding model integrity",
+            "status": "ok",
+            "message": "Not initialized",
+        }
+
+    from palaia.config import load_config
+
+    config = load_config(palaia_root)
+    chain = config.get("embedding_chain", [])
+
+    if "fastembed" not in chain:
+        return {
+            "name": "embedding_model_integrity",
+            "label": "Embedding model integrity",
+            "status": "ok",
+            "message": "fastembed not in chain (skipped)",
+        }
+
+    # Resolve model name from config
+    models = config.get("embedding_models", {})
+    model_name = models.get("fastembed", "BAAI/bge-small-en-v1.5")
+
+    # Convert model name to cache dir name: BAAI/bge-small-en-v1.5 → qdrant--bge-small-en-v1.5-onnx-q
+    # fastembed uses qdrant HF repos with -onnx-q suffix
+    model_short = model_name.split("/")[-1] if "/" in model_name else model_name
+    cache_dir_name = f"models--qdrant--{model_short}-onnx-q"
+    cache_base = Path("/tmp/fastembed_cache")
+    cache_dir = cache_base / cache_dir_name
+
+    if not cache_dir.exists():
+        # Not cached yet — warmup will download it
+        return {
+            "name": "embedding_model_integrity",
+            "label": "Embedding model integrity",
+            "status": "ok",
+            "message": "Cache not present yet (run: palaia warmup)",
+        }
+
+    # Look for ONNX model file in the cache
+    onnx_files = list(cache_dir.rglob("model_optimized.onnx")) + list(cache_dir.rglob("model.onnx"))
+
+    if not onnx_files:
+        return {
+            "name": "embedding_model_integrity",
+            "label": "Embedding model integrity",
+            "status": "warn",
+            "message": "fastembed model cache is corrupted (no ONNX file found). Run: palaia doctor --fix",
+            "fixable": True,
+            "details": {"cache_dir": str(cache_dir), "model": model_name},
+        }
+
+    # Check each ONNX file: must be a real file, not a broken symlink
+    for onnx_file in onnx_files:
+        if onnx_file.is_symlink():
+            target = onnx_file.resolve()
+            if not target.exists():
+                return {
+                    "name": "embedding_model_integrity",
+                    "label": "Embedding model integrity",
+                    "status": "warn",
+                    "message": "fastembed model cache is corrupted (broken symlink). Run: palaia doctor --fix",
+                    "fixable": True,
+                    "details": {
+                        "cache_dir": str(cache_dir),
+                        "broken_file": str(onnx_file),
+                        "model": model_name,
+                    },
+                }
+        elif not onnx_file.is_file():
+            return {
+                "name": "embedding_model_integrity",
+                "label": "Embedding model integrity",
+                "status": "warn",
+                "message": "fastembed model cache is corrupted. Run: palaia doctor --fix",
+                "fixable": True,
+                "details": {"cache_dir": str(cache_dir), "model": model_name},
+            }
+
+    return {
+        "name": "embedding_model_integrity",
+        "label": "Embedding model integrity",
+        "status": "ok",
+        "message": f"Cache OK ({model_short})",
+        "details": {"cache_dir": str(cache_dir), "model": model_name},
+    }
+
+
 def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
     """Run all doctor checks. Returns list of check results."""
     results = [
@@ -1147,6 +1239,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_store_version(palaia_root),
         _check_version_available(palaia_root),
         _check_embedding_chain(palaia_root),
+        _check_embedding_model_integrity(palaia_root),
         _check_entry_classes(palaia_root),
         _check_projects_usage(palaia_root),
         _check_deprecated_config(palaia_root),
@@ -1279,6 +1372,22 @@ def apply_fixes(palaia_root: Path | None, results: list[dict[str, Any]]) -> list
             actions.append(f"Auto-configured chain: {' → '.join(new_chain)}")
             if any(p != "bm25" for p in new_chain):
                 ran_warmup = True
+
+    # Fix: corrupted fastembed cache
+    for r in results:
+        if r.get("name") == "embedding_model_integrity" and r.get("fixable") and r.get("status") == "warn":
+            cache_dir = r.get("details", {}).get("cache_dir")
+            if cache_dir:
+                import shutil
+
+                cache_path = Path(cache_dir)
+                if cache_path.exists():
+                    try:
+                        shutil.rmtree(cache_path)
+                        actions.append(f"Removed corrupted fastembed cache: {cache_dir}")
+                        ran_warmup = True  # warmup will re-download
+                    except OSError as e:
+                        actions.append(f"Failed to remove corrupted cache: {e}")
 
     # Fix: upgrade v1.x plugin defaults to v2.0
     for r in results:

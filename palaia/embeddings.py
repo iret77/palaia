@@ -742,6 +742,45 @@ def _create_provider(name: str, model: str | None = None) -> EmbeddingProvider |
         raise ValueError(f"Unknown embedding provider: {name}")
 
 
+def _repair_fastembed_cache_if_needed(model_name: str) -> None:
+    """Check fastembed cache integrity and delete corrupted cache for re-download.
+
+    Corrupted caches (e.g. broken symlinks from container/volume issues) cause
+    cryptic ONNX runtime errors. This pre-check in warmup ensures a clean state.
+    """
+    import shutil
+    from pathlib import Path
+
+    model_short = model_name.split("/")[-1] if "/" in model_name else model_name
+    cache_dir_name = f"models--qdrant--{model_short}-onnx-q"
+    cache_dir = Path("/tmp/fastembed_cache") / cache_dir_name
+
+    if not cache_dir.exists():
+        return  # No cache yet — will be downloaded fresh
+
+    # Check for ONNX files
+    onnx_files = list(cache_dir.rglob("model_optimized.onnx")) + list(cache_dir.rglob("model.onnx"))
+
+    corrupted = False
+    if not onnx_files:
+        corrupted = True
+    else:
+        for f in onnx_files:
+            if f.is_symlink() and not f.resolve().exists():
+                corrupted = True
+                break
+            if not f.is_file():
+                corrupted = True
+                break
+
+    if corrupted:
+        print(f"  [palaia] Corrupted fastembed cache detected — removing {cache_dir} for re-download")
+        try:
+            shutil.rmtree(cache_dir)
+        except OSError as e:
+            print(f"  [palaia] Warning: could not remove corrupted cache: {e}")
+
+
 def warmup_providers(config: dict) -> list[dict]:
     """Pre-download and load embedding models for all providers in the chain.
 
@@ -819,6 +858,8 @@ def warmup_providers(config: dict) -> list[dict]:
                     )
             elif name == "fastembed":
                 model_name = model_override or FastEmbedProvider.default_model
+                # Pre-check: verify cache integrity before loading
+                _repair_fastembed_cache_if_needed(model_name)
                 provider = FastEmbedProvider(model=model_name)
                 provider._get_model()  # triggers download
                 results.append(
