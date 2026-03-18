@@ -40,10 +40,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Install dependencies
         working-directory: packages/openclaw-plugin
-        run: npm ci
+        run: npm install
       - name: Run plugin tests
         working-directory: packages/openclaw-plugin
         run: npx vitest run
