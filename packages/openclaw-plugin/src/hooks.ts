@@ -1131,6 +1131,12 @@ export function extractMessageTexts(messages: unknown[]): Array<{ role: string; 
 
 export function getLastUserMessage(messages: unknown[]): string | null {
   const texts = extractMessageTexts(messages);
+  // Prefer external_user provenance (real human input)
+  for (let i = texts.length - 1; i >= 0; i--) {
+    if (texts[i].role === "user" && texts[i].provenance === "external_user")
+      return texts[i].text;
+  }
+  // Fallback: any user message (backward compat for OpenClaw without provenance)
   for (let i = texts.length - 1; i >= 0; i--) {
     if (texts[i].role === "user") return texts[i].text;
   }
@@ -1138,80 +1144,44 @@ export function getLastUserMessage(messages: unknown[]): string | null {
 }
 
 // ============================================================================
-// Recall Query Builder (Issue #65 upgrade: robust user message extraction)
+// Recall Query Builder (provenance-based, Issue #65 upgrade)
 // ============================================================================
 
-/** Day-of-week prefixes used as system markers in messages. */
-const DAY_PREFIXES = ["[Mon ", "[Tue ", "[Wed ", "[Thu ", "[Fri ", "[Sat ", "[Sun "];
-
 /**
- * Clean a raw message string by removing system markers, JSON blocks,
- * and other noise that degrades semantic search quality.
- */
-export function cleanMessageForQuery(text: string): string {
-  let cleaned = text;
-
-  // Remove JSON code blocks (```json ... ```)
-  cleaned = cleaned.replace(/```json[\s\S]*?```/gi, "");
-
-  // Remove lines starting with system markers
-  cleaned = cleaned
-    .split("\n")
-    .filter((line) => {
-      const trimmed = line.trimStart();
-      if (trimmed.startsWith("System:")) return false;
-      if (trimmed.startsWith("[Queued")) return false;
-      if (trimmed.startsWith("[Inter-session")) return false;
-      for (const prefix of DAY_PREFIXES) {
-        if (trimmed.startsWith(prefix)) return false;
-      }
-      return true;
-    })
-    .join("\n")
-    .trim();
-
-  return cleaned;
-}
-
-/**
- * Build a recall query from message history.
+ * Build a recall query from message history using provenance to identify real user input.
  *
- * - Always uses actual user messages (ignores event.prompt which may be stale/synthetic).
- * - If the last user message is short (< 30 chars), prepends the previous user message
- *   for better semantic context ("Ja", "OK", "Status" alone are poor queries).
- * - Strips system markers, JSON blocks, and other noise.
+ * - Prefers external_user messages (real human input from Slack/Telegram).
+ * - Falls back to any user message for backward compat (OpenClaw without provenance).
+ * - If the last user message is short (< 30 chars), prepends the previous for context.
  * - Hard-caps at 500 characters.
  *
- * Returns empty string if nothing usable remains.
+ * Provenance makes the old heuristic cleaners (DAY_PREFIXES, system marker stripping) obsolete.
  */
 export function buildRecallQuery(messages: unknown[]): string {
   const texts = extractMessageTexts(messages);
-  const userMessages: string[] = [];
-  for (let i = texts.length - 1; i >= 0 && userMessages.length < 2; i--) {
-    if (texts[i].role === "user") {
-      const cleaned = cleanMessageForQuery(texts[i].text);
-      if (cleaned) userMessages.unshift(cleaned);
-    }
+
+  // Prefer external_user messages (real human input)
+  const externalUserMsgs = texts.filter(
+    t => t.role === "user" && t.provenance === "external_user"
+  );
+
+  // Fallback: any user message (backward compat for OpenClaw without provenance)
+  const userMsgs = externalUserMsgs.length > 0
+    ? externalUserMsgs
+    : texts.filter(t => t.role === "user");
+
+  if (userMsgs.length === 0) return "";
+
+  const lastMsg = userMsgs[userMsgs.length - 1].text.trim();
+
+  // Short messages: include previous for context
+  if (lastMsg.length < 30 && userMsgs.length > 1) {
+    const prevMsg = userMsgs[userMsgs.length - 2].text.trim();
+    const combined = `${prevMsg} ${lastMsg}`.slice(0, 500);
+    return combined;
   }
 
-  if (userMessages.length === 0) return "";
-
-  const lastMsg = userMessages[userMessages.length - 1];
-
-  // If the last user message is very short, include previous for context
-  let query: string;
-  if (lastMsg.length < 30 && userMessages.length > 1) {
-    query = `${userMessages[userMessages.length - 2]} ${lastMsg}`;
-  } else {
-    query = lastMsg;
-  }
-
-  // Hard cap at 500 characters
-  if (query.length > 500) {
-    query = query.slice(0, 500);
-  }
-
-  return query.trim();
+  return lastMsg.slice(0, 500);
 }
 
 // ============================================================================
