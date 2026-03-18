@@ -384,7 +384,7 @@ describe("resolveCaptureModel", () => {
     expect(result).toEqual({ provider: "anthropic", model: "claude-haiku-4" });
   });
 
-  it("resolves 'cheap' to last fallback model (cheapest) when fallbacks present", () => {
+  it("resolves 'cheap' to primary model when fallbacks present (no longer uses last fallback)", () => {
     const config = {
       agents: {
         defaults: {
@@ -396,8 +396,8 @@ describe("resolveCaptureModel", () => {
       },
     };
     const result = resolveCaptureModel(config, "cheap");
-    // Last fallback is the cheapest
-    expect(result).toEqual({ provider: "anthropic", model: "claude-haiku-4-5" });
+    // Falls back to primary model, not last fallback
+    expect(result).toEqual({ provider: "anthropic", model: "claude-sonnet-4-6" });
   });
 
   it("resolves 'cheap' to primary when no fallbacks (openai)", () => {
@@ -412,7 +412,7 @@ describe("resolveCaptureModel", () => {
     expect(result).toEqual({ provider: "google", model: "gemini-2.5-pro" });
   });
 
-  it("resolves 'cheap' to last fallback for any provider (no static mapping)", () => {
+  it("resolves 'cheap' to primary for any provider (no fallback usage)", () => {
     const config = {
       agents: {
         defaults: {
@@ -424,10 +424,10 @@ describe("resolveCaptureModel", () => {
       },
     };
     const result = resolveCaptureModel(config, "cheap");
-    expect(result).toEqual({ provider: "custom-provider", model: "small-model" });
+    expect(result).toEqual({ provider: "custom-provider", model: "big-model" });
   });
 
-  it("resolves undefined captureModel to last fallback when fallbacks present", () => {
+  it("resolves undefined captureModel to primary model when fallbacks present", () => {
     const config = {
       agents: {
         defaults: {
@@ -439,7 +439,7 @@ describe("resolveCaptureModel", () => {
       },
     };
     const result = resolveCaptureModel(config, undefined);
-    expect(result).toEqual({ provider: "anthropic", model: "claude-haiku-4-5" });
+    expect(result).toEqual({ provider: "anthropic", model: "claude-sonnet-4-6" });
   });
 
   it("returns undefined when no config available", () => {

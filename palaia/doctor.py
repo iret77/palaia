@@ -1005,6 +1005,108 @@ def _check_capture_level(palaia_root: Path | None) -> dict[str, Any]:
     }
 
 
+def _check_capture_model() -> dict[str, Any]:
+    """Check if captureModel is configured when autoCapture is active."""
+    import os as _os
+
+    from palaia.config import VPS_OPENCLAW_BASE
+
+    _home = Path.home()
+    _base_dirs = [_home / ".openclaw"]
+    if VPS_OPENCLAW_BASE != _home / ".openclaw" and VPS_OPENCLAW_BASE.is_dir():
+        _base_dirs.append(VPS_OPENCLAW_BASE)
+
+    config_candidates: list[Path] = []
+    for base in _base_dirs:
+        config_candidates.extend(
+            [
+                base / "openclaw.json",
+                base / "openclaw.yaml",
+                base / "openclaw.yml",
+                base / "config.json",
+                base / "config.yaml",
+                base / "config.yml",
+            ]
+        )
+
+    env_config = _os.environ.get("OPENCLAW_CONFIG")
+    if env_config:
+        env_path = Path(env_config)
+        if env_path not in config_candidates:
+            config_candidates.insert(0, env_path)
+
+    for config_path in config_candidates:
+        if not config_path.exists():
+            continue
+
+        try:
+            if config_path.suffix == ".json":
+                with open(config_path) as f:
+                    oc_config = json.load(f)
+            elif config_path.suffix in (".yaml", ".yml"):
+                try:
+                    import yaml  # type: ignore[import-untyped]
+
+                    with open(config_path) as f:
+                        oc_config = yaml.safe_load(f)
+                except ImportError:
+                    continue
+            else:
+                continue
+
+            # Check if palaia plugin is active
+            plugins = oc_config.get("plugins", {})
+            slots = plugins.get("slots", {})
+            memory_plugin = slots.get("memory")
+
+            if memory_plugin != "palaia":
+                continue
+
+            # Get palaia plugin config
+            entries = plugins.get("entries", {})
+            palaia_entry = entries.get("palaia", {})
+            palaia_config = palaia_entry.get("config", {})
+
+            # autoCapture defaults to true
+            auto_capture = palaia_config.get("autoCapture", True)
+            if not auto_capture:
+                return {
+                    "name": "capture_model",
+                    "label": "Capture model",
+                    "status": "ok",
+                    "message": "autoCapture is off (captureModel not needed)",
+                }
+
+            capture_model = palaia_config.get("captureModel")
+            if capture_model:
+                return {
+                    "name": "capture_model",
+                    "label": "Capture model",
+                    "status": "ok",
+                    "message": f"captureModel: {capture_model}",
+                }
+
+            return {
+                "name": "capture_model",
+                "label": "Capture model",
+                "status": "info",
+                "message": (
+                    "No captureModel set — using primary model. "
+                    "Consider setting a cheaper model (e.g. claude-haiku-4-5) "
+                    "in openclaw.json \u2192 plugins.entries.palaia.config.captureModel"
+                ),
+            }
+        except (json.JSONDecodeError, OSError, KeyError):
+            continue
+
+    return {
+        "name": "capture_model",
+        "label": "Capture model",
+        "status": "ok",
+        "message": "OpenClaw/Palaia plugin not detected (skipped)",
+    }
+
+
 def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
     """Run all doctor checks. Returns list of check results."""
     results = [
@@ -1020,6 +1122,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_default_agent_alias(palaia_root),
         _check_unread_memos(palaia_root),
         _check_capture_level(palaia_root),
+        _check_capture_model(),
         _check_plugin_defaults_upgrade(palaia_root),
         _check_openclaw_plugin(),
         _check_smart_memory_skill(),

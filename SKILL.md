@@ -191,6 +191,11 @@ If no OpenAI key BUT local model detected:
   → yes: briefly explain: "Use 'palaia project create <name>' for each project. I'll remember which memories belong where."
   → no: skip
 
+**Question 4 — Capture Model (only ask if autoCapture is enabled, which is the default):**
+  Ask: "Auto-Capture saves significant conversations automatically. Which model should it use for extraction? A cheap/fast model is best (e.g. claude-haiku-4-5, gpt-4.1-mini, gemini-2.0-flash)."
+  → User names a model: set `captureModel` in openclaw.json plugin config
+  → User says "use default" or skips: leave unset (primary model will be used, doctor will nudge)
+
 **Wrap up:**
 Tell the user what was configured — one sentence:
 "Done. [Search quality: OpenAI / local model / keyword-only]. [Migration: X entries imported / fresh start]. [Projects: configured / not used]."
@@ -385,7 +390,7 @@ Find your npm global path with: `npm root -g`
 | `autoCapture` | Capture significant exchanges automatically (default: `true`) |
 | `captureFrequency` | `"every"` or `"significant"` (default: `"significant"`) |
 | `captureMinTurns` | Minimum exchange turns before capture (default: 2) |
-| `captureModel` | Model override for LLM extraction (e.g. `"anthropic/claude-haiku-3"`, `"cheap"`) |
+| `captureModel` | Explicit model for LLM extraction (e.g. `"anthropic/claude-haiku-4-5"`). Recommended: set a cheap/fast model. If unset, uses your primary model. |
 | `showMemorySources` | Show memory source footnotes in responses (default: `true`) |
 | `showCaptureConfirm` | Show capture confirmations in responses (default: `true`) |
 | `recallMode` | `"list"` or `"query"` — how memories are retrieved (default: `"query"`) |

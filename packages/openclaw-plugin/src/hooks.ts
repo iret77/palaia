@@ -713,15 +713,22 @@ function buildExtractionPrompt(projects: CachedProject[]): string {
   return `${EXTRACTION_SYSTEM_PROMPT_BASE}\n\nKnown projects: ${projectList}`;
 }
 
+/** Whether the captureModel fallback warning has already been logged (to avoid spam). */
+let _captureModelFallbackWarned = false;
+
+/** Reset captureModel fallback warning flag (for testing). */
+export function resetCaptureModelFallbackWarning(): void {
+  _captureModelFallbackWarned = false;
+}
+
 /**
  * Resolve the model to use for LLM-based capture extraction.
  *
  * Strategy (no static model mapping — user config is the source of truth):
  * 1. If captureModel is set explicitly (e.g. "anthropic/claude-haiku-4-5"): use it directly.
- * 2. If captureModel is "cheap" or unset: take the LAST fallback from user config
- *    (config.agents.defaults.model.fallbacks), as that is typically the cheapest.
- * 3. If no fallbacks exist: use the primary model (config.agents.defaults.model.primary).
- * 4. Never fall back to static model IDs — model IDs change and not every user has Anthropic.
+ * 2. If captureModel is unset: use the primary model from user config.
+ *    Log a one-time warning recommending to set a cheaper captureModel.
+ * 3. Never fall back to static model IDs — model IDs change and not every user has Anthropic.
  */
 export function resolveCaptureModel(
   config: any,
@@ -744,24 +751,9 @@ export function resolveCaptureModel(
     }
   }
 
-  // Case 2: "cheap" or unset — dynamically resolve from user config
+  // Case 2: "cheap" or unset — use primary model from user config
   const defaultsModel = config?.agents?.defaults?.model;
 
-  // Try fallbacks first — last entry is typically cheapest
-  const fallbacks: unknown = typeof defaultsModel === "object" && defaultsModel !== null
-    ? defaultsModel.fallbacks
-    : undefined;
-
-  if (Array.isArray(fallbacks) && fallbacks.length > 0) {
-    const lastFallback = String(fallbacks[fallbacks.length - 1]).trim();
-    const parts = lastFallback.split("/");
-    if (parts.length >= 2) {
-      console.log(`[palaia][debug] resolveCaptureModel: using last fallback model=${lastFallback}`);
-      return { provider: parts[0], model: parts.slice(1).join("/") };
-    }
-  }
-
-  // Case 3: no fallbacks — use primary model
   const primary = typeof defaultsModel === "string"
     ? defaultsModel.trim()
     : (typeof defaultsModel === "object" && defaultsModel !== null
@@ -771,6 +763,10 @@ export function resolveCaptureModel(
   if (primary) {
     const parts = primary.split("/");
     if (parts.length >= 2) {
+      if (!_captureModelFallbackWarned) {
+        _captureModelFallbackWarned = true;
+        console.warn(`[palaia] No captureModel configured — using primary model. Set captureModel in plugin config for cost savings.`);
+      }
       console.log(`[palaia][debug] resolveCaptureModel: using primary model=${primary}`);
       return { provider: parts[0], model: parts.slice(1).join("/") };
     }
