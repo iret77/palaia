@@ -19,6 +19,8 @@ metadata:
     postInstall:
       - command: "palaia init"
         label: "Initialize Palaia store"
+      - command: "npm install -g @byte5ai/palaia@latest"
+        label: "Install OpenClaw plugin (npm)"
     postUpdate:
       - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && (npm install -g @byte5ai/palaia@latest 2>/dev/null || true) && palaia doctor --fix && palaia warmup"
         label: "Upgrade Palaia (pip + npm plugin if available) and run health checks"
@@ -61,11 +63,12 @@ No settings to tweak. No README to study. Install it and it works.
 - Don't batch all steps and report at the end. Report after each step.
 
 Example pacing:
-1. "Installing Palaia…" → [runs pip install] → "Done. Initializing…"
-2. "Checking your system for available search providers…" → [runs palaia doctor + detect] → "Found: [X]. Quick question:"
-3. [Onboarding conversation — max 3 questions]
-4. "Configuring chain… warming up model (this takes ~15 seconds)…" → "Ready."
-5. "All set. Here's your setup: [one sentence summary]"
+1. "Installing Palaia…" → [runs pip install] → "Done. Initializing store…" → [runs palaia init] → "Store ready."
+2. "Installing OpenClaw plugin…" → [runs npm install -g @byte5ai/palaia@latest] → "Plugin installed. Activating…" → [patches config, restarts gateway] → "Plugin active."
+3. "Running diagnostics…" → [runs palaia doctor] → "Found: [X]. Quick question:"
+4. [Onboarding conversation — max 3 questions]
+5. "Configuring chain… warming up model (this takes ~15 seconds)…" → "Ready."
+6. "All set. Here's your setup: [one sentence summary]"
 
 ## Setup Flow (follow this exactly)
 
@@ -114,7 +117,45 @@ palaia instance set YOUR_INSTANCE_NAME
 ```
 Instance is session-local and adds traceability to entries. Memos can target specific instances.
 
-### Step 2: Check for existing memory systems (REQUIRED — do not skip)
+### Step 2: Install and activate OpenClaw plugin (REQUIRED)
+
+The npm plugin wires Palaia into OpenClaw's memory slot — without it, Auto-Capture and Auto-Recall don't work.
+
+```bash
+npm install -g @byte5ai/palaia@latest
+```
+
+Now activate the plugin in OpenClaw. **Use `openclaw config set` — do NOT edit `openclaw.json` manually.**
+
+```bash
+# Resolve the plugin path dynamically
+PALAIA_PATH="$(npm root -g)/@byte5ai/palaia"
+
+# Patch OpenClaw config
+openclaw config set plugins.load.paths "[\"$PALAIA_PATH\"]"
+openclaw config set plugins.allow '["palaia"]'
+openclaw config set plugins.slots.memory palaia
+```
+
+> **Typical `npm root -g` paths:**
+> - Linux (Homebrew): `/home/linuxbrew/.linuxbrew/lib/node_modules`
+> - macOS (Homebrew): `/opt/homebrew/lib/node_modules`
+> - macOS (nvm): `~/.nvm/versions/node/vXX/lib/node_modules`
+> - Linux (system): `/usr/lib/node_modules`
+> - Windows: `%AppData%\npm\node_modules`
+
+Restart the gateway so the plugin loads:
+```bash
+openclaw gateway restart
+```
+
+Wait for the gateway to come back up, then verify:
+```bash
+palaia doctor
+```
+The output must include `OpenClaw plugin: palaia is active`. If it does not, re-check the path and config values above.
+
+### Step 3: Check for existing memory systems (REQUIRED — do not skip)
 ```bash
 palaia doctor
 ```
@@ -202,14 +243,14 @@ Tell the user what was configured — one sentence:
 
 Do not explain commands, WAL, BM25, embedding models, or any technical details unless the user explicitly asks.
 
-### Step 3: Migrate existing entries (best practice — do this now)
+### Step 4: Migrate existing entries (best practice — do this now)
 If there are existing entries from an earlier Palaia version (or from initial setup), run:
 ```bash
 palaia migrate --suggest
 ```
 This checks for entries without type classification and suggests improvements. Better to do this early while the store is small — it gets harder as the store grows. Apply the suggestions that make sense.
 
-### Step 4a: Check embedding setup (auto-configured by init)
+### Step 5a: Check embedding setup (auto-configured by init)
 ```bash
 palaia detect
 ```
@@ -229,13 +270,13 @@ palaia warmup                       # pre-load model + build index
 ```
 If fastembed is unavailable, sentence-transformers works too (`python3 -m pip install sentence-transformers`) but is heavier and slower on CPU-only systems.
 
-### Step 4b: Warm up models
+### Step 5b: Warm up models
 ```bash
 palaia warmup
 ```
 This pre-downloads embedding models so the first search is instant. Always run after chain setup.
 
-### Step 5: Verify setup (mandatory — do not skip)
+### Step 6: Verify setup (mandatory — do not skip)
 Run a test query to verify semantic search works end-to-end:
 ```bash
 palaia query "important context and decisions"
@@ -250,14 +291,14 @@ If index is 0/N after warmup, run a few queries — indexing happens lazily on f
 
 **Do not tell the user "setup complete" until this verification passes.** Assumption is not verification.
 
-### Step 6: Optional — migrate additional memory files (skip if done in Step 3)
+### Step 7: Optional — migrate additional memory files (skip if done in Step 4)
 ```bash
 palaia migrate <path> --dry-run   # Preview first
 palaia migrate <path>             # Then import
 ```
-Note: If smart-memory migration was already handled in Step 2, skip this unless there are other sources to import.
+Note: If smart-memory migration was already handled in Step 3, skip this unless there are other sources to import.
 
-### Step 7: Add Palaia maintenance to your heartbeat (mandatory)
+### Step 8: Add Palaia maintenance to your heartbeat (mandatory)
 
 This is required. Palaia's tiering (HOT → WARM → COLD) only runs when triggered.
 Without periodic maintenance, all entries stay HOT forever and search quality degrades over time.
