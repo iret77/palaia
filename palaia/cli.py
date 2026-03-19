@@ -2007,8 +2007,16 @@ def cmd_warmup(args):
     root = get_root()
     config = load_config(root)
     from palaia.embeddings import warmup_providers
+    from palaia.entry import parse_entry
 
     results = warmup_providers(config)
+
+    # Rebuild metadata index from disk
+    store = Store(root)
+    meta_count = store.metadata_index.rebuild(parse_entry)
+    is_json = getattr(args, "json", False)
+    if not is_json:
+        print(f"Metadata index: {meta_count} entries indexed", file=sys.stderr)
 
     # Reindex entries after model warmup
     index_stats = _reindex_entries(root, config, args)

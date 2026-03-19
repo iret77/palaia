@@ -1169,7 +1169,9 @@ def _check_embedding_model_integrity(palaia_root: Path | None) -> dict[str, Any]
     # fastembed uses qdrant HF repos with -onnx-q suffix
     model_short = model_name.split("/")[-1] if "/" in model_name else model_name
     cache_dir_name = f"models--qdrant--{model_short}-onnx-q"
-    cache_base = Path("/tmp/fastembed_cache")
+    import tempfile
+
+    cache_base = Path(tempfile.gettempdir()) / "fastembed_cache"
     cache_dir = cache_base / cache_dir_name
 
     if not cache_dir.exists():

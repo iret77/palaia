@@ -753,7 +753,9 @@ def _repair_fastembed_cache_if_needed(model_name: str) -> None:
 
     model_short = model_name.split("/")[-1] if "/" in model_name else model_name
     cache_dir_name = f"models--qdrant--{model_short}-onnx-q"
-    cache_dir = Path("/tmp/fastembed_cache") / cache_dir_name
+    import tempfile
+
+    cache_dir = Path(tempfile.gettempdir()) / "fastembed_cache" / cache_dir_name
 
     if not cache_dir.exists():
         return  # No cache yet — will be downloaded fresh
