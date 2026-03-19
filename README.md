@@ -132,6 +132,48 @@ Configure via `palaia init --capture-level`:
 
 ---
 
+## Agent Alias System
+
+Multiple agent identities can share entries through aliases. An alias maps one agent name to another, so queries and scope checks match both.
+
+```bash
+# Set alias: "default" is treated as "HAL"
+palaia alias set default HAL
+
+# List aliases
+palaia alias list
+
+# Remove alias
+palaia alias remove default
+```
+
+When agent "HAL" queries, entries owned by "default" (and vice versa) are included. Useful when agents run under different names in different contexts but should share the same memory.
+
+## Project Locking
+
+Advisory locks prevent multiple agents from working on the same project simultaneously. Locks have a configurable TTL (default: 30 min) and auto-expire.
+
+```bash
+# Lock a project
+palaia project lock myproject --agent CyberClaw --reason "refactoring"
+
+# Check lock status
+palaia project lock-status myproject
+
+# Release lock
+palaia project unlock myproject
+
+# Force-break a stuck lock
+palaia project break-lock myproject
+
+# List all active locks
+palaia project locks
+```
+
+Locks are advisory — they don't prevent writes, but agents should check before starting work on a project.
+
+---
+
 ## CLI Reference
 
 ```

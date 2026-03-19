@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "2.0.6"
+version: "2.0.7"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   Replaces built-in memory-core with semantic search, projects, and scope-based access control.
@@ -761,6 +761,46 @@ palaia project set-scope <name> <scope>
 # Delete a project (entries are preserved, just untagged)
 palaia project delete <name>
 ```
+
+### Agent Alias System
+
+Aliases let multiple agent names resolve to the same identity. Scope checks and queries will match both the alias and the canonical name.
+
+```bash
+# Set alias: "default" is treated as "HAL"
+palaia alias set default HAL
+
+# List all aliases
+palaia alias list
+
+# Remove an alias
+palaia alias remove default
+```
+
+Use aliases when the same agent runs under different names (e.g., "default" during init, "HAL" during operation). Entries written by either name are accessible to both.
+
+### Project Locking
+
+Advisory locks coordinate multi-agent work on projects. Locks auto-expire after TTL (default: 30 min).
+
+```bash
+# Lock a project for exclusive work
+palaia project lock <name> --agent <agent> [--reason "..."] [--ttl 3600]
+
+# Check if a project is locked
+palaia project lock-status <name>
+
+# Release a lock
+palaia project unlock <name>
+
+# Force-break a stuck lock (use with caution)
+palaia project break-lock <name>
+
+# List all active locks
+palaia project locks
+```
+
+Always check lock status before starting work on a shared project. The lock is advisory — it doesn't prevent writes, but agents should respect it.
 
 ### Configuration
 

@@ -21,6 +21,7 @@ from palaia.entry import (
 )
 from palaia.index import EmbeddingCache
 from palaia.lock import PalaiaLock
+from palaia.metadata_index import MetadataIndex
 from palaia.scope import can_access, normalize_scope
 from palaia.wal import WAL, WALEntry
 
@@ -36,6 +37,7 @@ class Store:
         self.wal = WAL(palaia_root)
         self.lock = PalaiaLock(palaia_root, self.config["lock_timeout_seconds"])
         self.embedding_cache = EmbeddingCache(palaia_root)
+        self.metadata_index = MetadataIndex(palaia_root)
         self._aliases = get_aliases(palaia_root)
 
         # Ensure tier directories
@@ -137,6 +139,9 @@ class Store:
 
         # Invalidate any stale embedding cache for this entry
         self.embedding_cache.invalidate(entry_id)
+
+        # Update metadata index
+        self.metadata_index.update(entry_id, meta, "hot")
 
         return entry_id
 
@@ -240,6 +245,10 @@ class Store:
         # Re-index embeddings if content changed
         if content_changed:
             self.embedding_cache.invalidate(entry_id)
+
+        # Update metadata index (determine tier from path)
+        tier = path.parent.name
+        self.metadata_index.update(entry_id, meta, tier)
 
         return meta
 
@@ -473,11 +482,17 @@ class Store:
                         self.write_raw(new_target, new_text)
                         p.unlink()
                         self.wal.commit(wal_entry)
+                        # Update metadata index with new tier
+                        entry_id = meta.get("id", p.stem)
+                        self.metadata_index.update(entry_id, meta, new_tier)
                         key = f"{tier}_to_{new_tier}"
                         moves[key] = moves.get(key, 0) + 1
                     else:
                         with open(p, "w") as f:
                             f.write(new_text)
+                        # Update metadata index (score may have changed)
+                        entry_id = meta.get("id", p.stem)
+                        self.metadata_index.update(entry_id, meta, tier)
 
             # Budget enforcement (Issue #71)
             if budget:
@@ -497,6 +512,11 @@ class Store:
         stale = self.embedding_cache.cleanup(valid_ids)
         if stale:
             moves["embeddings_cleaned"] = stale
+
+        # Metadata index cleanup
+        meta_stale = self.metadata_index.cleanup(valid_ids)
+        if meta_stale:
+            moves["metadata_cleaned"] = meta_stale
 
         if pruned_entries:
             moves["pruned"] = len(pruned_entries)
@@ -553,7 +573,9 @@ class Store:
                         )
                         rel = str(p.relative_to(self.root))
                         self.delete_raw(rel)
-                        self.embedding_cache.invalidate(meta.get("id", p.stem))
+                        entry_id = meta.get("id", p.stem)
+                        self.embedding_cache.invalidate(entry_id)
+                        self.metadata_index.remove(entry_id)
                         all_entries = [(ep, em, eb, es) for ep, em, eb, es in all_entries if ep != p]
 
         # Enforce max_total_chars
@@ -571,7 +593,9 @@ class Store:
                 )
                 rel = str(p.relative_to(self.root))
                 self.delete_raw(rel)
-                self.embedding_cache.invalidate(meta.get("id", p.stem))
+                entry_id = meta.get("id", p.stem)
+                self.embedding_cache.invalidate(entry_id)
+                self.metadata_index.remove(entry_id)
                 total_chars -= len(body)
                 all_entries = all_entries[1:]
 
@@ -633,7 +657,19 @@ class Store:
         return None
 
     def _find_by_hash(self, h: str) -> str | None:
-        """Find entry ID by content hash (dedup)."""
+        """Find entry ID by content hash (dedup).
+
+        Uses metadata index for O(n-in-memory) lookup instead of O(n) disk scan.
+        Falls back to disk scan if index is empty (cold start).
+        """
+        # Try index first
+        if self.metadata_index.is_populated():
+            result = self.metadata_index.find_by_hash(h)
+            if result is not None:
+                return result
+            return None
+
+        # Fallback: disk scan (index not yet built)
         for tier in TIERS:
             tier_dir = self.root / tier
             if not tier_dir.exists():
