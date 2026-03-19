@@ -58,6 +58,10 @@ export interface PalaiaPluginConfig {
   // ── Recall Quality (Issue #65) ───────────────────────────────
   /** Minimum score for a recall result to be considered relevant (default: 0.7) */
   recallMinScore: number;
+
+  // ── Embedding Server (v2.0.8) ──────────────────────────────
+  /** Enable long-lived embedding server subprocess for fast queries (default: true) */
+  embeddingServer: boolean;
 }
 
 export const DEFAULT_RECALL_TYPE_WEIGHTS: RecallTypeWeights = {
@@ -81,6 +85,7 @@ export const DEFAULT_CONFIG: PalaiaPluginConfig = {
   recallMode: "query",
   recallTypeWeight: { ...DEFAULT_RECALL_TYPE_WEIGHTS },
   recallMinScore: 0.7,
+  embeddingServer: true,
 };
 
 /**

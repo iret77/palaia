@@ -123,6 +123,7 @@ GATED_COMMANDS = frozenset(
         "setup",
         "warmup",
         "migrate",
+        "embed-server",
     }
 )
 
@@ -3119,6 +3120,14 @@ def cmd_package(args):
     return 1
 
 
+def cmd_embed_server(args):
+    """Start long-lived embedding server for fast queries."""
+    from palaia.embed_server import main as embed_server_main
+
+    embed_server_main()
+    return 0
+
+
 def cmd_skill(args):
     """Print the embedded SKILL.md documentation."""
     skill_path = Path(__file__).parent / "SKILL.md"
@@ -3506,6 +3515,9 @@ def main():
     p_pkg_info.add_argument("file", help="Package file path")
     p_pkg_info.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # embed-server
+    sub.add_parser("embed-server", help="Start long-lived embedding server (stdin/stdout JSON-RPC)")
+
     # skill
     p_skill = sub.add_parser("skill", help="Print the SKILL.md agent documentation")
     p_skill.add_argument("--json", action="store_true", help="Output as JSON")
@@ -3560,6 +3572,7 @@ def main():
         "lock": cmd_lock,
         "unlock": cmd_unlock,
         "instance": cmd_instance,
+        "embed-server": cmd_embed_server,
         "skill": cmd_skill,
     }
     try:

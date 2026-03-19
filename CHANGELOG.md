@@ -1,5 +1,31 @@
 # Changelog
 
+## [2.0.8] — 2026-03-19
+
+### Embedding Server — 16s to 0.5s Query Performance
+
+- **Embedding server** (`palaia/embed_server.py`): Long-lived JSON-RPC subprocess over stdin/stdout. Keeps the embedding model loaded in RAM — queries drop from 6-16s to ~0.5s (steady state). First query after start ~2s (one-time model warmup).
+- **Plugin integration**: `EmbedServerManager` in runner.ts — lazy start on first recall query, auto-restart (max 3 retries), graceful fallback to CLI on failure, cleanup on plugin shutdown.
+- **Config**: `embeddingServer: true` (default). Set to `false` to disable and use CLI-only path.
+- **Methods**: `query`, `warmup`, `ping`, `status`, `shutdown`. Stale detection every 30s rebuilds index on entry changes.
+- **Zero new dependencies** — uses existing `SearchEngine`, `Store`, and `EmbeddingCache` modules.
+- 15 new Python tests, 8 new TypeScript tests.
+
+### Documentation
+
+- README.md: Embedding Server feature + config documented.
+- SKILL.md: Performance section rewritten, `embeddingServer` config added.
+
+## [2.0.7] — 2026-03-19
+
+### Cross-Platform Locking, Metadata Index, Documentation
+
+- **Cross-platform locking**: `fcntl` (Unix) / `msvcrt` (Windows) / `mkdir` (fallback) — no new dependencies.
+- **Metadata index**: JSON-backed metadata cache for O(1) hash lookups and faster listing. Auto-updated on write/edit/gc. Transparent disk fallback.
+- **Hardcoded `/tmp/`** replaced with `tempfile.gettempdir()`.
+- **Documentation**: Agent Alias System and Project Locking now documented in README and SKILL.md.
+- 24 new tests.
+
 ## [2.0.6] — 2026-03-18
 
 ### Clean Recall Queries via Envelope Stripping

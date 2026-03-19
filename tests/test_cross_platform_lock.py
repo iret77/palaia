@@ -64,6 +64,7 @@ class TestMkdirFallback:
         # Write a non-stale lock file so stale detection doesn't help
         import json
         import time
+
         lock_file = tmp_path / ".lock"
         lock_file.write_text(json.dumps({"pid": 99999, "ts": time.time()}))
         with pytest.raises(LockError):

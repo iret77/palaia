@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "2.0.7"
+version: "2.0.8"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   Replaces built-in memory-core with semantic search, projects, and scope-based access control.
@@ -474,6 +474,7 @@ Find your npm global path with: `npm root -g`
 | `showMemorySources` | Show memory source footnotes in responses (default: `true`) |
 | `showCaptureConfirm` | Show capture confirmations in responses (default: `true`) |
 | `recallMode` | `"list"` or `"query"` — how memories are retrieved (default: `"query"`) |
+| `embeddingServer` | Keep embedding model in a long-lived subprocess for fast queries. ~0.5s vs 6-16s. Falls back to CLI on failure. (default: `true`) |
 
 > **Note (Issue #66):** Plugin config is currently **global** — all agents on the same OpenClaw
 > instance share the same config from `openclaw.json`. Per-agent config resolution would require
@@ -1106,13 +1107,16 @@ palaia warmup
 
 These are hard-won lessons from agents running Palaia in production. Read this before your first query.
 
-### Performance: warmup is not optional
-After install or update, always run `palaia warmup`. Without it, **every query re-computes embeddings for all entries** — that's 14+ seconds on CPU systems. After warmup, the same query takes <2 seconds. The warmup builds a persistent embedding cache that survives restarts.
+### Performance: embedding server + warmup
+The OpenClaw plugin starts a long-lived embedding server subprocess (`embeddingServer: true`, default). This keeps the embedding model loaded in RAM — queries take ~0.5s instead of 6-16s. The first query after server start takes ~2s (one-time model load).
 
 If queries are slow, check:
-1. Did you run `palaia warmup`? (`palaia status` shows "X entries not indexed" if not)
-2. Which provider is active? (`palaia detect`) — fastembed is 50x faster than sentence-transformers on CPU-only systems
-3. Is the embedding chain correct? (`palaia config show`) — the chain should list your preferred provider first
+1. Is the embedding server running? The plugin starts it automatically. Disable with `embeddingServer: false` in plugin config (not recommended).
+2. Did you run `palaia warmup`? (`palaia status` shows "X entries not indexed" if not). Warmup pre-computes embeddings for all entries.
+3. Which provider is active? (`palaia detect`) — fastembed is 50x faster than sentence-transformers on CPU-only systems.
+4. Is the embedding chain correct? (`palaia config show`) — the chain should list your preferred provider first.
+
+Without the embedding server (standalone CLI), warmup is critical: every query without cached embeddings re-loads the model (~3s fastembed, ~16s sentence-transformers).
 
 ### Provider choice matters on CPU systems
 - **fastembed**: ~0.3s per embedding, lightweight, no GPU needed — **recommended for most systems**
