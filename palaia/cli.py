@@ -1182,6 +1182,12 @@ def cmd_get(args):
         # Extract ID from path
         entry_id = entry_id.split("/")[-1].replace(".md", "")
 
+    # Accept short IDs (prefix match) — consistent with edit and process run
+    if len(entry_id) < 36:
+        resolved = _resolve_short_id(store, entry_id)
+        if resolved:
+            entry_id = resolved
+
     # Scope enforcement: resolve agent from config (#39)
     agent = _resolve_agent(args)
     entry = store.read(entry_id, agent=agent)
