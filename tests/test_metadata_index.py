@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pytest
 
 from palaia.metadata_index import MetadataIndex
@@ -41,7 +38,6 @@ def populated_idx(tmp_path):
 
 def _mock_parse(text: str):
     """Simple parse that splits on --- markers and extracts YAML-ish frontmatter."""
-    import re
 
     parts = text.split("---", 2)
     if len(parts) < 3:
