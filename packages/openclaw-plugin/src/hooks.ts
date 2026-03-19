@@ -14,7 +14,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { run, runJson, recover, type RunnerOpts } from "./runner.js";
+import { run, runJson, recover, type RunnerOpts, getEmbedServerManager } from "./runner.js";
 import type { PalaiaPluginConfig, RecallTypeWeights } from "./config.js";
 
 // ============================================================================
@@ -1521,17 +1521,39 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
             : (event.prompt || null);
 
           if (userMessage && userMessage.length >= 5) {
-            try {
-              const queryArgs: string[] = ["query", userMessage, "--limit", String(limit)];
-              if (config.tier === "all") {
-                queryArgs.push("--all");
+            // Try embed server first (fast path: ~0.5s), then CLI fallback (~3-14s)
+            let serverQueried = false;
+            if (config.embeddingServer) {
+              try {
+                const mgr = getEmbedServerManager(opts);
+                const resp = await mgr.query({
+                  text: userMessage,
+                  top_k: limit,
+                  include_cold: config.tier === "all",
+                }, config.timeoutMs || 3000);
+                if (resp?.result?.results && Array.isArray(resp.result.results)) {
+                  entries = resp.result.results;
+                  serverQueried = true;
+                }
+              } catch (serverError) {
+                logger.warn(`[palaia] Embed server query failed, falling back to CLI: ${serverError}`);
               }
-              const result = await runJson<QueryResult>(queryArgs, opts);
-              if (result && Array.isArray(result.results)) {
-                entries = result.results;
+            }
+
+            // CLI fallback
+            if (!serverQueried) {
+              try {
+                const queryArgs: string[] = ["query", userMessage, "--limit", String(limit)];
+                if (config.tier === "all") {
+                  queryArgs.push("--all");
+                }
+                const result = await runJson<QueryResult>(queryArgs, { ...opts, timeoutMs: 15000 });
+                if (result && Array.isArray(result.results)) {
+                  entries = result.results;
+                }
+              } catch (queryError) {
+                logger.warn(`[palaia] Query recall failed, falling back to list: ${queryError}`);
               }
-            } catch (queryError) {
-              logger.warn(`[palaia] Query recall failed, falling back to list: ${queryError}`);
             }
           }
         }

@@ -135,9 +135,7 @@ class MetadataIndex:
                 return entry_id
         return None
 
-    def all_entries(
-        self, include_cold: bool = False
-    ) -> list[tuple[dict[str, Any], str]]:
+    def all_entries(self, include_cold: bool = False) -> list[tuple[dict[str, Any], str]]:
         """Get all indexed entries as (meta_dict, tier) tuples.
 
         This is metadata only — no body content.
