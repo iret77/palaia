@@ -79,6 +79,7 @@ Built as a first-class OpenClaw plugin. Auto-capture of significant exchanges. Q
 | **Smart Tiering** | HOT → WARM → COLD rotation based on access patterns |
 | **Garbage Collection** | Automatic tier rotation, WAL cleanup, stale entry management |
 | **OpenClaw Plugin** | Drop-in replacement for built-in memory — query-based recall, auto-capture, LLM extraction |
+| **Embedding Server** | Long-lived subprocess keeps the model loaded — queries in ~0.5s instead of 6-16s |
 | **Projects** | Group entries by project with default scopes and ownership |
 | **Document Ingestion** | Index PDFs, HTML, Markdown for RAG search |
 | **Adaptive Nudging** | Teaches agents best practices, graduates when they learn |
@@ -118,6 +119,7 @@ Set in `openclaw.json` under `plugins.entries.palaia.config`:
 | `captureModel` | auto | Model for LLM extraction (e.g. `"anthropic/claude-haiku-3"`) |
 | `recallMode` | `"query"` | `"list"` (tier-based) or `"query"` (semantic) |
 | `recallTypeWeight` | `{process:1.5, task:1.2, memory:1.0}` | Type-aware result weighting |
+| `embeddingServer` | `true` | Keep embedding model loaded in a long-lived subprocess for fast queries (~0.5s vs ~6s). Falls back to CLI on failure. |
 
 ### Capture Levels
 
