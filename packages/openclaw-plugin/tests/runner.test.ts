@@ -10,13 +10,14 @@ vi.mock("node:child_process", () => ({
   execFile: vi.fn(),
 }));
 
-// Mock fs/promises for access checks
+// Mock fs/promises for access checks and readFile
 vi.mock("node:fs/promises", () => ({
   access: vi.fn().mockRejectedValue(new Error("ENOENT")),
+  readFile: vi.fn().mockRejectedValue(new Error("ENOENT")),
   constants: { X_OK: 1 },
 }));
 
-import { detectBinary, run, runJson, recover, resetCache } from "../src/runner.js";
+import { detectBinary, run, runJson, recover, resetCache, getVersionMismatchWarning } from "../src/runner.js";
 
 const mockExecFile = vi.mocked(execFile);
 
@@ -115,6 +116,12 @@ describe("runner", () => {
       const result = await recover({ binaryPath: "palaia" });
       expect(result.replayed).toBe(0);
       expect(result.errors).toBe(1);
+    });
+  });
+
+  describe("getVersionMismatchWarning", () => {
+    it("returns null before any binary detection", () => {
+      expect(getVersionMismatchWarning()).toBeNull();
     });
   });
 });

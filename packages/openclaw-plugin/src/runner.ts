@@ -8,8 +8,10 @@
 
 import { execFile } from "node:child_process";
 import { access, constants } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export interface RunnerOpts {
   /** Working directory for palaia (sets PALAIA_ROOT context) */
@@ -28,6 +30,59 @@ export interface RunResult {
 
 /** Cached binary path after first detection */
 let cachedBinary: string | null = null;
+
+/** Version mismatch warning (set once during first binary detection) */
+let versionMismatchWarning: string | null = null;
+
+/**
+ * Extract semver (Major.Minor.Patch) from a version string.
+ * Strips leading 'v', trailing suffixes like -dev, +build, etc.
+ */
+function parseSemver(raw: string): string | null {
+  const match = raw.trim().match(/v?(\d+\.\d+\.\d+)/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Read the plugin's own version from its package.json.
+ */
+async function getPluginVersion(): Promise<string | null> {
+  try {
+    const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+    const content = await readFile(pkgPath, "utf-8");
+    const pkg = JSON.parse(content);
+    return parseSemver(pkg.version || "");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check CLI version against plugin version. Logs warning on mismatch.
+ * Called once during first binary detection.
+ */
+async function checkVersionMismatch(cliVersionOutput: string): Promise<void> {
+  const cliVersion = parseSemver(cliVersionOutput);
+  const pluginVersion = await getPluginVersion();
+
+  if (!cliVersion || !pluginVersion) return;
+  if (cliVersion === pluginVersion) return;
+
+  versionMismatchWarning =
+    `Palaia CLI version (${cliVersion}) does not match plugin version (${pluginVersion}). ` +
+    `Update with: pip install --upgrade palaia (or: uv tool upgrade palaia), ` +
+    `then run: palaia doctor --fix`;
+
+  console.warn(`[palaia] ${versionMismatchWarning}`);
+}
+
+/**
+ * Get the version mismatch warning, if any.
+ * Returns null if versions match or haven't been checked yet.
+ */
+export function getVersionMismatchWarning(): string | null {
+  return versionMismatchWarning;
+}
 
 /**
  * Detect the palaia binary location.
@@ -62,6 +117,7 @@ export async function detectBinary(
     });
     if (result.exitCode === 0) {
       cachedBinary = "palaia";
+      await checkVersionMismatch(result.stdout);
       return "palaia";
     }
   } catch {
@@ -72,6 +128,11 @@ export async function detectBinary(
   const pipxPath = join(homedir(), ".local", "bin", "palaia");
   try {
     await access(pipxPath, constants.X_OK);
+    // Get version for mismatch check
+    const pipxResult = await execCommand(pipxPath, ["--version"], { timeoutMs: 5000 });
+    if (pipxResult.exitCode === 0) {
+      await checkVersionMismatch(pipxResult.stdout);
+    }
     cachedBinary = pipxPath;
     return pipxPath;
   } catch {
@@ -85,6 +146,7 @@ export async function detectBinary(
     });
     if (result.exitCode === 0) {
       cachedBinary = "python3";
+      await checkVersionMismatch(result.stdout);
       return "python3"; // Will need `-m palaia` prefix
     }
   } catch {

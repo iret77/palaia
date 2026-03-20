@@ -14,7 +14,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { run, runJson, recover, type RunnerOpts, getEmbedServerManager } from "./runner.js";
+import { run, runJson, recover, type RunnerOpts, getEmbedServerManager, getVersionMismatchWarning } from "./runner.js";
 import type { PalaiaPluginConfig, RecallTypeWeights } from "./config.js";
 
 // ============================================================================
@@ -1654,6 +1654,12 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
               turnState.lastInboundMessageId = inbound.messageId;
             }
           }
+        }
+
+        // Version mismatch warning (Issue #99) — surface to agent once per prompt
+        const mismatchWarn = getVersionMismatchWarning();
+        if (mismatchWarn) {
+          nudgeContext += "\n\n## Version Mismatch Warning (Palaia)\n\n" + mismatchWarn;
         }
 
         // Return prependContext + appendSystemContext for recall emoji

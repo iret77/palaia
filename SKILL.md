@@ -1081,12 +1081,12 @@ When sending memos to other agents, use a two-layer approach for reliable delive
 
 ## After Updating Palaia
 
-Palaia has three independent components. Update ALL of them — they version independently:
+Palaia has three independent components. Update ALL of them — **versions must match exactly**:
 
 ```bash
 # 1. Python CLI (the main tool)
 python3 -m pip install --upgrade "palaia[fastembed]"
-# or: uv tool install "palaia[fastembed]"  (always include [fastembed]!)
+# or: uv tool upgrade palaia  (always include [fastembed] if using pip!)
 
 # 2. OpenClaw plugin (memory-slot integration)
 npm install -g @byte5ai/palaia@latest
@@ -1100,6 +1100,8 @@ palaia warmup
 ```
 
 **Why all three?** The pip package is the CLI. The npm package is the OpenClaw plugin that wires Palaia into the memory slot. The SKILL.md (via ClawHub) tells agents how to use Palaia. Updating only one leaves the others stale.
+
+**Version mismatch detection:** The npm plugin automatically checks the CLI version at startup. If the Python CLI version does not match the plugin version, a warning is logged with upgrade instructions. This catches the common mistake of updating only one package.
 
 `palaia doctor` checks your store for compatibility, suggests new features, and handles version stamping. If the installed version differs from the store version, Palaia will warn you on every CLI call until you run `palaia doctor`.
 

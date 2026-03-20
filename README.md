@@ -31,6 +31,24 @@ OpenClaw plugin (3 lines in your config):
 
 **Upgrading from v1.x?** Run `palaia doctor --fix` to get the new optimized defaults.
 
+### Upgrading
+
+Palaia consists of **two independent packages** that must be updated separately:
+
+```bash
+# 1. Python CLI (the core tool)
+pip install --upgrade palaia
+# or: uv tool upgrade palaia
+
+# 2. OpenClaw plugin (npm, memory-slot integration)
+npm install -g @byte5ai/palaia@latest
+
+# 3. Verify and fix
+palaia doctor --fix
+```
+
+**Both versions must match exactly.** The npm plugin checks the CLI version at startup and warns on mismatch. If you see a version mismatch warning, update the lagging package.
+
 ## Quick Start
 
 ```bash
