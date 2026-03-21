@@ -199,6 +199,45 @@ class TestEmbedServerReadyBeforeWarmup:
         assert "result" in response
         assert len(response["result"]["results"]) > 0
 
+    def test_bm25_fallback_during_warmup(self, palaia_root):
+        """During warmup, queries must use BM25 fallback engine, not main engine."""
+        from palaia.embeddings import BM25Provider
+
+        store = Store(palaia_root)
+        store.write("Kubernetes orchestrates containers", agent="test-agent", title="K8s")
+
+        server = EmbedServer(palaia_root)
+        # BM25 fallback engine must exist and use BM25Provider
+        assert hasattr(server, "_bm25_engine")
+        assert isinstance(server._bm25_engine._provider, BM25Provider)
+
+        server._warming_up = True
+        response = server.handle_request({"method": "query", "params": {"text": "Kubernetes containers", "top_k": 5}})
+        assert "result" in response
+        assert len(response["result"]["results"]) > 0
+
+    def test_full_engine_used_after_warmup(self, palaia_root):
+        """After warmup completes, queries must use the full engine."""
+        store = Store(palaia_root)
+        store.write("Rust is a systems language", agent="test-agent", title="Rust")
+
+        server = EmbedServer(palaia_root)
+        server._warming_up = False  # Warmup done
+
+        # Patch main engine to track usage
+        original_search = server.engine.search
+        main_engine_called = []
+
+        def tracked_search(*a, **kw):
+            main_engine_called.append(True)
+            return original_search(*a, **kw)
+
+        server.engine.search = tracked_search
+
+        response = server.handle_request({"method": "query", "params": {"text": "Rust systems", "top_k": 5}})
+        assert "result" in response
+        assert len(main_engine_called) == 1, "Main engine should be used after warmup"
+
     def test_status_shows_warming_up(self, palaia_root):
         """Status response must include warming_up flag."""
         server = EmbedServer(palaia_root)

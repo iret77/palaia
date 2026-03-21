@@ -94,6 +94,9 @@ class EmbedServer:
         self.root = root
         self.store = Store(root)
         self.engine = SearchEngine(self.store)
+        # BM25-only fallback engine for queries during warmup (no GIL contention)
+        self._bm25_engine = SearchEngine(self.store)
+        self._bm25_engine._provider = BM25Provider()
         self._last_entry_count = _count_entries(self.store)
         self._running = True
         self._warming_up = False
@@ -184,7 +187,8 @@ class EmbedServer:
         include_cold = params.get("include_cold", False)
         cross_project = params.get("cross_project", False)
 
-        results = self.engine.search(
+        engine = self._bm25_engine if self._warming_up else self.engine
+        results = engine.search(
             text,
             top_k=top_k,
             include_cold=include_cold,
