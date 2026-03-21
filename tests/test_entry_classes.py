@@ -252,14 +252,17 @@ class TestStoreEdit:
 
     def test_edit_content_invalidates_embeddings(self, store):
         eid = store.write("original")
-        # Simulate cached embedding
+        # Simulate cached embedding with a known fake vector
         store.embedding_cache.set_cached(eid, [0.1, 0.2], model="test")
         cached_before = store.embedding_cache.get_cached(eid)
         assert cached_before is not None
-        # Edit content should invalidate
+        assert cached_before == [0.1, 0.2]
+        # Edit content should invalidate the old embedding
+        # (may be re-indexed with a new vector if a provider is available)
         store.edit(eid, body="new content")
         cached_after = store.embedding_cache.get_cached(eid)
-        assert cached_after is None
+        # The old fake vector must be gone — either None or a fresh real vector
+        assert cached_after != [0.1, 0.2]
 
     def test_edit_metadata_no_invalidate(self, store):
         eid = store.write("original")

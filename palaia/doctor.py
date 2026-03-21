@@ -1232,6 +1232,83 @@ def _check_embedding_model_integrity(palaia_root: Path | None) -> dict[str, Any]
     }
 
 
+def _check_index_staleness(palaia_root: Path | None) -> dict[str, Any]:
+    """Check if embedding index is stale (entries missing from cache)."""
+    if palaia_root is None:
+        return {
+            "name": "index_staleness",
+            "label": "Embedding index",
+            "status": "error",
+            "message": "Not initialized",
+        }
+
+    from palaia.config import load_config
+    from palaia.embeddings import BM25Provider, build_embedding_chain
+    from palaia.index import EmbeddingCache
+
+    config = load_config(palaia_root)
+    chain = build_embedding_chain(config)
+
+    # Skip check if BM25-only (no semantic embeddings configured)
+    has_semantic = any(not isinstance(p, BM25Provider) for p in chain.providers)
+    if not has_semantic:
+        return {
+            "name": "index_staleness",
+            "label": "Embedding index",
+            "status": "ok",
+            "message": "BM25-only (no semantic index needed)",
+        }
+
+    # Count entries across hot+warm
+    total_entries = 0
+    for tier in ("hot", "warm"):
+        tier_dir = palaia_root / tier
+        if tier_dir.exists():
+            total_entries += sum(1 for _ in tier_dir.glob("*.md"))
+
+    if total_entries == 0:
+        return {
+            "name": "index_staleness",
+            "label": "Embedding index",
+            "status": "ok",
+            "message": "No entries to index",
+        }
+
+    cache = EmbeddingCache(palaia_root)
+    cache_stats = cache.stats()
+    cached_count = cache_stats.get("cached_entries", 0)
+    missing = total_entries - cached_count
+
+    if missing <= 0:
+        return {
+            "name": "index_staleness",
+            "label": "Embedding index",
+            "status": "ok",
+            "message": f"{cached_count}/{total_entries} entries indexed",
+            "details": {"total": total_entries, "cached": cached_count},
+        }
+
+    pct_missing = missing / total_entries
+    if pct_missing > 0.1:
+        return {
+            "name": "index_staleness",
+            "label": "Embedding index",
+            "status": "warn",
+            "message": f"{missing} entries not indexed. Semantic search quality degraded.",
+            "fix": "Run: palaia warmup",
+            "fixable": True,
+            "details": {"total": total_entries, "cached": cached_count, "missing": missing},
+        }
+
+    return {
+        "name": "index_staleness",
+        "label": "Embedding index",
+        "status": "ok",
+        "message": f"{cached_count}/{total_entries} entries indexed ({missing} pending)",
+        "details": {"total": total_entries, "cached": cached_count, "missing": missing},
+    }
+
+
 def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
     """Run all doctor checks. Returns list of check results."""
     results = [
@@ -1242,6 +1319,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_version_available(palaia_root),
         _check_embedding_chain(palaia_root),
         _check_embedding_model_integrity(palaia_root),
+        _check_index_staleness(palaia_root),
         _check_entry_classes(palaia_root),
         _check_projects_usage(palaia_root),
         _check_deprecated_config(palaia_root),
@@ -1374,6 +1452,26 @@ def apply_fixes(palaia_root: Path | None, results: list[dict[str, Any]]) -> list
             actions.append(f"Auto-configured chain: {' → '.join(new_chain)}")
             if any(p != "bm25" for p in new_chain):
                 ran_warmup = True
+
+    # Fix: stale embedding index
+    for r in results:
+        if r.get("name") == "index_staleness" and r.get("fixable") and r.get("status") == "warn":
+            try:
+                from palaia.embed_server import _warmup_missing
+                from palaia.search import SearchEngine
+                from palaia.store import Store
+
+                store = Store(palaia_root)
+                engine = SearchEngine(store)
+                print("  Indexing missing entries...")
+                stats = _warmup_missing(store, engine)
+                new_count = stats.get("new", 0)
+                if new_count > 0:
+                    actions.append(f"Indexed {new_count} missing entries")
+                else:
+                    actions.append("Index is up to date")
+            except Exception as e:
+                actions.append(f"Index warmup failed: {e}")
 
     # Fix: corrupted fastembed cache
     for r in results:

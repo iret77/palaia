@@ -143,7 +143,42 @@ class Store:
         # Update metadata index
         self.metadata_index.update(entry_id, meta, "hot")
 
+        # Incremental embedding indexing: compute embedding for the new entry
+        # Fire-and-forget — write must not fail because of embedding errors
+        try:
+            self._index_single_entry(entry_id, meta, body)
+        except Exception:
+            pass
+
         return entry_id
+
+    def _index_single_entry(self, entry_id: str, meta: dict, body: str) -> bool:
+        """Compute and cache embedding for a single entry.
+
+        Returns True if embedding was computed, False if skipped/failed.
+        Only indexes when a semantic embedding provider is available (not BM25-only).
+        """
+        from palaia.embeddings import BM25Provider, build_embedding_chain
+
+        chain = build_embedding_chain(self.config)
+        # Skip if no semantic providers available (BM25-only)
+        if not chain.providers:
+            return False
+
+        provider = chain.providers[0]
+        if isinstance(provider, BM25Provider):
+            return False
+
+        title = meta.get("title", "")
+        tags = " ".join(meta.get("tags", []))
+        full_text = f"{title} {tags} {body}"
+
+        vectors, provider_name = chain.embed([full_text])
+        if vectors and provider_name != "bm25":
+            model_name = getattr(provider, "model_name", None) or getattr(provider, "model", provider_name)
+            self.embedding_cache.set_cached(entry_id, vectors[0], model=model_name)
+            return True
+        return False
 
     def edit(
         self,
@@ -245,6 +280,11 @@ class Store:
         # Re-index embeddings if content changed
         if content_changed:
             self.embedding_cache.invalidate(entry_id)
+            # Recompute embedding for updated content (fire-and-forget)
+            try:
+                self._index_single_entry(entry_id, meta, old_body)
+            except Exception:
+                pass
 
         # Update metadata index (determine tier from path)
         tier = path.parent.name

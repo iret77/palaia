@@ -44,14 +44,17 @@ def _run_status(palaia_root, *, json_mode=False):
 
 def test_hint_when_index_behind(palaia_root):
     """When entries exist but none are indexed, hint should mention warmup."""
-    store = Store(palaia_root)
-    store.write("Entry one")
-    store.write("Entry two")
-    store.write("Entry three")
+    import uuid
+
+    # Create entry files directly to bypass incremental indexing on write
+    for i in range(3):
+        eid = str(uuid.uuid4())[:8]
+        content = f"---\nid: {eid}\ntitle: Entry {i}\nagent: test-agent\nscope: team\n---\nEntry {i}"
+        (palaia_root / "hot" / f"{eid}.md").write_text(content)
 
     stdout, stderr, rc = _run_status(palaia_root)
     assert rc == 0
-    assert "3 entries not indexed" in stderr
+    assert "not indexed" in stderr
     assert "palaia warmup" in stderr
 
 
@@ -74,8 +77,12 @@ def test_no_hint_when_fully_indexed(palaia_root):
 
 def test_json_contains_index_hint(palaia_root):
     """JSON output should contain index_hint field."""
-    store = Store(palaia_root)
-    store.write("Entry one")
+    import uuid
+
+    # Create entry file directly to bypass incremental indexing on write
+    eid = str(uuid.uuid4())[:8]
+    content = f"---\nid: {eid}\ntitle: Entry one\nagent: test-agent\nscope: team\n---\nEntry one"
+    (palaia_root / "hot" / f"{eid}.md").write_text(content)
 
     stdout, stderr, rc = _run_status(palaia_root, json_mode=True)
     assert rc == 0

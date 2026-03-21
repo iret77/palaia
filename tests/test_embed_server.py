@@ -149,6 +149,68 @@ class TestEmbedServerUnit:
         assert response["result"]["entries"] == 3
 
 
+class TestEmbedServerReadyBeforeWarmup:
+    """Tests that ready signal is sent before warmup completes."""
+
+    def test_ready_sent_immediately(self, palaia_root):
+        """Ready signal must be sent within 1s, even with entries to warm up."""
+        import time
+
+        # Add entries that would need warming
+        store = Store(palaia_root)
+        for i in range(10):
+            store.write(f"Test entry number {i} about topic {i}", agent="test-agent", title=f"Entry {i}")
+
+        # Start server as subprocess and time the ready signal
+        env = {
+            "PALAIA_HOME": str(palaia_root),
+            "PATH": subprocess.check_output(["bash", "-c", "echo $PATH"]).decode().strip(),
+            "HOME": str(Path.home()),
+        }
+        start = time.monotonic()
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "palaia", "embed-server"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            cwd=str(palaia_root.parent),
+        )
+        try:
+            ready_line = proc.stdout.readline().decode().strip()
+            elapsed = time.monotonic() - start
+            ready = json.loads(ready_line)
+            assert ready.get("result") == "ready"
+            assert elapsed < 1.0, f"Ready signal took {elapsed:.2f}s (must be <1s)"
+        finally:
+            proc.stdin.write(json.dumps({"method": "shutdown"}).encode() + b"\n")
+            proc.stdin.flush()
+            proc.wait(timeout=5)
+
+    def test_queries_work_during_warmup(self, palaia_root):
+        """Queries must work even while warmup is in progress (BM25 fallback)."""
+        store = Store(palaia_root)
+        store.write("Python is fantastic for scripting", agent="test-agent", title="Python")
+
+        server = EmbedServer(palaia_root)
+        server._warming_up = True  # Simulate warmup in progress
+
+        response = server.handle_request({"method": "query", "params": {"text": "Python scripting", "top_k": 5}})
+        assert "result" in response
+        assert len(response["result"]["results"]) > 0
+
+    def test_status_shows_warming_up(self, palaia_root):
+        """Status response must include warming_up flag."""
+        server = EmbedServer(palaia_root)
+        server._warming_up = True
+        response = server.handle_request({"method": "status"})
+        assert response["result"]["warming_up"] is True
+
+        server._warming_up = False
+        response = server.handle_request({"method": "status"})
+        assert response["result"]["warming_up"] is False
+
+
 class TestEmbedServerSubprocess:
     """Integration tests that start the server as a subprocess."""
 

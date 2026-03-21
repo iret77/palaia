@@ -96,6 +96,7 @@ class EmbedServer:
         self.engine = SearchEngine(self.store)
         self._last_entry_count = _count_entries(self.store)
         self._running = True
+        self._warming_up = False
         self._stale_check_thread: threading.Thread | None = None
 
     def _start_stale_detection(self) -> None:
@@ -156,6 +157,7 @@ class EmbedServer:
                 "provider": provider_name,
                 "model": model,
                 "has_embeddings": self.engine.has_embeddings,
+                "warming_up": self._warming_up,
             }
         }
 
@@ -200,17 +202,25 @@ class EmbedServer:
 
     def run(self) -> None:
         """Main loop: read JSON lines from stdin, write JSON responses to stdout."""
-        # Auto-warmup on start
-        try:
-            _warmup_missing(self.store, self.engine)
-        except Exception:
-            pass
-
         # Start stale detection
         self._start_stale_detection()
 
-        # Signal ready
+        # Signal ready IMMEDIATELY — warmup runs in background
+        # Queries arriving during warmup use BM25 fallback automatically
+        self._warming_up = True
         self._write_response({"result": "ready"})
+
+        # Background warmup thread
+        def _bg_warmup():
+            try:
+                _warmup_missing(self.store, self.engine)
+            except Exception:
+                pass
+            finally:
+                self._warming_up = False
+
+        warmup_thread = threading.Thread(target=_bg_warmup, daemon=True)
+        warmup_thread.start()
 
         while self._running:
             try:
