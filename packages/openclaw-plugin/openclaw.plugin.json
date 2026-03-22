@@ -2,6 +2,7 @@
   "id": "palaia",
   "name": "Palaia Memory",
   "kind": "memory",
+  "skills": ["./skill"],
   "configSchema": {
     "type": "object",
     "properties": {

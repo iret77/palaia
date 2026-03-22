@@ -14,30 +14,47 @@
 
 ### Recommended (OpenClaw)
 
-```bash
-clawhub install palaia
-```
+Paste this prompt into your OpenClaw agent:
 
-Done. Palaia is installed, configured, and ready. Memories are injected into every prompt, significant exchanges are captured automatically.
+> Install or update the Palaia memory skill from ClawHub to the latest version (even if already present). Read the SKILL.md completely and follow it step by step. Run `palaia init`, then `palaia doctor --fix` and resolve all warnings — don't stop until the doctor report is clean. Set up completely.
+
+That's it. The agent handles everything: installation, plugin setup, configuration, and verification.
 
 ### Manual / Expert Setup
 
-> **Warning:** Manual installation requires multiple steps. Incorrect configuration can affect your OpenClaw instance. Use ClawHub install above if possible.
+> **Note:** Manual installation must achieve the same result as the prompt above. Follow all steps — skipping any will leave you with a partial setup.
 
+1. Install CLI and plugin:
 ```bash
 pip install "palaia[fastembed]"
+npm install -g @byte5ai/palaia@latest
 ```
 
-Then add to your `openclaw.json`:
+2. Configure OpenClaw plugin (read-then-append, never overwrite existing arrays):
+```bash
+PALAIA_PATH="$(npm root -g)/@byte5ai/palaia"
+```
+Add to your `openclaw.json`:
 ```json
 {
   "plugins": {
-    "load": { "paths": ["<npm-global>/node_modules/@byte5ai/palaia"] },
-    "allow": ["palaia"],
-    "slots": { "memory": "palaia" }
+    "load": { "paths": ["<PALAIA_PATH>"] },
+    "allow": ["..existing..", "palaia"],
+    "slots": { "memory": "palaia" },
+    "entries": { "palaia": { "enabled": true } }
   }
 }
 ```
+
+3. Initialize and verify:
+```bash
+openclaw gateway restart
+palaia init
+palaia doctor --fix        # Resolve ALL warnings
+palaia warmup
+```
+
+4. Read the SKILL.md bundled with the plugin — it contains the complete usage guide, onboarding flow, and agent field guide that the recommended prompt would walk through automatically.
 
 **Upgrading from v1.x?** Run `palaia doctor --fix` to get the new optimized defaults.
 
