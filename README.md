@@ -10,13 +10,25 @@
 
 ---
 
-## Install — Zero Config
+## Install
+
+### Recommended (OpenClaw)
+
+```bash
+clawhub install palaia
+```
+
+Done. Palaia is installed, configured, and ready. Memories are injected into every prompt, significant exchanges are captured automatically.
+
+### Manual / Expert Setup
+
+> **Warning:** Manual installation requires multiple steps. Incorrect configuration can affect your OpenClaw instance. Use ClawHub install above if possible.
 
 ```bash
 pip install "palaia[fastembed]"
 ```
 
-OpenClaw plugin (3 lines in your config):
+Then add to your `openclaw.json`:
 ```json
 {
   "plugins": {
@@ -26,8 +38,6 @@ OpenClaw plugin (3 lines in your config):
   }
 }
 ```
-
-**That's it.** Palaia works immediately — memories are injected into every prompt, significant exchanges are captured automatically, and semantic recall finds what's relevant. No config edits needed.
 
 **Upgrading from v1.x?** Run `palaia doctor --fix` to get the new optimized defaults.
 
