@@ -12,7 +12,8 @@
     "index.ts",
     "src/",
     "openclaw.plugin.json",
-    "README.md"
+    "README.md",
+    "skill/"
   ],
   "keywords": [
     "openclaw",
@@ -36,8 +37,5 @@
   "devDependencies": {
     "typescript": "^5.9.3",
     "vitest": "^1.0.0"
-  }
-}
-^1.0.0"
   }
 }
