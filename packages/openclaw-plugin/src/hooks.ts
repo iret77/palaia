@@ -14,7 +14,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { run, runJson, recover, type RunnerOpts, getEmbedServerManager } from "./runner.js";
+import { run, runJson, recover, type RunnerOpts, getEmbedServerManager, checkVersionMismatch } from "./runner.js";
 import type { PalaiaPluginConfig, RecallTypeWeights } from "./config.js";
 
 // ============================================================================
@@ -1442,6 +1442,14 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         }
       } catch { /* non-fatal */ }
     }
+
+    // H-4: Warn on CLI/plugin version mismatch (Issue #99)
+    try {
+      const vmResult = await checkVersionMismatch(opts);
+      if (vmResult.nudge) {
+        logger.warn(vmResult.nudge);
+      }
+    } catch { /* non-fatal */ }
   })();
 
   // ── /palaia status command ─────────────────────────────────────

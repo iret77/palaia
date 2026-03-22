@@ -234,6 +234,94 @@ export function resetCache(): void {
 }
 
 // ============================================================================
+// Version Mismatch Detection (Issue #99)
+// ============================================================================
+
+/** Plugin package version resolved from package.json (injected at build time). */
+const PLUGIN_VERSION = (() => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pkg = require("../package.json") as { version?: string };
+    return pkg.version ?? null;
+  } catch {
+    return null;
+  }
+})();
+
+export interface VersionMismatchResult {
+  /** true if CLI version was detected and differs from plugin version */
+  mismatch: boolean;
+  /** Detected CLI version (e.g. "palaia 2.0.9") */
+  cliVersion: string | null;
+  /** Plugin npm package version (e.g. "2.0.11") */
+  pluginVersion: string | null;
+  /** Human-readable nudge text, or null if versions match / cannot be compared */
+  nudge: string | null;
+}
+
+/**
+ * Check whether the installed Palaia CLI version matches the plugin version.
+ *
+ * On mismatch, returns a nudge message the caller should surface to the agent.
+ * Versions must be exactly equal — any difference indicates an incomplete update.
+ *
+ * Non-fatal: any detection failure (binary not found, parse error) returns
+ * `{ mismatch: false, ... }` so plugin startup is never blocked.
+ *
+ * @example
+ * const result = await checkVersionMismatch(opts);
+ * if (result.nudge) logger.warn(result.nudge);
+ */
+export async function checkVersionMismatch(
+  opts: RunnerOpts = {}
+): Promise<VersionMismatchResult> {
+  const pluginVersion = PLUGIN_VERSION;
+
+  let cliVersion: string | null = null;
+  try {
+    const binary = await detectBinary(opts.binaryPath);
+    let cmd: string;
+    let args: string[];
+
+    if (isPythonModule(binary)) {
+      cmd = binary;
+      args = ["-m", "palaia", "--version"];
+    } else {
+      cmd = binary;
+      args = ["--version"];
+    }
+
+    const result = await execCommand(cmd, args, { timeoutMs: 5000, cwd: opts.workspace });
+    if (result.exitCode === 0) {
+      // Output is typically "palaia 2.0.11" or just "2.0.11"
+      const raw = result.stdout.trim();
+      const match = raw.match(/(\d+\.\d+(?:\.\d+)?(?:[.\-]\w+)*)/);
+      if (match) {
+        cliVersion = match[1] ?? null;
+      }
+    }
+  } catch {
+    // Binary not found or version command failed — non-fatal
+    return { mismatch: false, cliVersion: null, pluginVersion, nudge: null };
+  }
+
+  if (!cliVersion || !pluginVersion) {
+    return { mismatch: false, cliVersion, pluginVersion, nudge: null };
+  }
+
+  if (cliVersion === pluginVersion) {
+    return { mismatch: false, cliVersion, pluginVersion, nudge: null };
+  }
+
+  const nudge =
+    `[palaia] Version mismatch detected: plugin=${pluginVersion}, CLI=${cliVersion}. ` +
+    `The update is incomplete — versions must be exactly equal. ` +
+    `Run: uv tool upgrade palaia (or pip install --upgrade palaia), then: palaia doctor --fix`;
+
+  return { mismatch: true, cliVersion, pluginVersion, nudge };
+}
+
+// ============================================================================
 // EmbedServerManager (v2.0.8)
 // ============================================================================
 

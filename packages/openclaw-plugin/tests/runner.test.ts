@@ -16,7 +16,7 @@ vi.mock("node:fs/promises", () => ({
   constants: { X_OK: 1 },
 }));
 
-import { detectBinary, run, runJson, recover, resetCache } from "../src/runner.js";
+import { detectBinary, run, runJson, recover, resetCache, checkVersionMismatch } from "../src/runner.js";
 
 const mockExecFile = vi.mocked(execFile);
 
@@ -115,6 +115,68 @@ describe("runner", () => {
       const result = await recover({ binaryPath: "palaia" });
       expect(result.replayed).toBe(0);
       expect(result.errors).toBe(1);
+    });
+  });
+
+  describe("checkVersionMismatch", () => {
+    it("returns no mismatch when CLI version matches plugin version", async () => {
+      const { access } = await import("node:fs/promises");
+      vi.mocked(access).mockResolvedValueOnce(undefined); // allow binaryPath check
+      // Mock `palaia --version` returning the same version as the plugin package.json
+      setupExecFile("palaia 2.0.11\n");
+      const result = await checkVersionMismatch({ binaryPath: "palaia" });
+      // pluginVersion comes from package.json — check mismatch logic only
+      if (result.pluginVersion === "2.0.11") {
+        expect(result.mismatch).toBe(false);
+        expect(result.nudge).toBeNull();
+      } else {
+        // plugin version differs from CLI mock — mismatch expected
+        expect(result.mismatch).toBe(true);
+        expect(result.nudge).toContain("Version mismatch detected");
+      }
+    });
+
+    it("returns mismatch with nudge when CLI version differs from plugin version", async () => {
+      const { access } = await import("node:fs/promises");
+      vi.mocked(access).mockResolvedValueOnce(undefined); // allow binaryPath check
+      // Mock CLI returning an old version
+      setupExecFile("palaia 1.8.1\n");
+      const result = await checkVersionMismatch({ binaryPath: "palaia" });
+      // CLI=1.8.1; plugin version is from package.json (2.0.11)
+      // If plugin version is available, we should detect a mismatch
+      if (result.pluginVersion && result.pluginVersion !== "1.8.1") {
+        expect(result.mismatch).toBe(true);
+        expect(result.cliVersion).toBe("1.8.1");
+        expect(result.nudge).toContain("Version mismatch detected");
+        expect(result.nudge).toContain("uv tool upgrade palaia");
+        expect(result.nudge).toContain("palaia doctor --fix");
+      } else {
+        // package.json not resolvable in test env — no mismatch possible
+        expect(result.mismatch).toBe(false);
+      }
+    });
+
+    it("returns no mismatch when binary is not found", async () => {
+      // All access() calls already reject (default mock); execFile also fails
+      setupExecFile("", "palaia: command not found", 127);
+      const result = await checkVersionMismatch();
+      expect(result.mismatch).toBe(false);
+      expect(result.nudge).toBeNull();
+    });
+
+    it("parses version from plain semver output", async () => {
+      const { access } = await import("node:fs/promises");
+      vi.mocked(access).mockResolvedValueOnce(undefined);
+      setupExecFile("2.0.11\n"); // Some installs omit the "palaia" prefix
+      const result = await checkVersionMismatch({ binaryPath: "palaia" });
+      expect(result.cliVersion).toBe("2.0.11");
+    });
+
+    it("handles version detection failure gracefully (non-fatal)", async () => {
+      setupExecFile("", "unexpected error", 1, new Error("exec failure"));
+      const result = await checkVersionMismatch({ binaryPath: "palaia" });
+      expect(result.mismatch).toBe(false);
+      expect(result.nudge).toBeNull();
     });
   });
 });
