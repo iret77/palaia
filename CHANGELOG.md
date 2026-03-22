@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.12] — 2026-03-22
+
+### Version alignment
+
+- Version alignment across all distribution channels (PyPI, npm, ClawHub, GitHub Release).
+- Nightly maintenance fix: removed embed-server kill step that caused index staleness.
+
 ## [2.0.11] — 2026-03-22
 
 ### Plugin-bundled SKILL.md
