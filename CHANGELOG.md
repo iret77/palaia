@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.11] — 2026-03-22
+
+### Plugin-bundled SKILL.md
+
+- **SKILL.md included in npm package**: Agents installing Palaia via `npm install -g @byte5ai/palaia` now automatically get the SKILL.md in their `<available_skills>`. No ClawHub install required.
+- Plugin manifest (`openclaw.plugin.json`) updated with `"skills": ["./skill"]` for automatic skill discovery.
+- The bundled SKILL.md is a usage-focused subset — installation steps are omitted since the plugin is already installed.
+
 ## 2.0.10 (2026-03-22)
 ### Fixed
 - **Embed-Server startup timeout**: Server sends ready signal immediately; warmup runs in background thread. Queries during warmup use BM25 fallback automatically.
