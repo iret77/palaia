@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.10 (2026-03-22)
+### Fixed
+- **Embed-Server startup timeout**: Server sends ready signal immediately; warmup runs in background thread. Queries during warmup use BM25 fallback automatically.
+- **Stale embedding index**: `write()` and `edit()` now compute embeddings for new entries immediately (fire-and-forget). The index no longer goes stale between warmup cycles.
+- **Doctor index check**: `palaia doctor` now detects stale embedding indexes (>10% entries missing) and repairs them with `--fix`.
+
 ## [2.0.8] — 2026-03-19
 
 ### Embedding Server — 16s to 0.5s Query Performance
