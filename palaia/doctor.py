@@ -449,14 +449,20 @@ LOOP_ARTIFACT_PATTERNS = [
     re.compile(r"## Active Memory \(Palaia\)"),
     re.compile(r"\[t/(m|pr|tk)\]"),
     re.compile(r"\[palaia\] auto-capture=on"),
-    re.compile(r"\*{4,}"),  # accumulated markdown (****)
+    re.compile(r"(?:^|\s)\*{4,}", re.MULTILINE),  # accumulated markdown (not inside words)
 ]
 
 
 def _is_loop_artifact(meta: dict, body: str) -> bool:
-    """Check if an entry is a feedback-loop artifact (re-captured recall context)."""
+    """Check if an entry is a feedback-loop artifact (re-captured recall context).
+
+    Requires at least 2 pattern matches to avoid false positives on normal content
+    that happens to contain a single pattern (e.g. Palaia docs quoting [t/m] tags,
+    or markdown with adjacent bold segments producing ****).
+    """
     text = f"{meta.get('title', '')}\n{body}"
-    return any(p.search(text) for p in LOOP_ARTIFACT_PATTERNS)
+    matches = sum(1 for p in LOOP_ARTIFACT_PATTERNS if p.search(text))
+    return matches >= 2
 
 
 def _check_loop_artifacts(palaia_root: Path | None) -> dict[str, Any]:
