@@ -892,9 +892,15 @@ export async function extractWithLLM(
   }
 
   const allTexts = extractMessageTexts(messages);
+  // Strip Palaia-injected recall context from user messages to prevent feedback loop
+  const cleanedTexts = allTexts.map(t =>
+    t.role === "user"
+      ? { ...t, text: stripPalaiaInjectedContext(t.text) }
+      : t
+  );
   // Only extract from recent exchanges — full history causes LLM timeouts
   // and dilutes extraction quality
-  const recentTexts = trimToRecentExchanges(allTexts);
+  const recentTexts = trimToRecentExchanges(cleanedTexts);
   const exchangeText = recentTexts
     .map((t) => `[${t.role}]: ${t.text}`)
     .join("\n");
@@ -1103,6 +1109,24 @@ export function extractSignificance(
   return { tags, type: primaryType, summary };
 }
 
+/**
+ * Strip Palaia-injected recall context from message text.
+ * The recall block is prepended to user messages by before_prompt_build via prependContext.
+ * OpenClaw merges it into the user message, so agent_end sees it as user content.
+ * Without stripping, auto-capture re-captures the injected memories → feedback loop.
+ *
+ * The block has a stable structure:
+ * - Starts with "## Active Memory (Palaia)"
+ * - Contains [t/m], [t/pr], [t/tk] prefixed entries
+ * - Ends with "[palaia] auto-capture=on..." nudge line
+ */
+export function stripPalaiaInjectedContext(text: string): string {
+  // Pattern: "## Active Memory (Palaia)" ... "[palaia] auto-capture=on..." + optional trailing newlines
+  // The nudge line is always present and marks the end of the injected block
+  const PALAIA_BLOCK_RE = /## Active Memory \(Palaia\)[\s\S]*?\[palaia\][^\n]*\n*/;
+  return text.replace(PALAIA_BLOCK_RE, '').trim();
+}
+
 export function extractMessageTexts(messages: unknown[]): Array<{ role: string; text: string; provenance?: string }> {
   const result: Array<{ role: string; text: string; provenance?: string }> = [];
 
@@ -1232,7 +1256,11 @@ function isSystemOnlyContent(text: string): boolean {
  * - Hard-caps at 500 characters.
  */
 export function buildRecallQuery(messages: unknown[]): string {
-  const texts = extractMessageTexts(messages);
+  const texts = extractMessageTexts(messages).map(t =>
+    t.role === "user"
+      ? { ...t, text: stripPalaiaInjectedContext(t.text) }
+      : t
+  );
 
   // Step 1: Filter out inter_session messages (sub-agent results, sessions_send)
   const candidates = texts.filter(
@@ -1709,9 +1737,18 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           collectedHints.push(...hints);
         }
 
+        // Strip Palaia-injected recall context from user messages to prevent feedback loop.
+        // The recall block is prepended to user messages by before_prompt_build.
+        // Without stripping, auto-capture would re-capture previously recalled memories.
+        const cleanedTexts = allTexts.map(t =>
+          t.role === "user"
+            ? { ...t, text: stripPalaiaInjectedContext(t.text) }
+            : t
+        );
+
         // Only extract from recent exchanges — full history causes LLM timeouts
         // and dilutes extraction quality
-        const recentTexts = trimToRecentExchanges(allTexts);
+        const recentTexts = trimToRecentExchanges(cleanedTexts);
 
         // Build exchange text from recent window only
         const exchangeParts: string[] = [];

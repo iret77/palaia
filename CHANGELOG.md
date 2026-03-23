@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.0.13] — 2026-03-22
+
+### Fixed
+- **Auto-capture feedback loop**: `stripPalaiaInjectedContext()` strips the Palaia recall block from user messages before capture extraction, preventing re-captured memories from accumulating. Applied in `agent_end`, `extractWithLLM()`, and `buildRecallQuery()`.
+- **Doctor: feedback-loop artifact detection**: `palaia doctor` now detects entries that are re-captured recall context (feedback-loop artifacts). `palaia doctor --fix` marks them as done.
+
 ## [2.0.12] — 2026-03-22
 
 ### Version alignment
