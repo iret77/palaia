@@ -562,11 +562,11 @@ describe("extractWithLLM", () => {
   ];
 
   it("throws when runEmbeddedPiAgent is unavailable", async () => {
-    // Use the test setter to simulate a system where openclaw is not installed
-    setEmbeddedPiAgentLoader(
-      Promise.reject(new Error("Could not locate openclaw/dist/extensionAPI.js")),
+    // With the new SDK, getEmbeddedPiAgent throws synchronously when not initialized
+    setEmbeddedPiAgentLoader(null);
+    await expect(extractWithLLM(sampleMessages, mockConfig)).rejects.toThrow(
+      "runEmbeddedPiAgent not available",
     );
-    await expect(extractWithLLM(sampleMessages, mockConfig)).rejects.toThrow();
   });
 
   it("throws when no model can be resolved", async () => {

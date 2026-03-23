@@ -632,95 +632,31 @@ export interface ExtractionResult {
 
 type RunEmbeddedPiAgentFn = (params: Record<string, unknown>) => Promise<unknown>;
 
-let _embeddedPiAgentLoader: Promise<RunEmbeddedPiAgentFn> | null = null;
+/** Injected via api.runtime.agent.runEmbeddedPiAgent in registerHooks(). */
+let _runEmbeddedPiAgent: RunEmbeddedPiAgentFn | null = null;
 /** Whether the LLM import failure has already been logged (to avoid spam). */
 let _llmImportFailureLogged = false;
 
 /**
- * Resolve the path to OpenClaw's extensionAPI module.
- * Uses multiple strategies for portability across installation layouts.
+ * Get the injected runEmbeddedPiAgent function.
+ * Throws if the plugin was not properly initialized via registerHooks().
  */
-function resolveExtensionAPIPath(): string | null {
-  // Strategy 1: require.resolve with openclaw package exports
-  try {
-    return require.resolve("openclaw/dist/extensionAPI.js");
-  } catch {
-    // Not resolvable via standard module resolution
+export function getEmbeddedPiAgent(): RunEmbeddedPiAgentFn {
+  if (!_runEmbeddedPiAgent) {
+    throw new Error("runEmbeddedPiAgent not available — plugin not properly initialized");
   }
-
-  // Strategy 2: Resolve openclaw main entry, then navigate to dist/extensionAPI.js
-  try {
-    const openclawMain = require.resolve("openclaw");
-    const candidate = path.join(path.dirname(openclawMain), "extensionAPI.js");
-    if (require("node:fs").existsSync(candidate)) return candidate;
-  } catch {
-    // openclaw not resolvable at all
-  }
-
-  // Strategy 3: Sibling in global node_modules (plugin installed alongside openclaw)
-  try {
-    const thisFile = typeof __dirname !== "undefined" ? __dirname : path.dirname(new URL(import.meta.url).pathname);
-    // Walk up from plugin src/dist to node_modules, then into openclaw
-    let dir = thisFile;
-    for (let i = 0; i < 6; i++) {
-      const candidate = path.join(dir, "openclaw", "dist", "extensionAPI.js");
-      if (require("node:fs").existsSync(candidate)) return candidate;
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-  } catch {
-    // Traversal failed
-  }
-
-  // Strategy 4: Well-known global install paths
-  const globalCandidates = [
-    path.join(os.homedir(), ".openclaw", "node_modules", "openclaw", "dist", "extensionAPI.js"),
-    "/home/linuxbrew/.linuxbrew/lib/node_modules/openclaw/dist/extensionAPI.js",
-    "/usr/local/lib/node_modules/openclaw/dist/extensionAPI.js",
-    "/usr/lib/node_modules/openclaw/dist/extensionAPI.js",
-  ];
-  for (const candidate of globalCandidates) {
-    try {
-      if (require("node:fs").existsSync(candidate)) return candidate;
-    } catch {
-      // skip
-    }
-  }
-
-  return null;
+  return _runEmbeddedPiAgent;
 }
 
-async function loadRunEmbeddedPiAgent(): Promise<RunEmbeddedPiAgentFn> {
-  const resolved = resolveExtensionAPIPath();
-  if (!resolved) {
-    throw new Error("Could not locate openclaw/dist/extensionAPI.js — tried module resolution, sibling lookup, and global paths");
-  }
-
-  const mod = (await import(resolved)) as { runEmbeddedPiAgent?: unknown };
-  const fn = (mod as any).runEmbeddedPiAgent;
-  if (typeof fn !== "function") {
-    throw new Error(`runEmbeddedPiAgent not exported from ${resolved}`);
-  }
-  return fn as RunEmbeddedPiAgentFn;
-}
-
-export function getEmbeddedPiAgent(): Promise<RunEmbeddedPiAgentFn> {
-  if (!_embeddedPiAgentLoader) {
-    _embeddedPiAgentLoader = loadRunEmbeddedPiAgent();
-  }
-  return _embeddedPiAgentLoader;
-}
-
-/** Reset cached loader (for testing). */
+/** Reset injected function (for testing). */
 export function resetEmbeddedPiAgentLoader(): void {
-  _embeddedPiAgentLoader = null;
+  _runEmbeddedPiAgent = null;
   _llmImportFailureLogged = false;
 }
 
-/** Override the cached loader with a custom promise (for testing). */
-export function setEmbeddedPiAgentLoader(loader: Promise<RunEmbeddedPiAgentFn> | null): void {
-  _embeddedPiAgentLoader = loader;
+/** Override the injected function (for testing). */
+export function setEmbeddedPiAgentLoader(fn: RunEmbeddedPiAgentFn | null): void {
+  _runEmbeddedPiAgent = fn;
 }
 
 const EXTRACTION_SYSTEM_PROMPT_BASE = `You are a knowledge extraction engine. Analyze the following conversation exchange and identify information worth remembering long-term.
@@ -884,7 +820,7 @@ export async function extractWithLLM(
   pluginConfig?: { captureModel?: string },
   knownProjects?: CachedProject[],
 ): Promise<ExtractionResult[]> {
-  const runEmbeddedPiAgent = await getEmbeddedPiAgent();
+  const runEmbeddedPiAgent = getEmbeddedPiAgent();
 
   const resolved = resolveCaptureModel(config, pluginConfig?.captureModel);
   if (!resolved) {
@@ -1403,6 +1339,11 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
   // Store api.logger for module-wide use (integrates into OpenClaw log system)
   if (api.logger && typeof api.logger.info === "function") {
     logger = api.logger;
+  }
+
+  // Inject runEmbeddedPiAgent from api.runtime (new SDK, replaces openclaw/extension-api)
+  if (api.runtime?.agent?.runEmbeddedPiAgent) {
+    _runEmbeddedPiAgent = api.runtime.agent.runEmbeddedPiAgent;
   }
 
   const opts = buildRunnerOpts(config);
