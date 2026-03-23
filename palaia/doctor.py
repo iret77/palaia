@@ -445,6 +445,69 @@ def _check_heartbeat_legacy(workspace: Path | None = None) -> dict[str, Any]:
     }
 
 
+LOOP_ARTIFACT_PATTERNS = [
+    re.compile(r"## Active Memory \(Palaia\)"),
+    re.compile(r"\[t/(m|pr|tk)\]"),
+    re.compile(r"\[palaia\] auto-capture=on"),
+    re.compile(r"\*{4,}"),  # accumulated markdown (****)
+]
+
+
+def _is_loop_artifact(meta: dict, body: str) -> bool:
+    """Check if an entry is a feedback-loop artifact (re-captured recall context)."""
+    text = f"{meta.get('title', '')}\n{body}"
+    return any(p.search(text) for p in LOOP_ARTIFACT_PATTERNS)
+
+
+def _check_loop_artifacts(palaia_root: Path | None) -> dict[str, Any]:
+    """Check for feedback-loop artifacts (re-captured recall context)."""
+    if palaia_root is None:
+        return {
+            "name": "loop_artifacts",
+            "label": "Feedback-loop artifacts",
+            "status": "error",
+            "message": "Not initialized",
+        }
+
+    from palaia.entry import parse_entry
+
+    artifact_ids: list[str] = []
+
+    for tier in ("hot", "warm", "cold"):
+        tier_dir = palaia_root / tier
+        if not tier_dir.exists():
+            continue
+        for p in tier_dir.glob("*.md"):
+            try:
+                text = p.read_text(encoding="utf-8")
+                meta, body = parse_entry(text)
+                # Skip already-cleaned entries (idempotent)
+                if meta.get("status") == "done":
+                    continue
+                if _is_loop_artifact(meta, body):
+                    artifact_ids.append(p.stem)
+            except Exception:
+                continue
+
+    if not artifact_ids:
+        return {
+            "name": "loop_artifacts",
+            "label": "Feedback-loop artifacts",
+            "status": "ok",
+            "message": "No feedback-loop artifacts detected",
+        }
+
+    return {
+        "name": "loop_artifacts",
+        "label": "Feedback-loop artifacts",
+        "status": "warn",
+        "fixable": True,
+        "message": f"{len(artifact_ids)} entries contain re-captured recall context",
+        "fix": "Run: palaia doctor --fix  to clean up feedback-loop artifacts",
+        "details": {"artifact_ids": artifact_ids},
+    }
+
+
 def _check_wal_health(palaia_root: Path | None) -> dict[str, Any]:
     """Check for unflushed WAL entries."""
     if palaia_root is None:
@@ -1333,6 +1396,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_legacy_memory_files(),
         _check_heartbeat_legacy(),
         _check_wal_health(palaia_root),
+        _check_loop_artifacts(palaia_root),
     ]
     return results
 
@@ -1554,6 +1618,36 @@ def apply_fixes(palaia_root: Path | None, results: list[dict[str, Any]]) -> list
                 actions.append(f"Reindex failed: {e}")
         except Exception as e:
             actions.append(f"Warmup failed: {e}")
+
+    # Fix: feedback-loop artifacts
+    for r in results:
+        if r.get("name") == "loop_artifacts" and r.get("fixable") and r.get("status") == "warn":
+            artifact_ids = r.get("details", {}).get("artifact_ids", [])
+            if not artifact_ids:
+                continue
+
+            from palaia.entry import parse_entry, serialize_entry
+
+            cleaned = 0
+            for entry_id in artifact_ids:
+                # Find the entry file across tiers
+                for tier in ("hot", "warm", "cold"):
+                    entry_path = palaia_root / tier / f"{entry_id}.md"
+                    if entry_path.exists():
+                        try:
+                            text = entry_path.read_text(encoding="utf-8")
+                            meta, body = parse_entry(text)
+                            meta["status"] = "done"
+                            if meta.get("type") != "memory":
+                                meta["type"] = "memory"
+                            entry_path.write_text(serialize_entry(meta, body), encoding="utf-8")
+                            cleaned += 1
+                        except Exception as e:
+                            actions.append(f"Failed to clean {entry_id}: {e}")
+                        break
+
+            if cleaned > 0:
+                actions.append(f"Cleaned {cleaned} feedback-loop artifact(s)")
 
     return actions
 
