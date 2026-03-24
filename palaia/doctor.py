@@ -1378,6 +1378,69 @@ def _check_index_staleness(palaia_root: Path | None) -> dict[str, Any]:
     }
 
 
+def _check_stale_unassigned_tasks(palaia_root: Path | None) -> dict[str, Any]:
+    """Check for auto-captured tasks without assignee/due_date older than 7 days."""
+    if palaia_root is None:
+        return {
+            "name": "stale_unassigned_tasks",
+            "label": "Stale unassigned tasks",
+            "status": "ok",
+            "message": "Not initialized",
+        }
+
+    from datetime import datetime, timezone
+
+    from palaia.entry import parse_entry
+
+    now = datetime.now(tz=timezone.utc)
+    stale_ids: list[str] = []
+
+    for tier in ("hot", "warm"):
+        tier_dir = palaia_root / tier
+        if not tier_dir.exists():
+            continue
+        for p in tier_dir.glob("*.md"):
+            try:
+                text = p.read_text(encoding="utf-8")
+                meta, _body = parse_entry(text)
+                if meta.get("type") != "task":
+                    continue
+                if meta.get("assignee") or meta.get("due_date"):
+                    continue
+                tags = meta.get("tags", [])
+                if "auto-capture" not in tags:
+                    continue
+                created = meta.get("created", "")
+                if not created:
+                    continue
+                created_dt = datetime.fromisoformat(created)
+                if (now - created_dt).days >= 7:
+                    stale_ids.append(p.stem)
+            except Exception:
+                continue
+
+    if not stale_ids:
+        return {
+            "name": "stale_unassigned_tasks",
+            "label": "Stale unassigned tasks",
+            "status": "ok",
+            "message": "No stale unassigned tasks",
+        }
+
+    return {
+        "name": "stale_unassigned_tasks",
+        "label": "Stale unassigned tasks",
+        "status": "warn",
+        "message": (
+            f"{len(stale_ids)} auto-captured task(s) without assignee or due_date, "
+            f"older than 7 days. Consider reclassifying as memory."
+        ),
+        "fix": "Review with: palaia list --type task --all\n"
+        "  Reclassify with: palaia edit <id> --type memory",
+        "details": {"stale_task_ids": stale_ids},
+    }
+
+
 def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
     """Run all doctor checks. Returns list of check results."""
     results = [
@@ -1403,6 +1466,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_heartbeat_legacy(),
         _check_wal_health(palaia_root),
         _check_loop_artifacts(palaia_root),
+        _check_stale_unassigned_tasks(palaia_root),
     ]
     return results
 

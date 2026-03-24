@@ -628,6 +628,43 @@ describe("ExtractionResult validation", () => {
 });
 
 // ============================================================================
+// Task Classification Strictness (Issue #107)
+// ============================================================================
+
+describe("Task classification strictness", () => {
+  it("rule-based extraction does NOT classify observations as tasks", () => {
+    // A learning/observation with no assignee, no deliverable, no clear action
+    const text = "I learned that the Redis cache eviction policy matters a lot for performance. " +
+      "It was surprising that LRU behaves so differently from LFU in our workload. " +
+      "The team should keep this in mind for future architecture decisions.";
+    const result = extractSignificance(text);
+    // If extracted, it should be memory, not task
+    if (result) {
+      expect(result.type).not.toBe("task");
+    }
+  });
+
+  it("rule-based extraction classifies clear commitment with deadline as task", () => {
+    const text = "We decided to migrate the database. I will complete the schema migration by Friday. " +
+      "The deadline is strict because the release depends on it.";
+    const result = extractSignificance(text);
+    expect(result).not.toBeNull();
+    expect(result!.type).toBe("task");
+  });
+
+  it("vague actionable statements without assignee stay as memory", () => {
+    // Statements like 'we should look into X' without a concrete deliverable or assignee
+    const text = "It seems like we should look into better caching strategies. " +
+      "The current approach is getting slow. This is an important lesson for the team.";
+    const result = extractSignificance(text);
+    if (result) {
+      // Without both an assignee and deadline, this should not become a task
+      expect(result.type).not.toBe("task");
+    }
+  });
+});
+
+// ============================================================================
 // parsePalaiaHints (Issue #81)
 // ============================================================================
 

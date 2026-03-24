@@ -386,3 +386,78 @@ class TestDoctorCLI:
         output = captured.getvalue()
         # Fix guidance or inline fix hint should be present
         assert "warn" in output.lower() or "fix" in output.lower()
+
+
+class TestCheckStaleUnassignedTasks:
+    def test_no_stale_tasks(self, palaia_root):
+        from palaia.doctor import _check_stale_unassigned_tasks
+
+        result = _check_stale_unassigned_tasks(palaia_root)
+        assert result["status"] == "ok"
+
+    def test_detects_stale_auto_captured_tasks(self, palaia_root):
+        from datetime import datetime, timedelta, timezone
+
+        from palaia.doctor import _check_stale_unassigned_tasks
+
+        # Create a stale auto-captured task (10 days old, no assignee, no due_date)
+        old_date = (datetime.now(tz=timezone.utc) - timedelta(days=10)).isoformat()
+        entry_content = f"""---
+id: stale-task-001
+type: task
+tags:
+  - auto-capture
+  - commitment
+created: {old_date}
+scope: team
+title: Something vague about caching
+---
+We should look into better caching strategies."""
+        (palaia_root / "hot" / "stale-task-001.md").write_text(entry_content)
+
+        result = _check_stale_unassigned_tasks(palaia_root)
+        assert result["status"] == "warn"
+        assert "stale-task-001" in result["details"]["stale_task_ids"]
+
+    def test_ignores_tasks_with_assignee(self, palaia_root):
+        from datetime import datetime, timedelta, timezone
+
+        from palaia.doctor import _check_stale_unassigned_tasks
+
+        old_date = (datetime.now(tz=timezone.utc) - timedelta(days=10)).isoformat()
+        entry_content = f"""---
+id: assigned-task-001
+type: task
+tags:
+  - auto-capture
+assignee: elliot
+created: {old_date}
+scope: team
+title: Fix the bug
+---
+Elliot will fix the caching bug."""
+        (palaia_root / "hot" / "assigned-task-001.md").write_text(entry_content)
+
+        result = _check_stale_unassigned_tasks(palaia_root)
+        assert result["status"] == "ok"
+
+    def test_ignores_manual_tasks(self, palaia_root):
+        from datetime import datetime, timedelta, timezone
+
+        from palaia.doctor import _check_stale_unassigned_tasks
+
+        old_date = (datetime.now(tz=timezone.utc) - timedelta(days=10)).isoformat()
+        entry_content = f"""---
+id: manual-task-001
+type: task
+tags:
+  - manual
+created: {old_date}
+scope: team
+title: A manual task
+---
+This was written manually."""
+        (palaia_root / "hot" / "manual-task-001.md").write_text(entry_content)
+
+        result = _check_stale_unassigned_tasks(palaia_root)
+        assert result["status"] == "ok"
