@@ -82,7 +82,16 @@ class WAL:
         """Mark a WAL entry as committed."""
         entry.status = "committed"
         path = self._entry_path(entry)
+        # Ensure WAL directory exists (may have been deleted between crash and recovery)
+        self.wal_dir.mkdir(parents=True, exist_ok=True)
         if path.exists():
+            with open(path, "w") as f:
+                json.dump(entry.to_dict(), f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+        else:
+            # WAL entry file missing — write it so it's properly marked as committed
+            # and won't be re-replayed on next startup
             with open(path, "w") as f:
                 json.dump(entry.to_dict(), f, indent=2)
                 f.flush()
@@ -103,6 +112,8 @@ class WAL:
 
     def recover(self, store) -> int:
         """Replay pending entries. Returns count of recovered entries."""
+        # Ensure WAL directory exists before replay
+        self.wal_dir.mkdir(parents=True, exist_ok=True)
         pending = self.get_pending()
         recovered = 0
         for entry in pending:
