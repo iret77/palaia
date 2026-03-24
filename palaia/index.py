@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -43,7 +44,8 @@ class EmbeddingCache:
         """Persist cache to disk (atomic write)."""
         if self._cache is None:
             return
-        tmp = self.cache_path.with_suffix(".tmp")
+        suffix = f".{os.getpid()}.{threading.get_ident()}.tmp"
+        tmp = self.cache_path.with_suffix(suffix)
         with open(tmp, "w") as f:
             json.dump(self._cache, f)
             f.flush()
