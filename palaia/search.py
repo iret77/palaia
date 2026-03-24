@@ -134,6 +134,8 @@ class SearchEngine:
         self.bm25 = BM25()
         self.config = config or store.config
         self._provider = None
+        self._index_cache: list[tuple[str, str, dict]] | None = None
+        self._index_dirty = True
 
     @property
     def provider(self):
@@ -145,8 +147,22 @@ class SearchEngine:
     def has_embeddings(self) -> bool:
         return not isinstance(self.provider, BM25Provider)
 
+    def invalidate_index(self) -> None:
+        """Mark the cached BM25 index as dirty. Call after store modifications."""
+        self._index_dirty = True
+        self._index_cache = None
+
     def build_index(self, include_cold: bool = False, agent: str | None = None) -> list[tuple[str, str, dict]]:
-        """Build search index from store entries. Returns (doc_id, full_text, meta) list."""
+        """Build search index from store entries. Returns (doc_id, full_text, meta) list.
+
+        Uses a cached index when available. Call invalidate_index() after
+        write/edit/gc operations to force a rebuild.
+        """
+        if not self._index_dirty and self._index_cache is not None:
+            # Re-index BM25 from cache (cheap — no disk reads)
+            self.bm25.index([(did, text) for did, text, _meta in self._index_cache])
+            return list(self._index_cache)
+
         entries = self.store.all_entries(include_cold=include_cold, agent=agent)
         docs = []
         docs_with_meta = []
@@ -158,6 +174,8 @@ class SearchEngine:
             docs.append((doc_id, full_text))
             docs_with_meta.append((doc_id, full_text, meta))
         self.bm25.index(docs)
+        self._index_cache = docs_with_meta
+        self._index_dirty = False
         return docs_with_meta
 
     def search(

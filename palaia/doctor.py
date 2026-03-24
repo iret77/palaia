@@ -22,7 +22,16 @@ def _check_palaia_init(palaia_root: Path | None) -> dict[str, Any]:
     for tier in ("hot", "warm", "cold"):
         tier_dir = palaia_root / tier
         if tier_dir.exists():
-            total += len(list(tier_dir.glob("*.md")))
+            try:
+                total += len(list(tier_dir.glob("*.md")))
+            except (PermissionError, OSError) as e:
+                return {
+                    "name": "palaia_init",
+                    "label": "Palaia initialized",
+                    "status": "warn",
+                    "message": f".palaia/ found but {tier}/ not readable: {e}",
+                    "details": {"path": str(palaia_root), "error": str(e)},
+                }
 
     return {
         "name": "palaia_init",
@@ -515,7 +524,11 @@ def _check_loop_artifacts(palaia_root: Path | None) -> dict[str, Any]:
         tier_dir = palaia_root / tier
         if not tier_dir.exists():
             continue
-        for p in tier_dir.glob("*.md"):
+        try:
+            files = list(tier_dir.glob("*.md"))
+        except (PermissionError, OSError):
+            continue
+        for p in files:
             try:
                 text = p.read_text(encoding="utf-8")
                 meta, body = parse_entry(text)
@@ -736,7 +749,11 @@ def _check_entry_classes(palaia_root: Path | None) -> dict[str, Any]:
         tier_dir = palaia_root / tier
         if not tier_dir.exists():
             continue
-        for p in tier_dir.glob("*.md"):
+        try:
+            files = list(tier_dir.glob("*.md"))
+        except (PermissionError, OSError):
+            continue
+        for p in files:
             try:
                 text = p.read_text(encoding="utf-8")
                 meta, _ = parse_entry(text)
@@ -801,7 +818,11 @@ def _check_default_agent_alias(palaia_root: Path | None) -> dict[str, Any]:
         tier_dir = palaia_root / tier
         if not tier_dir.exists():
             continue
-        for p in tier_dir.glob("*.md"):
+        try:
+            files = list(tier_dir.glob("*.md"))
+        except (PermissionError, OSError):
+            continue
+        for p in files:
             try:
                 text = p.read_text(encoding="utf-8")
                 meta, _ = parse_entry(text)
