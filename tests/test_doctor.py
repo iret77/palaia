@@ -328,7 +328,7 @@ class TestRunDoctor:
     def test_run_all_checks(self, palaia_root, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))
         results = run_doctor(palaia_root)
-        assert len(results) == 22
+        assert len(results) == 23
         assert all("status" in r for r in results)
         assert all("name" in r for r in results)
 
@@ -405,9 +405,7 @@ class TestCheckStaleUnassignedTasks:
         entry_content = f"""---
 id: stale-task-001
 type: task
-tags:
-  - auto-capture
-  - commitment
+tags: auto-capture,commitment
 created: {old_date}
 scope: team
 title: Something vague about caching
@@ -428,8 +426,7 @@ We should look into better caching strategies."""
         entry_content = f"""---
 id: assigned-task-001
 type: task
-tags:
-  - auto-capture
+tags: auto-capture
 assignee: elliot
 created: {old_date}
 scope: team
@@ -450,8 +447,7 @@ Elliot will fix the caching bug."""
         entry_content = f"""---
 id: manual-task-001
 type: task
-tags:
-  - manual
+tags: manual
 created: {old_date}
 scope: team
 title: A manual task
@@ -461,3 +457,122 @@ This was written manually."""
 
         result = _check_stale_unassigned_tasks(palaia_root)
         assert result["status"] == "ok"
+
+
+class TestFeedbackLoopCorruptedEntries:
+    """Tests for #113: detect and clean feedback-loop corrupted entries."""
+
+    def test_detects_entry_starting_with_t_prefix(self, palaia_root):
+        from palaia.doctor import _check_loop_artifacts
+
+        entry_content = """---
+id: corrupt-001
+type: memory
+tags: auto-capture
+created: 2026-03-20T10:00:00+00:00
+scope: team
+title: Auto captured something
+---
+[t/m] Some recalled memory content that got re-captured
+[t/tk] A task that was in the recall block
+[t/pr] A process entry"""
+        (palaia_root / "hot" / "corrupt-001.md").write_text(entry_content)
+
+        result = _check_loop_artifacts(palaia_root)
+        assert result["status"] == "warn"
+        assert "corrupt-001" in result["details"]["artifact_ids"]
+
+    def test_detects_entry_with_auto_capture_on_literal(self, palaia_root):
+        from palaia.doctor import _check_loop_artifacts
+
+        entry_content = """---
+id: corrupt-002
+type: memory
+tags: auto-capture
+created: 2026-03-20T10:00:00+00:00
+scope: team
+title: Feedback loop artifact
+---
+Some content that includes the nudge text.
+[palaia] auto-capture=on. Manual write: --type process"""
+        (palaia_root / "hot" / "corrupt-002.md").write_text(entry_content)
+
+        result = _check_loop_artifacts(palaia_root)
+        assert result["status"] == "warn"
+        assert "corrupt-002" in result["details"]["artifact_ids"]
+
+    def test_ignores_manual_entries(self, palaia_root):
+        from palaia.doctor import _check_loop_artifacts
+
+        # Manual entry without auto-capture tag — enhanced heuristics should skip it
+        # Note: uses only one legacy pattern match (below threshold of 2)
+        entry_content = """---
+id: manual-001
+type: memory
+tags: documentation
+created: 2026-03-20T10:00:00+00:00
+scope: team
+title: Palaia docs
+---
+This is documentation about the tag format.
+Tags like [t/m] are used for memory entries in the recall block."""
+        (palaia_root / "hot" / "manual-001.md").write_text(entry_content)
+
+        result = _check_loop_artifacts(palaia_root)
+        assert result["status"] == "ok"
+
+    def test_fix_backs_up_and_removes(self, palaia_root):
+        import json as _json
+
+        from palaia.doctor import apply_fixes, run_doctor
+
+        entry_content = """---
+id: corrupt-fix-001
+type: memory
+tags: auto-capture
+created: 2026-03-20T10:00:00+00:00
+scope: team
+title: Corrupted entry
+---
+[t/m] Some old recall content that got re-captured
+[t/tk] Task from recall
+[t/pr] Process from recall
+[palaia] auto-capture=on"""
+        (palaia_root / "hot" / "corrupt-fix-001.md").write_text(entry_content)
+
+        results = run_doctor(palaia_root)
+        actions = apply_fixes(palaia_root, results)
+
+        # Entry should be removed
+        assert not (palaia_root / "hot" / "corrupt-fix-001.md").exists()
+
+        # Backup file should exist
+        backup_files = list(palaia_root.glob("gc-backup-*.jsonl"))
+        assert len(backup_files) >= 1
+
+        # Backup should contain the entry
+        backup_content = backup_files[0].read_text()
+        backup_records = [_json.loads(line) for line in backup_content.strip().split("\n")]
+        assert any(r["id"] == "corrupt-fix-001" for r in backup_records)
+
+        # Actions should report removal
+        assert any("Removed" in a and "feedback-loop" in a for a in actions)
+
+    def test_detects_nudge_text_in_body(self, palaia_root):
+        from palaia.doctor import _check_loop_artifacts
+
+        entry_content = """---
+id: corrupt-003
+type: memory
+tags: auto-capture
+created: 2026-03-20T10:00:00+00:00
+scope: team
+title: Contains nudge
+---
+Some content about a discussion.
+Manual write: --type process (SOPs/checklists)"""
+        (palaia_root / "hot" / "corrupt-003.md").write_text(entry_content)
+
+        result = _check_loop_artifacts(palaia_root)
+        assert result["status"] == "warn"
+        assert "corrupt-003" in result["details"]["artifact_ids"]
