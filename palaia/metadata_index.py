@@ -85,7 +85,19 @@ class MetadataIndex:
                 f.flush()
                 os.fsync(f.fileno())
             tmp.rename(self.index_path)
-        except OSError:
+        except OSError as e:
+            import errno
+
+            # Expected: cross-filesystem rename (e.g. tmp on different mount)
+            if e.errno == errno.EXDEV:
+                import shutil
+
+                try:
+                    shutil.move(str(tmp), str(self.index_path))
+                except OSError:
+                    pass
+            else:
+                logger.warning("Unexpected error renaming metadata index: %s", e)
             # Best-effort cleanup
             try:
                 tmp.unlink(missing_ok=True)
