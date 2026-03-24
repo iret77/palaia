@@ -472,67 +472,76 @@ class Store:
             candidates.sort(key=lambda x: x["score"])
             return {"dry_run": True, "candidates": candidates}
 
-        with self.lock:
-            for tier in TIERS:
-                tier_dir = self.root / tier
-                if not tier_dir.exists():
+        # Phase 1: Read phase — scan tiers, compute scores, determine actions (no lock)
+        actions: list[tuple[str, Path, dict, str, str, str]] = []  # (action, path, meta, body, tier, new_tier)
+        for tier in TIERS:
+            tier_dir = self.root / tier
+            if not tier_dir.exists():
+                continue
+            for p in tier_dir.glob("*.md"):
+                try:
+                    text = p.read_text(encoding="utf-8")
+                    meta, body = parse_entry(text)
+                except (OSError, UnicodeDecodeError):
                     continue
-                for p in tier_dir.glob("*.md"):
-                    try:
-                        text = p.read_text(encoding="utf-8")
-                        meta, body = parse_entry(text)
-                    except (OSError, UnicodeDecodeError):
-                        continue
 
-                    accessed = meta.get("accessed", meta.get("created", ""))
-                    if not accessed:
-                        continue
+                accessed = meta.get("accessed", meta.get("created", ""))
+                if not accessed:
+                    continue
 
-                    d = days_since(accessed)
-                    ac = meta.get("access_count", 1)
-                    score = decay_score(d, ac, config["decay_lambda"])
-                    meta["decay_score"] = score
+                d = days_since(accessed)
+                ac = meta.get("access_count", 1)
+                score = decay_score(d, ac, config["decay_lambda"])
+                meta["decay_score"] = score
 
-                    # Store holistic GC score as well
-                    gc_s = self.gc_score_entry(meta, body, config)
-                    meta["gc_score"] = gc_s
+                # Store holistic GC score as well
+                gc_s = self.gc_score_entry(meta, body, config)
+                meta["gc_score"] = gc_s
 
-                    new_tier = classify_tier(
-                        d,
-                        score,
-                        config["hot_threshold_days"],
-                        config["warm_threshold_days"],
-                        config["hot_min_score"],
-                        config["warm_min_score"],
+                new_tier = classify_tier(
+                    d,
+                    score,
+                    config["hot_threshold_days"],
+                    config["warm_threshold_days"],
+                    config["hot_min_score"],
+                    config["warm_min_score"],
+                )
+
+                actions.append(("move" if new_tier != tier else "update", p, meta, body, tier, new_tier))
+
+        # Phase 2: Write phase — perform mutations under lock
+        with self.lock:
+            for action, p, meta, body, tier, new_tier in actions:
+                # Re-check file still exists (could have been modified between phases)
+                if not p.exists():
+                    continue
+
+                new_text = serialize_entry(meta, body)
+
+                if action == "move":
+                    new_target = f"{new_tier}/{p.name}"
+                    # WAL: log the move with payload for crash recovery
+                    wal_entry = WALEntry(
+                        operation="write",
+                        target=new_target,
+                        payload_hash=meta.get("content_hash", ""),
+                        payload=new_text,
                     )
-
-                    # Update the score in file
-                    new_text = serialize_entry(meta, body)
-
-                    if new_tier != tier:
-                        new_target = f"{new_tier}/{p.name}"
-                        # WAL: log the move with payload for crash recovery
-                        wal_entry = WALEntry(
-                            operation="write",
-                            target=new_target,
-                            payload_hash=meta.get("content_hash", ""),
-                            payload=new_text,
-                        )
-                        self.wal.log(wal_entry)
-                        self.write_raw(new_target, new_text)
-                        p.unlink()
-                        self.wal.commit(wal_entry)
-                        # Update metadata index with new tier
-                        entry_id = meta.get("id", p.stem)
-                        self.metadata_index.update(entry_id, meta, new_tier)
-                        key = f"{tier}_to_{new_tier}"
-                        moves[key] = moves.get(key, 0) + 1
-                    else:
-                        with open(p, "w") as f:
-                            f.write(new_text)
-                        # Update metadata index (score may have changed)
-                        entry_id = meta.get("id", p.stem)
-                        self.metadata_index.update(entry_id, meta, tier)
+                    self.wal.log(wal_entry)
+                    self.write_raw(new_target, new_text)
+                    p.unlink()
+                    self.wal.commit(wal_entry)
+                    # Update metadata index with new tier
+                    entry_id = meta.get("id", p.stem)
+                    self.metadata_index.update(entry_id, meta, new_tier)
+                    key = f"{tier}_to_{new_tier}"
+                    moves[key] = moves.get(key, 0) + 1
+                else:
+                    with open(p, "w") as f:
+                        f.write(new_text)
+                    # Update metadata index (score may have changed)
+                    entry_id = meta.get("id", p.stem)
+                    self.metadata_index.update(entry_id, meta, tier)
 
             # Budget enforcement (Issue #71)
             if budget:
