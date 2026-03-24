@@ -361,6 +361,11 @@ export class EmbedServerManager {
           clearTimeout(this.pendingRequest.timer);
           this.pendingRequest = null;
         }
+        // Reject all queued requests
+        for (const queued of this.requestQueue) {
+          queued.reject(new Error(`Embed server exited with code ${code}`));
+        }
+        this.requestQueue = [];
       });
 
       // Register cleanup
@@ -456,6 +461,16 @@ export class EmbedServerManager {
     await this.start();
   }
 
+  /** Maximum number of queued requests before rejecting */
+  private maxQueueSize = 10;
+  /** Queue of pending requests waiting to be sent */
+  private requestQueue: Array<{
+    request: Record<string, unknown>;
+    timeoutMs: number;
+    resolve: (value: any) => void;
+    reject: (reason: any) => void;
+  }> = [];
+
   private sendRequest(request: Record<string, unknown>, timeoutMs: number): Promise<any> {
     return new Promise((resolve, reject) => {
       if (!this.proc?.stdin?.writable) {
@@ -463,22 +478,46 @@ export class EmbedServerManager {
         return;
       }
 
-      // Only one request at a time (sequential protocol)
+      // If a request is already in flight, queue this one
       if (this.pendingRequest) {
-        reject(new Error("Embed server busy"));
+        if (this.requestQueue.length >= this.maxQueueSize) {
+          reject(new Error("Embed server queue full"));
+          return;
+        }
+        this.requestQueue.push({ request, timeoutMs, resolve, reject });
         return;
       }
 
-      const timer = setTimeout(() => {
-        this.pendingRequest = null;
-        reject(new Error(`Embed server request timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
-
-      this.pendingRequest = { resolve, reject, timer };
-
-      const line = JSON.stringify(request) + "\n";
-      this.proc.stdin!.write(line);
+      this._sendImmediate(request, timeoutMs, resolve, reject);
     });
+  }
+
+  private _sendImmediate(
+    request: Record<string, unknown>,
+    timeoutMs: number,
+    resolve: (value: any) => void,
+    reject: (reason: any) => void,
+  ): void {
+    const timer = setTimeout(() => {
+      this.pendingRequest = null;
+      reject(new Error(`Embed server request timed out after ${timeoutMs}ms`));
+      this._drainQueue();
+    }, timeoutMs);
+
+    this.pendingRequest = { resolve, reject, timer };
+
+    const line = JSON.stringify(request) + "\n";
+    this.proc!.stdin!.write(line);
+  }
+
+  private _drainQueue(): void {
+    if (this.pendingRequest || this.requestQueue.length === 0) return;
+    const next = this.requestQueue.shift()!;
+    if (!this.proc?.stdin?.writable) {
+      next.reject(new Error("Embed server not running"));
+      return;
+    }
+    this._sendImmediate(next.request, next.timeoutMs, next.resolve, next.reject);
   }
 
   private handleLine(line: string): void {
@@ -493,6 +532,8 @@ export class EmbedServerManager {
       } else {
         pending.resolve(msg);
       }
+      // Process next queued request
+      this._drainQueue();
     } catch {
       // Ignore non-JSON lines
     }
