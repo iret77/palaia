@@ -545,8 +545,8 @@ class Store:
                     key = f"{tier}_to_{new_tier}"
                     moves[key] = moves.get(key, 0) + 1
                 else:
-                    with open(p, "w") as f:
-                        f.write(new_text)
+                    # Atomic write for in-place score update (same tier)
+                    self.write_raw(str(p.relative_to(self.root)), new_text)
                     # Update metadata index (score may have changed)
                     entry_id = meta.get("id", p.stem)
                     self.metadata_index.update(entry_id, meta, tier)
@@ -717,26 +717,12 @@ class Store:
         """Find entry ID by content hash (dedup).
 
         Uses metadata index for O(n-in-memory) lookup instead of O(n) disk scan.
-        Falls back to disk scan if index is empty (cold start).
+        If the index is empty on cold start, triggers a lazy rebuild from disk
+        instead of falling through to an unindexed disk scan.
         """
-        # Try index first
-        if self.metadata_index.is_populated():
-            result = self.metadata_index.find_by_hash(h)
-            if result is not None:
-                return result
-            return None
+        if not self.metadata_index.is_populated():
+            # Lazy rebuild: populate index from disk on first dedup check
+            self.metadata_index.rebuild(parse_entry)
 
-        # Fallback: disk scan (index not yet built)
-        for tier in TIERS:
-            tier_dir = self.root / tier
-            if not tier_dir.exists():
-                continue
-            for p in tier_dir.glob("*.md"):
-                try:
-                    text = p.read_text(encoding="utf-8")
-                    meta, _ = parse_entry(text)
-                    if meta.get("content_hash") == h:
-                        return meta.get("id")
-                except (OSError, UnicodeDecodeError):
-                    continue
-        return None
+        result = self.metadata_index.find_by_hash(h)
+        return result

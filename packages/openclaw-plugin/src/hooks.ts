@@ -293,10 +293,14 @@ export async function sendReaction(
 
 /** Cached Slack bot token resolved from env or OpenClaw config. */
 let _cachedSlackToken: string | null | undefined;
+/** Timestamp when the token was cached (for TTL expiry). */
+let _slackTokenCachedAt = 0;
+/** TTL for cached Slack bot token in milliseconds (5 minutes). */
+const SLACK_TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
 
 /**
  * Resolve the Slack bot token from environment or OpenClaw config file.
- * Caches the result for the lifetime of the process.
+ * Caches the result with a 5-minute TTL — re-resolves after expiry.
  *
  * Resolution order:
  * 1. SLACK_BOT_TOKEN env var (explicit override)
@@ -306,12 +310,15 @@ let _cachedSlackToken: string | null | undefined;
  * Config path: OPENCLAW_CONFIG env var → ~/.openclaw/openclaw.json
  */
 async function resolveSlackBotToken(): Promise<string | null> {
-  if (_cachedSlackToken !== undefined) return _cachedSlackToken;
+  if (_cachedSlackToken !== undefined && (Date.now() - _slackTokenCachedAt) < SLACK_TOKEN_CACHE_TTL_MS) {
+    return _cachedSlackToken;
+  }
 
   // 1) Environment variable
   const envToken = process.env.SLACK_BOT_TOKEN?.trim();
   if (envToken) {
     _cachedSlackToken = envToken;
+    _slackTokenCachedAt = Date.now();
     return envToken;
   }
 
@@ -330,6 +337,7 @@ async function resolveSlackBotToken(): Promise<string | null> {
       const directToken = config?.channels?.slack?.botToken?.trim();
       if (directToken) {
         _cachedSlackToken = directToken;
+        _slackTokenCachedAt = Date.now();
         return directToken;
       }
 
@@ -337,6 +345,7 @@ async function resolveSlackBotToken(): Promise<string | null> {
       const accountToken = config?.channels?.slack?.accounts?.default?.botToken?.trim();
       if (accountToken) {
         _cachedSlackToken = accountToken;
+        _slackTokenCachedAt = Date.now();
         return accountToken;
       }
     } catch {
@@ -345,12 +354,14 @@ async function resolveSlackBotToken(): Promise<string | null> {
   }
 
   _cachedSlackToken = null;
+  _slackTokenCachedAt = Date.now();
   return null;
 }
 
 /** Reset cached token (for testing). */
 export function resetSlackTokenCache(): void {
   _cachedSlackToken = undefined;
+  _slackTokenCachedAt = 0;
 }
 
 async function sendSlackReaction(
@@ -1293,11 +1304,29 @@ export function buildRecallQuery(messages: unknown[]): string {
   );
 
   // Fallback: if no messages without provenance, use all user messages
-  const userMsgs = candidates.length > 0
+  const allUserMsgs = candidates.length > 0
     ? candidates
     : texts.filter(t => t.role === "user");
 
-  if (userMsgs.length === 0) return "";
+  if (allUserMsgs.length === 0) return "";
+
+  // Early exit: only scan the last 3 user messages or 2000 chars, whichever comes first
+  const MAX_SCAN_MSGS = 3;
+  const MAX_SCAN_CHARS = 2000;
+  let userMsgs: typeof allUserMsgs;
+  if (allUserMsgs.length <= MAX_SCAN_MSGS) {
+    userMsgs = allUserMsgs;
+  } else {
+    userMsgs = allUserMsgs.slice(-MAX_SCAN_MSGS);
+    // Extend backwards if total chars < MAX_SCAN_CHARS and more messages available
+    let totalChars = userMsgs.reduce((sum, m) => sum + m.text.length, 0);
+    let startIdx = allUserMsgs.length - MAX_SCAN_MSGS;
+    while (startIdx > 0 && totalChars < MAX_SCAN_CHARS) {
+      startIdx--;
+      totalChars += allUserMsgs[startIdx].text.length;
+      userMsgs = allUserMsgs.slice(startIdx);
+    }
+  }
 
   // Step 2: Strip envelopes from the last user message(s)
   let lastText = stripSystemPrefix(stripChannelEnvelope(userMsgs[userMsgs.length - 1].text.trim()));

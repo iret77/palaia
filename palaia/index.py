@@ -1,7 +1,6 @@
 """Embedding cache for Tier 2/3 search (ADR-001).
 
-Cache-only infrastructure. Actual embedding computation is not yet implemented.
-# TODO: ollama/API integration for real embeddings.
+Cache-only infrastructure. Embedding computation is handled by embeddings.py.
 """
 
 from __future__ import annotations
