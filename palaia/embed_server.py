@@ -90,7 +90,7 @@ def _warmup_missing(store: Store, engine: SearchEngine) -> dict:
 class EmbedServer:
     """JSON-RPC server over stdin/stdout for embedding queries."""
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, stale_check_interval: float = 30.0):
         self.root = root
         self.store = Store(root)
         self.engine = SearchEngine(self.store)
@@ -100,6 +100,7 @@ class EmbedServer:
         self._last_entry_count = _count_entries(self.store)
         self._running = True
         self._warming_up = False
+        self._stale_check_interval = stale_check_interval
         self._stale_check_thread: threading.Thread | None = None
 
     def _start_stale_detection(self) -> None:
@@ -107,7 +108,7 @@ class EmbedServer:
 
         def _check_loop():
             while self._running:
-                time.sleep(30)
+                time.sleep(self._stale_check_interval)
                 if not self._running:
                     break
                 try:
