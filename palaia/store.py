@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import os
+import time as _time
 from datetime import datetime, timezone
 from pathlib import Path
-
-import time as _time
 
 from palaia.config import get_aliases, load_config, resolve_agent_with_aliases
 from palaia.decay import classify_tier, days_since, decay_score
