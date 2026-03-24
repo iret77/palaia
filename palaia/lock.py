@@ -73,8 +73,24 @@ class PalaiaLock:
         self._fd = None
         self._mkdir_lock = None  # Path for mkdir fallback
 
+    @staticmethod
+    def _is_pid_alive(pid: int) -> bool:
+        """Check if a process with the given PID is still alive."""
+        if pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+
     def _check_stale(self) -> bool:
-        """Check if existing lock is stale (>60s old). If stale, remove it and warn."""
+        """Check if existing lock is stale. If stale, remove it and warn.
+
+        A lock is considered stale if:
+        - It is older than STALE_LOCK_SECONDS (60s), OR
+        - The holding PID is dead AND the lock is older than 5s
+        """
         if not self.lock_path.exists():
             return False
         try:
@@ -83,6 +99,19 @@ class PalaiaLock:
             lock_ts = data.get("ts", 0)
             lock_pid = data.get("pid", 0)
             age = time.time() - lock_ts
+
+            # Fast path: PID is dead and lock is at least 5s old
+            if age > 5 and lock_pid and not self._is_pid_alive(lock_pid):
+                warnings.warn(
+                    f"Stale lock detected (pid {lock_pid} is dead, age: {age:.0f}s). Overriding stale lock.",
+                    stacklevel=3,
+                )
+                try:
+                    self.lock_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                return True
+
             if age > STALE_LOCK_SECONDS:
                 warnings.warn(
                     f"Stale lock detected (age: {age:.0f}s, pid: {lock_pid}). Overriding stale lock.",
