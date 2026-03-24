@@ -914,7 +914,25 @@ export async function extractWithLLM(
 
   let tmpDir: string | null = null;
   try {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "palaia-extract-"));
+    // Use a fixed base directory for extraction temp dirs and clean up stale ones
+    const extractBaseDir = path.join(os.tmpdir(), "palaia-extractions");
+    await fs.mkdir(extractBaseDir, { recursive: true });
+    // Clean up stale extraction dirs (older than 5 minutes)
+    try {
+      const entries = await fs.readdir(extractBaseDir, { withFileTypes: true });
+      const now = Date.now();
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          try {
+            const stat = await fs.stat(path.join(extractBaseDir, entry.name));
+            if (now - stat.mtimeMs > 5 * 60 * 1000) {
+              await fs.rm(path.join(extractBaseDir, entry.name), { recursive: true, force: true });
+            }
+          } catch { /* ignore individual cleanup errors */ }
+        }
+      }
+    } catch { /* ignore cleanup errors */ }
+    tmpDir = await fs.mkdtemp(path.join(extractBaseDir, "ext-"));
     const sessionId = `palaia-extract-${Date.now()}`;
     const sessionFile = path.join(tmpDir, "session.json");
 
