@@ -6,6 +6,8 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+import time as _time
+
 from palaia.config import get_aliases, load_config, resolve_agent_with_aliases
 from palaia.decay import classify_tier, days_since, decay_score
 from palaia.entry import (
@@ -39,6 +41,8 @@ class Store:
         self.embedding_cache = EmbeddingCache(palaia_root)
         self.metadata_index = MetadataIndex(palaia_root)
         self._aliases = get_aliases(palaia_root)
+        self._access_debounce: dict[str, float] = {}  # entry_id -> last update timestamp
+        self._access_debounce_seconds = 60.0  # min seconds between access metadata writes
 
         # Ensure tier directories
         for tier in TIERS:
@@ -325,12 +329,17 @@ class Store:
         if not can_access(meta.get("scope", "team"), agent, meta.get("agent"), projects, resolved):
             return None
 
-        # Update access
-        meta = update_access(meta)
-        new_text = serialize_entry(meta, body)
+        # Debounce access metadata writes: only update if enough time has passed
+        now = _time.monotonic()
+        last_update = self._access_debounce.get(entry_id, 0.0)
+        if now - last_update >= self._access_debounce_seconds:
+            meta = update_access(meta)
+            new_text = serialize_entry(meta, body)
 
-        with self.lock:
-            self.write_raw(str(path.relative_to(self.root)), new_text)
+            with self.lock:
+                self.write_raw(str(path.relative_to(self.root)), new_text)
+
+            self._access_debounce[entry_id] = now
 
         return meta, body
 
