@@ -1341,10 +1341,22 @@ export function rerankByTypeWeight(
 // Hook helpers
 // ============================================================================
 
-function buildRunnerOpts(config: PalaiaPluginConfig): RunnerOpts {
+/**
+ * Resolve per-agent workspace and agentId from hook context.
+ * Fallback chain: ctx.workspaceDir → config.workspace → cwd
+ * Agent chain: ctx.agentId → PALAIA_AGENT env var → undefined
+ */
+export function resolvePerAgentContext(ctx: any, config: PalaiaPluginConfig) {
+  return {
+    workspace: ctx?.workspaceDir || config.workspace,
+    agentId: ctx?.agentId || process.env.PALAIA_AGENT || undefined,
+  };
+}
+
+function buildRunnerOpts(config: PalaiaPluginConfig, overrides?: { workspace?: string }): RunnerOpts {
   return {
     binaryPath: config.binaryPath,
-    workspace: config.workspace,
+    workspace: overrides?.workspace || config.workspace,
     timeoutMs: config.timeoutMs,
   };
 }
@@ -1538,6 +1550,10 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
       // Prune stale entries to prevent memory leaks from crashed sessions (C-2)
       pruneStaleEntries();
 
+      // Per-agent workspace resolution (Issue #111)
+      const resolved = resolvePerAgentContext(ctx, config);
+      const hookOpts = buildRunnerOpts(config, { workspace: resolved.workspace });
+
       try {
         const maxChars = config.maxInjectedChars || 4000;
         const limit = Math.min(config.maxResults || 10, 20);
@@ -1553,15 +1569,22 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
             let serverQueried = false;
             if (config.embeddingServer) {
               try {
-                const mgr = getEmbedServerManager(opts);
-                const resp = await mgr.query({
-                  text: userMessage,
-                  top_k: limit,
-                  include_cold: config.tier === "all",
-                }, config.timeoutMs || 3000);
-                if (resp?.result?.results && Array.isArray(resp.result.results)) {
-                  entries = resp.result.results;
-                  serverQueried = true;
+                const mgr = getEmbedServerManager(hookOpts);
+                // If embed server workspace differs from resolved workspace, skip server and use CLI
+                const serverWorkspace = hookOpts.workspace;
+                const embedOpts = buildRunnerOpts(config);
+                if (serverWorkspace !== embedOpts.workspace) {
+                  logger.info(`[palaia] Embed server workspace mismatch (agent=${resolved.workspace}), falling back to CLI`);
+                } else {
+                  const resp = await mgr.query({
+                    text: userMessage,
+                    top_k: limit,
+                    include_cold: config.tier === "all",
+                  }, config.timeoutMs || 3000);
+                  if (resp?.result?.results && Array.isArray(resp.result.results)) {
+                    entries = resp.result.results;
+                    serverQueried = true;
+                  }
                 }
               } catch (serverError) {
                 logger.warn(`[palaia] Embed server query failed, falling back to CLI: ${serverError}`);
@@ -1575,7 +1598,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
                 if (config.tier === "all") {
                   queryArgs.push("--all");
                 }
-                const result = await runJson<QueryResult>(queryArgs, { ...opts, timeoutMs: 15000 });
+                const result = await runJson<QueryResult>(queryArgs, { ...hookOpts, timeoutMs: 15000 });
                 if (result && Array.isArray(result.results)) {
                   entries = result.results;
                 }
@@ -1597,7 +1620,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
             } else {
               listArgs.push("--tier", config.tier || "hot");
             }
-            const result = await runJson<QueryResult>(listArgs, opts);
+            const result = await runJson<QueryResult>(listArgs, hookOpts);
             if (result && Array.isArray(result.results)) {
               entries = result.results;
             }
@@ -1643,7 +1666,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
         // Update recall counter for satisfaction/transparency nudges (Issue #87)
         let nudgeContext = "";
         try {
-          const pluginState = await loadPluginState(config.workspace);
+          const pluginState = await loadPluginState(resolved.workspace);
           pluginState.successfulRecalls++;
           if (!pluginState.firstRecallTimestamp) {
             pluginState.firstRecallTimestamp = new Date().toISOString();
@@ -1652,7 +1675,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           if (nudges.length > 0) {
             nudgeContext = "\n\n## Agent Nudge (Palaia)\n\n" + nudges.join("\n\n");
           }
-          await savePluginState(pluginState, config.workspace);
+          await savePluginState(pluginState, resolved.workspace);
         } catch {
           // Non-fatal
         }
@@ -1714,14 +1737,16 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
       // Resolve session key for turn state
       const sessionKey = resolveSessionKeyFromCtx(ctx);
 
-      // DEBUG: always log agent_end firing
+      // Per-agent workspace resolution (Issue #111)
+      const resolved = resolvePerAgentContext(ctx, config);
+      const hookOpts = buildRunnerOpts(config, { workspace: resolved.workspace });
 
       if (!event.success || !event.messages || event.messages.length === 0) {
         return;
       }
 
       try {
-        const agentName = process.env.PALAIA_AGENT || undefined;
+        const agentName = resolved.agentId;
 
         const allTexts = extractMessageTexts(event.messages);
 
@@ -1762,7 +1787,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
           return;
         }
 
-        const knownProjects = await loadProjects(opts);
+        const knownProjects = await loadProjects(hookOpts);
 
         // Helper: build CLI args with metadata
         const buildWriteArgs = (
@@ -1830,7 +1855,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
                 validatedProject,
                 effectiveScope,
               );
-              await run(args, { ...opts, timeoutMs: 10_000 });
+              await run(args, { ...hookOpts, timeoutMs: 10_000 });
               logger.info(
                 `[palaia] LLM auto-captured: type=${r.type}, significance=${r.significance}, tags=${tags.join(",")}, project=${validatedProject || "none"}, scope=${effectiveScope || "team"}`
               );
@@ -1914,7 +1939,7 @@ export function registerHooks(api: any, config: PalaiaPluginConfig): void {
             hintForScope?.scope,
           );
 
-          await run(args, { ...opts, timeoutMs: 10_000 });
+          await run(args, { ...hookOpts, timeoutMs: 10_000 });
           logger.info(
             `[palaia] Rule-based auto-captured: type=${captureData.type}, tags=${captureData.tags.join(",")}`
           );

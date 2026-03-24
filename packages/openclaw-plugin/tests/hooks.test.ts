@@ -33,6 +33,7 @@ import {
   setEmbeddedPiAgentLoader,
   trimToRecentExchanges,
   stripPalaiaInjectedContext,
+  resolvePerAgentContext,
   type ExtractionResult,
   type PalaiaHint,
 } from "../src/hooks.js";
@@ -1344,5 +1345,81 @@ What should I work on next?`;
     expect(cleaned[0].text).not.toContain("[palaia]");
     // Assistant message unchanged
     expect(cleaned[1].text).toBe("Here is the project status summary...");
+  });
+});
+
+// ============================================================================
+// resolvePerAgentContext (Issue #111: Per-Agent Workspace Resolution)
+// ============================================================================
+
+describe("resolvePerAgentContext", () => {
+  const baseConfig = resolveConfig({});
+
+  afterEach(() => {
+    delete process.env.PALAIA_AGENT;
+  });
+
+  it("uses ctx.workspaceDir when provided", () => {
+    const ctx = { workspaceDir: "/home/agent-alpha/.workspace", agentId: "alpha" };
+    const result = resolvePerAgentContext(ctx, baseConfig);
+    expect(result.workspace).toBe("/home/agent-alpha/.workspace");
+    expect(result.agentId).toBe("alpha");
+  });
+
+  it("falls back to config.workspace when ctx has no workspaceDir", () => {
+    const config = resolveConfig({ workspace: "/default/workspace" });
+    const ctx = {};
+    const result = resolvePerAgentContext(ctx, config);
+    expect(result.workspace).toBe("/default/workspace");
+  });
+
+  it("falls back to config.workspace when ctx is null/undefined", () => {
+    const config = resolveConfig({ workspace: "/default/workspace" });
+    const result = resolvePerAgentContext(null, config);
+    expect(result.workspace).toBe("/default/workspace");
+  });
+
+  it("uses ctx.agentId over PALAIA_AGENT env", () => {
+    process.env.PALAIA_AGENT = "env-agent";
+    const ctx = { agentId: "ctx-agent" };
+    const result = resolvePerAgentContext(ctx, baseConfig);
+    expect(result.agentId).toBe("ctx-agent");
+  });
+
+  it("falls back to PALAIA_AGENT env when ctx.agentId is absent", () => {
+    process.env.PALAIA_AGENT = "env-agent";
+    const ctx = {};
+    const result = resolvePerAgentContext(ctx, baseConfig);
+    expect(result.agentId).toBe("env-agent");
+  });
+
+  it("returns undefined agentId when nothing is set", () => {
+    const ctx = {};
+    const result = resolvePerAgentContext(ctx, baseConfig);
+    expect(result.agentId).toBeUndefined();
+  });
+
+  it("multi-agent scenario: different ctx produces different workspaces", () => {
+    const config = resolveConfig({ workspace: "/shared" });
+    const ctxAlpha = { workspaceDir: "/agents/alpha", agentId: "alpha" };
+    const ctxBeta = { workspaceDir: "/agents/beta", agentId: "beta" };
+
+    const resAlpha = resolvePerAgentContext(ctxAlpha, config);
+    const resBeta = resolvePerAgentContext(ctxBeta, config);
+
+    expect(resAlpha.workspace).toBe("/agents/alpha");
+    expect(resBeta.workspace).toBe("/agents/beta");
+    expect(resAlpha.agentId).toBe("alpha");
+    expect(resBeta.agentId).toBe("beta");
+    expect(resAlpha.workspace).not.toBe(resBeta.workspace);
+  });
+
+  it("single-agent backward compat: no ctx fields uses config defaults", () => {
+    process.env.PALAIA_AGENT = "main";
+    const config = resolveConfig({ workspace: "/home/claw/.openclaw" });
+    const ctx = {};
+    const result = resolvePerAgentContext(ctx, config);
+    expect(result.workspace).toBe("/home/claw/.openclaw");
+    expect(result.agentId).toBe("main");
   });
 });
