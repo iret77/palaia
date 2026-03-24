@@ -1304,11 +1304,29 @@ export function buildRecallQuery(messages: unknown[]): string {
   );
 
   // Fallback: if no messages without provenance, use all user messages
-  const userMsgs = candidates.length > 0
+  const allUserMsgs = candidates.length > 0
     ? candidates
     : texts.filter(t => t.role === "user");
 
-  if (userMsgs.length === 0) return "";
+  if (allUserMsgs.length === 0) return "";
+
+  // Early exit: only scan the last 3 user messages or 2000 chars, whichever comes first
+  const MAX_SCAN_MSGS = 3;
+  const MAX_SCAN_CHARS = 2000;
+  let userMsgs: typeof allUserMsgs;
+  if (allUserMsgs.length <= MAX_SCAN_MSGS) {
+    userMsgs = allUserMsgs;
+  } else {
+    userMsgs = allUserMsgs.slice(-MAX_SCAN_MSGS);
+    // Extend backwards if total chars < MAX_SCAN_CHARS and more messages available
+    let totalChars = userMsgs.reduce((sum, m) => sum + m.text.length, 0);
+    let startIdx = allUserMsgs.length - MAX_SCAN_MSGS;
+    while (startIdx > 0 && totalChars < MAX_SCAN_CHARS) {
+      startIdx--;
+      totalChars += allUserMsgs[startIdx].text.length;
+      userMsgs = allUserMsgs.slice(startIdx);
+    }
+  }
 
   // Step 2: Strip envelopes from the last user message(s)
   let lastText = stripSystemPrefix(stripChannelEnvelope(userMsgs[userMsgs.length - 1].text.trim()));
