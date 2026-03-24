@@ -545,8 +545,8 @@ class Store:
                     key = f"{tier}_to_{new_tier}"
                     moves[key] = moves.get(key, 0) + 1
                 else:
-                    with open(p, "w") as f:
-                        f.write(new_text)
+                    # Atomic write for in-place score update (same tier)
+                    self.write_raw(str(p.relative_to(self.root)), new_text)
                     # Update metadata index (score may have changed)
                     entry_id = meta.get("id", p.stem)
                     self.metadata_index.update(entry_id, meta, tier)
