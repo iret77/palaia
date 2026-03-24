@@ -1,5 +1,33 @@
 # Changelog
 
+## v2.1.0 — 2026-03-24
+
+### Bug Fixes
+- **Plugin: Per-agent workspace resolution** (#111) — Auto-Capture and Auto-Recall now use `ctx.workspaceDir` per agent instead of global workspace. Fixes multi-agent setups where all memories went to the wrong store.
+- **Race condition in EmbeddingCache** (#105) — Unique PID+TID tmp filenames prevent cache corruption during concurrent writes.
+- **Auto-Capture task misclassification** (#107) — Tightened extraction criteria: all 3 requirements (clear action + responsible party + concrete deliverable) must be met for `type: task`.
+- **Feedback-loop artifact cleanup** (#113) — `doctor --fix` now detects and removes pre-v2.0.6 corrupted entries with backup.
+
+### Stability
+- **EmbeddingCache thread safety** (C-1) — Added threading.Lock (same pattern as MetadataIndex).
+- **GC write starvation** (C-2) — GC split into read phase (no lock) + write phase (locked).
+- **WAL zombie entry prevention** (I-1) — WAL directory creation and commit path hardening.
+- **BM25 index caching** (I-2) — Index cached with dirty-flag invalidation instead of rebuild per query.
+- **Access metadata debouncing** (I-3) — 60s debounce reduces lock contention on reads.
+- **Embed server request queuing** (I-4) — Concurrent requests queued (max 10) instead of rejected.
+- **Extraction temp dir cleanup** (I-5) — Fixed base dir with automatic stale cleanup.
+- **Stale lock PID liveness check** (I-6) — Dead PIDs detected immediately (vs. 60s timeout).
+- **Doctor permission error handling** (I-7) — Graceful handling of unreadable tier directories.
+
+### Improvements
+- Lazy metadata index build for dedup (M-1)
+- Configurable embed server stale detection interval (M-2)
+- Slack bot token cache TTL 5min (M-3)
+- Recall query scan depth limit (M-4)
+- Atomic GC in-place writes (M-6)
+- Cross-filesystem rename handling (M-7)
+- Unicode and WAL corruption test coverage (M-8, M-9)
+
 ## [2.0.13] — 2026-03-22
 
 ### Fixed
