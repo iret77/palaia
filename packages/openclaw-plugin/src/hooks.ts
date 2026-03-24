@@ -733,6 +733,13 @@ For each piece of knowledge, return a JSON array of objects:
 - "project": which project this belongs to (from known projects list, or null if unclear)
 - "scope": "private" (personal preference, agent-specific), "team" (shared knowledge), or "public" (documentation)
 
+STRICT TASK CLASSIFICATION RULES — a "task" MUST have ALL three of:
+1. A clear, completable action (not just an observation or idea)
+2. An identifiable responsible party (explicitly named or unambiguously inferable from context)
+3. A concrete deliverable or measurable end state
+If ANY of these is missing, classify as "memory" instead of "task". When in doubt, use "memory".
+Observations, learnings, insights, opinions, and general knowledge are ALWAYS "memory", never "task".
+
 Only extract genuinely significant knowledge. Skip small talk, acknowledgments, routine exchanges.
 Do NOT extract if similar knowledge was likely captured in a recent exchange. Prefer quality over quantity. Skip routine status updates and acknowledgments.
 Return empty array [] if nothing is worth remembering.

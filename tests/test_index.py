@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+
 import pytest
 
 from palaia.index import EmbeddingCache
@@ -67,3 +69,37 @@ def test_persistence(tmp_path):
 
     c2 = EmbeddingCache(root)
     assert c2.get_cached("persist") == [42.0]
+
+
+def test_concurrent_writes(tmp_path):
+    """Multiple threads writing simultaneously should not corrupt the cache."""
+    root = tmp_path / ".palaia"
+    root.mkdir()
+    (root / "index").mkdir()
+
+    errors = []
+    num_threads = 8
+    writes_per_thread = 20
+
+    def writer(thread_idx):
+        try:
+            cache = EmbeddingCache(root)
+            for i in range(writes_per_thread):
+                entry_id = f"thread-{thread_idx}-entry-{i}"
+                vec = [float(thread_idx), float(i)]
+                cache.set_cached(entry_id, vec, model=f"model-{thread_idx}")
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=writer, args=(t,)) for t in range(num_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == [], f"Concurrent writes raised errors: {errors}"
+
+    # Verify the cache file is valid JSON and contains entries
+    final_cache = EmbeddingCache(root)
+    stats = final_cache.stats()
+    assert stats["cached_entries"] > 0, "Cache should contain entries after concurrent writes"

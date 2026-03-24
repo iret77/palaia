@@ -452,17 +452,49 @@ LOOP_ARTIFACT_PATTERNS = [
     re.compile(r"(?:^|\s)\*{4,}", re.MULTILINE),  # accumulated markdown (not inside words)
 ]
 
+# Enhanced heuristics for #113: detect feedback-loop corrupted entries
+_CORRUPTED_PREFIX_RE = re.compile(r"^\[t/")
+_CORRUPTED_TAG_RE = re.compile(r"\[t/(?:tk|m|pr)\]")
+_CORRUPTED_AUTO_CAPTURE_RE = re.compile(r"\[palaia\] auto-capture=on")
+_CORRUPTED_NUDGE_RE = re.compile(r"Manual write: --type process")
+
 
 def _is_loop_artifact(meta: dict, body: str) -> bool:
     """Check if an entry is a feedback-loop artifact (re-captured recall context).
 
-    Requires at least 2 pattern matches to avoid false positives on normal content
-    that happens to contain a single pattern (e.g. Palaia docs quoting [t/m] tags,
-    or markdown with adjacent bold segments producing ****).
+    Uses two detection strategies:
+    1. Legacy: requires at least 2 pattern matches from LOOP_ARTIFACT_PATTERNS
+    2. Enhanced (#113): entry must have 'auto-capture' tag AND match any of:
+       - Body starts with [t/ prefix
+       - Body contains 3+ occurrences of [t/tk], [t/m], or [t/pr]
+       - Body contains literal '[palaia] auto-capture=on'
+       - Body contains 'Manual write: --type process' (nudge text)
     """
     text = f"{meta.get('title', '')}\n{body}"
-    matches = sum(1 for p in LOOP_ARTIFACT_PATTERNS if p.search(text))
-    return matches >= 2
+
+    # Legacy detection (2+ pattern matches)
+    legacy_matches = sum(1 for p in LOOP_ARTIFACT_PATTERNS if p.search(text))
+    if legacy_matches >= 2:
+        return True
+
+    # Enhanced #113 detection: requires auto-capture tag
+    raw_tags = meta.get("tags", [])
+    tags = raw_tags if isinstance(raw_tags, list) else str(raw_tags).split(",")
+    tags = [t.strip() for t in tags]
+    if "auto-capture" not in tags:
+        return False
+
+    # Check enhanced heuristics (any single match is sufficient with auto-capture tag)
+    if _CORRUPTED_PREFIX_RE.search(body):
+        return True
+    if len(_CORRUPTED_TAG_RE.findall(body)) >= 3:
+        return True
+    if _CORRUPTED_AUTO_CAPTURE_RE.search(body):
+        return True
+    if _CORRUPTED_NUDGE_RE.search(body):
+        return True
+
+    return False
 
 
 def _check_loop_artifacts(palaia_root: Path | None) -> dict[str, Any]:
@@ -505,11 +537,11 @@ def _check_loop_artifacts(palaia_root: Path | None) -> dict[str, Any]:
 
     return {
         "name": "loop_artifacts",
-        "label": "Feedback-loop artifacts",
+        "label": "Corrupted Entries",
         "status": "warn",
         "fixable": True,
-        "message": f"{len(artifact_ids)} entries contain re-captured recall context",
-        "fix": "Run: palaia doctor --fix  to clean up feedback-loop artifacts",
+        "message": f"Found {len(artifact_ids)} feedback-loop artifacts. Run doctor --fix to clean up.",
+        "fix": "Run: palaia doctor --fix  to back up and remove corrupted entries",
         "details": {"artifact_ids": artifact_ids},
     }
 
@@ -1378,6 +1410,71 @@ def _check_index_staleness(palaia_root: Path | None) -> dict[str, Any]:
     }
 
 
+def _check_stale_unassigned_tasks(palaia_root: Path | None) -> dict[str, Any]:
+    """Check for auto-captured tasks without assignee/due_date older than 7 days."""
+    if palaia_root is None:
+        return {
+            "name": "stale_unassigned_tasks",
+            "label": "Stale unassigned tasks",
+            "status": "ok",
+            "message": "Not initialized",
+        }
+
+    from datetime import datetime, timezone
+
+    from palaia.entry import parse_entry
+
+    now = datetime.now(tz=timezone.utc)
+    stale_ids: list[str] = []
+
+    for tier in ("hot", "warm"):
+        tier_dir = palaia_root / tier
+        if not tier_dir.exists():
+            continue
+        for p in tier_dir.glob("*.md"):
+            try:
+                text = p.read_text(encoding="utf-8")
+                meta, _body = parse_entry(text)
+                if meta.get("type") != "task":
+                    continue
+                if meta.get("assignee") or meta.get("due_date"):
+                    continue
+                raw_tags = meta.get("tags", [])
+                tags = raw_tags if isinstance(raw_tags, list) else str(raw_tags).split(",")
+                tags = [t.strip() for t in tags]
+                if "auto-capture" not in tags:
+                    continue
+                created = meta.get("created", "")
+                if not created:
+                    continue
+                created_dt = datetime.fromisoformat(created)
+                if (now - created_dt).days >= 7:
+                    stale_ids.append(p.stem)
+            except Exception:
+                continue
+
+    if not stale_ids:
+        return {
+            "name": "stale_unassigned_tasks",
+            "label": "Stale unassigned tasks",
+            "status": "ok",
+            "message": "No stale unassigned tasks",
+        }
+
+    return {
+        "name": "stale_unassigned_tasks",
+        "label": "Stale unassigned tasks",
+        "status": "warn",
+        "message": (
+            f"{len(stale_ids)} auto-captured task(s) without assignee or due_date, "
+            f"older than 7 days. Consider reclassifying as memory."
+        ),
+        "fix": "Review with: palaia list --type task --all\n"
+        "  Reclassify with: palaia edit <id> --type memory",
+        "details": {"stale_task_ids": stale_ids},
+    }
+
+
 def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
     """Run all doctor checks. Returns list of check results."""
     results = [
@@ -1403,6 +1500,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_heartbeat_legacy(),
         _check_wal_health(palaia_root),
         _check_loop_artifacts(palaia_root),
+        _check_stale_unassigned_tasks(palaia_root),
     ]
     return results
 
@@ -1625,35 +1723,66 @@ def apply_fixes(palaia_root: Path | None, results: list[dict[str, Any]]) -> list
         except Exception as e:
             actions.append(f"Warmup failed: {e}")
 
-    # Fix: feedback-loop artifacts
+    # Fix: feedback-loop artifacts (#113) — backup + remove corrupted entries
     for r in results:
         if r.get("name") == "loop_artifacts" and r.get("fixable") and r.get("status") == "warn":
             artifact_ids = r.get("details", {}).get("artifact_ids", [])
             if not artifact_ids:
                 continue
 
-            from palaia.entry import parse_entry, serialize_entry
+            from datetime import datetime, timezone
 
-            cleaned = 0
-            for entry_id in artifact_ids:
-                # Find the entry file across tiers
-                for tier in ("hot", "warm", "cold"):
-                    entry_path = palaia_root / tier / f"{entry_id}.md"
-                    if entry_path.exists():
-                        try:
-                            text = entry_path.read_text(encoding="utf-8")
-                            meta, body = parse_entry(text)
-                            meta["status"] = "done"
-                            if meta.get("type") != "memory":
-                                meta["type"] = "memory"
-                            entry_path.write_text(serialize_entry(meta, body), encoding="utf-8")
-                            cleaned += 1
-                        except Exception as e:
-                            actions.append(f"Failed to clean {entry_id}: {e}")
-                        break
+            from palaia.entry import parse_entry
 
-            if cleaned > 0:
-                actions.append(f"Cleaned {cleaned} feedback-loop artifact(s)")
+            # Step 1: Back up corrupted entries to JSONL
+            iso_date = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
+            backup_path = palaia_root / f"gc-backup-{iso_date}.jsonl"
+
+            backed_up = 0
+            removed = 0
+
+            try:
+                with open(backup_path, "w", encoding="utf-8") as bf:
+                    for entry_id in artifact_ids:
+                        for tier in ("hot", "warm", "cold"):
+                            entry_path = palaia_root / tier / f"{entry_id}.md"
+                            if entry_path.exists():
+                                try:
+                                    text = entry_path.read_text(encoding="utf-8")
+                                    meta, body = parse_entry(text)
+                                    backup_record = {
+                                        "id": entry_id,
+                                        "tier": tier,
+                                        "meta": meta,
+                                        "body": body,
+                                    }
+                                    bf.write(json.dumps(backup_record, ensure_ascii=False) + "\n")
+                                    backed_up += 1
+                                except Exception as e:
+                                    actions.append(f"Failed to back up {entry_id}: {e}")
+                                break
+            except Exception as e:
+                actions.append(f"Failed to create backup file: {e}")
+                continue  # Don't remove if backup failed
+
+            # Step 2: Remove corrupted entries from store (only if backup succeeded)
+            if backed_up > 0:
+                for entry_id in artifact_ids:
+                    for tier in ("hot", "warm", "cold"):
+                        entry_path = palaia_root / tier / f"{entry_id}.md"
+                        if entry_path.exists():
+                            try:
+                                entry_path.unlink()
+                                removed += 1
+                            except Exception as e:
+                                actions.append(f"Failed to remove {entry_id}: {e}")
+                            break
+
+            if removed > 0:
+                actions.append(
+                    f"Removed {removed} feedback-loop artifact(s). "
+                    f"Backup: {backup_path}"
+                )
 
     return actions
 
