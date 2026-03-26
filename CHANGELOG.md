@@ -3,9 +3,17 @@
 ## v2.2.0 — 2026-03-26
 
 ### Breaking Changes
+- **SQLite is now the default storage backend** — New installations use SQLite instead of flat JSON files. Existing flat-file stores are automatically migrated on first use. Old files renamed to `.migrated`.
+- **`palaia export`/`palaia import` renamed to `palaia sync export`/`palaia sync import`** — Old aliases still work but are deprecated.
 - **OpenClaw plugin**: Requires OpenClaw >=2026.3.22 (new plugin-sdk imports)
 - **Plugin entry point**: Migrated from plain function export to `definePluginEntry` pattern
-- **Python**: Minimum version remains 3.9, but v2.2 adds optional `sqlite-vec` and `psycopg` dependencies
+- **Python**: Minimum version remains 3.9, but v2.2 adds optional `sqlite-vec`, `psycopg`, and `scikit-learn` (for curate) dependencies
+- **Default install no longer requires `[fastembed]` extra** — `pip install palaia` works out of the box with SQLite FTS5 + BM25. Fastembed is optional for semantic search.
+
+### New Features
+- **Injection priorities** (`palaia priorities`) — Per-agent/project control over which memories are injected into context. Block entries, set per-agent `recallMinScore`, adjust `typeWeight` per agent. Config in `.palaia/priorities.json` with layered overrides: global -> per-agent -> per-project.
+- **Knowledge curation** (`palaia curate analyze/apply`) — Cluster entries thematically, detect duplicates, recommend KEEP/MERGE/DROP per cluster. Produces Markdown report for user review. `apply` generates clean `.palaia-pkg.json` for import on new instances. Requires optional `scikit-learn` (`pip install palaia[curate]`).
+- **New nudges** — Contextual guidance for curation (when store grows large), priorities (when multi-agent detected), and backend migration (when flat files detected).
 
 ### Security (Phase 0)
 - **SSRF prevention in URL ingestion** — `_read_url()` now validates URLs against private IPs, loopback, link-local, and cloud metadata endpoints. Only HTTP(S) schemes allowed. Configurable via `allow_private_urls` setting.
@@ -39,6 +47,12 @@
 ### Test Infrastructure (Phase 5)
 - **Shared conftest.py** — `palaia_root` and `store` fixtures in `tests/conftest.py`, removing ~40 duplicates.
 - **Coverage configuration** — `[tool.coverage]` section in pyproject.toml.
+
+### Migration from v2.1
+- Run `pip install --upgrade palaia && palaia doctor --fix` — handles everything automatically.
+- Flat-file stores (`metadata.json`, `embeddings.json`) are migrated to SQLite on first use. Old files renamed to `.migrated`.
+- `palaia export`/`palaia import` still work as aliases for `palaia sync export`/`palaia sync import`.
+- No data loss. No manual steps required.
 
 ---
 

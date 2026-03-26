@@ -120,6 +120,44 @@ def write_entry(
                             tracker.record_nudge("write_without_project", agent_for_nudge)
         except Exception:
             pass
+
+        # scope_hint: nudge in multi-agent setups when scope defaults
+        if scope:
+            # User explicitly used --scope → graduate
+            tracker.record_success("scope_hint", agent_for_nudge)
+        else:
+            try:
+                store_entries = store.all_entries(include_cold=False)
+                agents_seen = set()
+                for m, _, _ in store_entries:
+                    a = m.get("agent")
+                    if a:
+                        agents_seen.add(a)
+                    if len(agents_seen) > 1:
+                        break
+                if len(agents_seen) > 1:
+                    tracker.record_failure("scope_hint", agent_for_nudge)
+                    if tracker.should_nudge("scope_hint", agent_for_nudge):
+                        msg = tracker.get_nudge_message("scope_hint")
+                        if msg:
+                            nudge_messages.append(msg)
+                            tracker.record_nudge("scope_hint", agent_for_nudge)
+            except Exception:
+                pass
+
+        # migration_success: one-shot nudge after flat-file → SQLite migration
+        try:
+            flag_file = root / ".migration_success"
+            if flag_file.exists():
+                if tracker.should_nudge("migration_success", agent_for_nudge):
+                    msg = tracker.get_nudge_message("migration_success")
+                    if msg:
+                        nudge_messages.append(msg)
+                        tracker.record_nudge("migration_success", agent_for_nudge)
+                # Remove flag after first check (regardless of nudge shown)
+                flag_file.unlink(missing_ok=True)
+        except Exception:
+            pass
     except Exception:
         pass  # Never block normal operation with nudge errors
 

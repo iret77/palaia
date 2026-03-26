@@ -89,6 +89,14 @@ class Store:
 
         if needs_migration(self.root):
             migrate_to_backend(self.root, self._backend)
+            # Flag migration success for one-shot nudge
+            try:
+                config = load_config(self.root)
+                if not config.get("migration_acknowledged"):
+                    flag_file = self.root / ".migration_success"
+                    flag_file.write_text("1")
+            except Exception:
+                pass
 
     def _resolve_names(self, agent: str | None) -> set[str] | None:
         """Resolve agent to all matching names via aliases."""

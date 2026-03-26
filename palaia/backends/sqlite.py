@@ -100,6 +100,7 @@ class SQLiteBackend:
         )
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA busy_timeout=10000")
         self.conn.execute("PRAGMA synchronous=NORMAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self._has_vec = self._load_sqlite_vec()

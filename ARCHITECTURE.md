@@ -98,6 +98,8 @@ palaia/
 ├── packages.py          # Knowledge package export/import
 ├── sync.py              # Entry import/export
 ├── migrate.py           # Format migration from external sources
+├── priorities.py        # Injection priority management (per-agent/project)
+├── curate.py            # Knowledge curation (clustering, dedup, KEEP/MERGE/DROP)
 ├── ui.py                # Terminal formatting utilities
 │
 ├── # ── Diagnostics ──
@@ -108,6 +110,21 @@ palaia/
 │   └── detection.py     # Legacy system detection
 │
 └── SKILL.md             # Agent skill documentation
+
+packages/openclaw-plugin/
+├── index.ts             # Plugin entry point (definePluginEntry)
+├── src/
+│   ├── context-engine.ts  # ContextEngine adapter (7 lifecycle hooks)
+│   ├── hooks/
+│   │   ├── index.ts       # Hook registration
+│   │   ├── recall.ts      # Memory injection (before_prompt_build)
+│   │   ├── capture.ts     # Auto-capture (agent_end)
+│   │   ├── state.ts       # Session state management
+│   │   └── reactions.ts   # Emoji reactions (Slack)
+│   ├── runner.ts          # CLI subprocess runner + embed server manager
+│   └── types.ts           # Local type definitions (OpenClawPluginApi)
+├── skill/SKILL.md         # Bundled agent skill documentation
+└── openclaw.plugin.json   # Plugin manifest
 ```
 
 ## Storage Backend Architecture
@@ -116,8 +133,8 @@ palaia/
 Detection order (provider chain):
 1. Config: database_url → PostgreSQL + pgvector
 2. Env: PALAIA_DATABASE_URL → PostgreSQL + pgvector
-3. Config: database_backend=sqlite → SQLite explicitly
-4. Default → Legacy JSON files (backward compatible)
+3. Default → SQLite (zero-config, single file, WAL mode)
+4. Legacy fallback → JSON files (backward compatible, auto-migrated to SQLite)
 
 StorageBackend Protocol
 ├── SQLiteBackend        — Zero-config, embedded, single file

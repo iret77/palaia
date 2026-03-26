@@ -76,6 +76,28 @@ NUDGE_PATTERNS: dict[str, dict[str, str]] = {
         ),
         "cooldown": 86400,  # 24 hours
     },
+    "migration_success": {
+        "message": (
+            "[palaia] Storage upgraded to SQLite. Your entries are now faster "
+            "to search and more reliable. No action needed."
+        ),
+        "cooldown": float("inf"),  # one-shot
+        "one_shot": True,
+    },
+    "scope_hint": {
+        "message": (
+            "[palaia] Tip: Use --scope team for knowledge all agents should share, "
+            "or --scope private for agent-specific notes."
+        ),
+        "cooldown": 259200,  # 3 days
+    },
+    "embed_provider_hint": {
+        "message": (
+            "[palaia] Semantic search disabled — using keyword matching only. "
+            "Run 'palaia detect' to auto-configure embeddings for better recall."
+        ),
+        "cooldown": 604800,  # 7 days
+    },
 }
 
 # Graduation threshold: consecutive successes required
@@ -145,11 +167,17 @@ class NudgeTracker:
 
         Returns True if:
         - Pattern is not graduated
+        - For one-shot nudges: has never been shown before
         - Cooldown period has elapsed (max 1 nudge per pattern per hour)
         """
         state = self._get_pattern_state(pattern_id, agent)
 
         if state["graduated"]:
+            return False
+
+        # One-shot nudges: only fire once ever
+        pattern = NUDGE_PATTERNS.get(pattern_id, {})
+        if pattern.get("one_shot") and state.get("nudge_count", 0) > 0:
             return False
 
         # Frequency limit
@@ -163,7 +191,6 @@ class NudgeTracker:
                     last_time = last_time.replace(tzinfo=timezone.utc)
                 now = datetime.now(timezone.utc)
                 elapsed = (now - last_time).total_seconds()
-                pattern = NUDGE_PATTERNS.get(pattern_id, {})
                 cooldown = pattern.get("cooldown", NUDGE_COOLDOWN_SECONDS)
                 if elapsed < cooldown:
                     return False
