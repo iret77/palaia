@@ -131,12 +131,15 @@ class SQLiteBackend:
     def _ensure_schema(self) -> None:
         """Create or migrate database schema."""
         self.conn.executescript(_SCHEMA_SQL)
-        # Use INSERT OR IGNORE to handle concurrent connections safely.
-        self.conn.execute(
-            "INSERT OR IGNORE INTO schema_version (version) VALUES (?)",
-            (_SCHEMA_VERSION,),
-        )
-        self.conn.commit()
+        try:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO schema_version (version) VALUES (?)",
+                (_SCHEMA_VERSION,),
+            )
+            self.conn.commit()
+        except Exception:
+            # Concurrent connection may have already inserted — safe to ignore
+            pass
         row = self.conn.execute(
             "SELECT version FROM schema_version LIMIT 1"
         ).fetchone()
