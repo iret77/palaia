@@ -125,6 +125,8 @@ GATED_COMMANDS = frozenset(
         "migrate",
         "embed-server",
         "priorities",
+        "curate",
+        "sync",
     }
 )
 
@@ -1341,6 +1343,9 @@ def cmd_doctor(args):
 
 def cmd_export(args):
     """Export public entries."""
+    # Deprecation warning (#sync rename)
+    if getattr(args, "command", None) == "export":
+        print("Warning: 'palaia export' is deprecated. Use 'palaia sync export' instead.", file=sys.stderr)
     # Scope enforcement: resolve agent from config (#39)
     agent = _resolve_agent(args)
     result = export_entries(
@@ -1367,6 +1372,9 @@ def cmd_export(args):
 
 def cmd_import(args):
     """Import entries from export."""
+    # Deprecation warning (#sync rename)
+    if getattr(args, "command", None) == "import":
+        print("Warning: 'palaia import' is deprecated. Use 'palaia sync import' instead.", file=sys.stderr)
     result = import_entries(
         source=args.source,
         dry_run=args.dry_run,
@@ -1389,6 +1397,64 @@ def cmd_import(args):
         print(f"  Skipped (scope): {result['skipped_scope']}")
     print(f"  Source workspace: {result['source_workspace']}")
     return 0
+
+
+def cmd_curate(args):
+    """Knowledge curation for instance migration."""
+    root = get_root()
+    action = getattr(args, "curate_action", None)
+
+    if action == "analyze":
+        from palaia.services.curate import analyze_svc
+
+        result = analyze_svc(
+            root,
+            project=getattr(args, "project", None),
+            agent=getattr(args, "agent", None),
+            output=getattr(args, "output", None),
+        )
+        if _json_out(result, args):
+            return 0
+        print(f"Curation report generated: {result['report_path']}")
+        print(f"  Entries: {result['entry_count']}")
+        print(f"  Clusters: {result['cluster_count']}")
+        print(f"  Unclustered: {result['unclustered']}")
+        print("\nEdit the report, then apply with: palaia curate apply <report.md>")
+        return 0
+
+    elif action == "apply":
+        from palaia.services.curate import apply_svc
+
+        result = apply_svc(
+            root,
+            report_path=args.report,
+            output=getattr(args, "output", None),
+        )
+        if _json_out(result, args):
+            return 0
+        print(f"Curation applied: {result['output_path']}")
+        print(f"  Kept: {result['kept']}")
+        print(f"  Merged: {result['merged']}")
+        print(f"  Dropped: {result['dropped']}")
+        print(f"  Total output entries: {result['total_output']}")
+        return 0
+
+    else:
+        print("Usage: palaia curate {analyze|apply}", file=sys.stderr)
+        return 1
+
+
+def cmd_sync(args):
+    """Sync (export/import) entries — replaces deprecated export/import commands."""
+    action = getattr(args, "sync_action", None)
+
+    if action == "export":
+        return cmd_export(args)
+    elif action == "import":
+        return cmd_import(args)
+    else:
+        print("Usage: palaia sync {export|import}", file=sys.stderr)
+        return 1
 
 
 def cmd_migrate(args):
@@ -2861,6 +2927,38 @@ def main():
     p_prio_reset.add_argument("--project", default=None, help="Reset only this project's overrides")
     p_prio_reset.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # curate
+    p_curate = sub.add_parser("curate", help="Knowledge curation for instance migration")
+    curate_sub = p_curate.add_subparsers(dest="curate_action")
+
+    p_curate_analyze = curate_sub.add_parser("analyze", help="Analyze entries and generate curation report")
+    p_curate_analyze.add_argument("--project", default=None, help="Filter by project")
+    p_curate_analyze.add_argument("--agent", default=None, help="Filter by agent")
+    p_curate_analyze.add_argument("--output", default=None, help="Output report path")
+    p_curate_analyze.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_curate_apply = curate_sub.add_parser("apply", help="Apply edited curation report")
+    p_curate_apply.add_argument("report", help="Path to edited curation report")
+    p_curate_apply.add_argument("--output", default=None, help="Output package path")
+    p_curate_apply.add_argument("--json", action="store_true", help="Output as JSON")
+
+    # sync (replaces export/import)
+    p_sync = sub.add_parser("sync", help="Sync entries (export/import)")
+    sync_sub = p_sync.add_subparsers(dest="sync_action")
+
+    p_sync_export = sync_sub.add_parser("export", help="Export public entries")
+    p_sync_export.add_argument("--remote", default=None, help="Git remote URL")
+    p_sync_export.add_argument("--branch", default=None, help="Branch name")
+    p_sync_export.add_argument("--output", default=None, help="Output directory")
+    p_sync_export.add_argument("--project", default=None, help="Export only project entries")
+    p_sync_export.add_argument("--agent", default=None, help="Agent name (for scope filtering)")
+    p_sync_export.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_sync_import = sync_sub.add_parser("import", help="Import entries from export")
+    p_sync_import.add_argument("source", help="Path or git URL to import from")
+    p_sync_import.add_argument("--dry-run", action="store_true", help="Preview without writing")
+    p_sync_import.add_argument("--json", action="store_true", help="Output as JSON")
+
     args = parser.parse_args()
 
     _logging.basicConfig(
@@ -2905,6 +3003,8 @@ def main():
         "embed-server": cmd_embed_server,
         "skill": cmd_skill,
         "priorities": cmd_priorities,
+        "curate": cmd_curate,
+        "sync": cmd_sync,
     }
     try:
         return commands[args.command](args)
