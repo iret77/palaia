@@ -6,10 +6,13 @@ Cache-only infrastructure. Embedding computation is handled by embeddings.py.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class EmbeddingCache:
@@ -20,9 +23,11 @@ class EmbeddingCache:
     Thread-safe: all public methods are protected by a threading.Lock.
     """
 
-    def __init__(self, palaia_root: Path):
+    def __init__(self, palaia_root: Path, backend=None):
+        self._backend = backend
         self.index_dir = palaia_root / "index"
-        self.index_dir.mkdir(parents=True, exist_ok=True)
+        if not backend:
+            self.index_dir.mkdir(parents=True, exist_ok=True)
         self.cache_path = self.index_dir / "embeddings.json"
         self._cache: dict[str, dict[str, Any]] | None = None
         self._lock = threading.Lock()
@@ -59,6 +64,9 @@ class EmbeddingCache:
         Returns:
             The embedding vector as a list of floats, or None if not cached.
         """
+        if self._backend:
+            result = self._backend.get_embedding(entry_id)
+            return result[0] if result else None  # Return just the vector
         with self._lock:
             cache = self._load()
             entry = cache.get(entry_id)
@@ -74,6 +82,9 @@ class EmbeddingCache:
             vector: The embedding vector.
             model: Name of the model that generated the embedding.
         """
+        if self._backend:
+            self._backend.set_embedding(entry_id, vector, model, len(vector))
+            return
         with self._lock:
             cache = self._load()
             cache[entry_id] = {
@@ -89,6 +100,9 @@ class EmbeddingCache:
         Returns:
             True if an entry was removed, False if not found.
         """
+        if self._backend:
+            self._backend.invalidate_embedding(entry_id)
+            return True
         with self._lock:
             cache = self._load()
             if entry_id in cache:
@@ -96,6 +110,15 @@ class EmbeddingCache:
                 self._save()
                 return True
             return False
+
+    def reload(self) -> None:
+        """Force reload of cache from disk on next access.
+
+        Used by embed_server stale detection to pick up changes
+        made by other processes.
+        """
+        with self._lock:
+            self._cache = None
 
     def cleanup(self, valid_ids: set[str]) -> int:
         """Remove cache entries for IDs not in the valid set.
@@ -105,6 +128,8 @@ class EmbeddingCache:
         Returns:
             Number of stale cache entries removed.
         """
+        if self._backend:
+            return self._backend.cleanup_embeddings(valid_ids)
         with self._lock:
             cache = self._load()
             stale = [eid for eid in cache if eid not in valid_ids]
@@ -116,6 +141,16 @@ class EmbeddingCache:
 
     def stats(self) -> dict:
         """Return cache statistics."""
+        if self._backend:
+            # Use backend health_check or query for stats
+            try:
+                health = self._backend.health_check()
+                return {
+                    "cached_entries": health.get("embeddings", 0),
+                    "models": [],
+                }
+            except Exception:
+                return {"cached_entries": 0, "models": []}
         with self._lock:
             cache = self._load()
             models = set()

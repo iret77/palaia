@@ -18,11 +18,14 @@ Requests:
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import threading
 import time
 import traceback
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from palaia.config import get_root
 from palaia.embeddings import BM25Provider
@@ -81,7 +84,8 @@ def _warmup_missing(store: Store, engine: SearchEngine) -> dict:
             for eid, vec in zip(ids, vectors):
                 store.embedding_cache.set_cached(eid, vec, model=model_name)
                 new_count += 1
-        except Exception:
+        except Exception as e:
+            logger.warning("Batch embedding failed at offset %d: %s", i, e)
             break
 
     return {"indexed": cached_count + new_count, "new": new_count, "cached": cached_count}
@@ -118,9 +122,9 @@ class EmbedServer:
                         # Force BM25 index rebuild on next query by resetting the engine
                         self.engine = SearchEngine(self.store)
                         # Reload embedding cache from disk
-                        self.store.embedding_cache._cache = None
-                except Exception:
-                    pass
+                        self.store.embedding_cache.reload()
+                except Exception as e:
+                    logger.debug("Stale detection check failed: %s", e)
 
         self._stale_check_thread = threading.Thread(target=_check_loop, daemon=True)
         self._stale_check_thread.start()
@@ -219,8 +223,8 @@ class EmbedServer:
         def _bg_warmup():
             try:
                 _warmup_missing(self.store, self.engine)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Background warmup failed: %s", e)
             finally:
                 self._warming_up = False
 

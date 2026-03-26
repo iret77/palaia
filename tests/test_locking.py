@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from palaia.locking import DEFAULT_TTL_SECONDS, ProjectLockError, ProjectLockManager
+from palaia.project_lock import DEFAULT_TTL_SECONDS, ProjectLockError, ProjectLockManager
 
 
 @pytest.fixture

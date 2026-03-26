@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import tempfile
@@ -14,6 +15,8 @@ from palaia.config import get_root
 from palaia.entry import content_hash, parse_entry, serialize_entry
 from palaia.scope import is_exportable
 from palaia.store import Store
+
+logger = logging.getLogger(__name__)
 
 MANIFEST_NAME = "palaia-export.json"
 

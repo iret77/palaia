@@ -18,12 +18,15 @@ from __future__ import annotations
 
 import importlib.metadata as _importlib_metadata
 import importlib.util
+import logging
 import math
 import os
 import re
 import warnings
 from collections import Counter
 from typing import Protocol, runtime_checkable
+
+logger = logging.getLogger(__name__)
 
 
 @runtime_checkable
@@ -260,62 +263,37 @@ class GeminiProvider:
 
 
 class BM25Provider:
-    """Keyword-based search provider. Always available, no vectors."""
+    """Keyword-based search provider. Always available, no vectors.
+
+    Delegates indexing and search to the shared :class:`palaia.bm25.BM25`
+    implementation and adds stub ``embed`` / ``embed_query`` methods so it
+    satisfies the :class:`EmbeddingProvider` protocol shape.
+    """
 
     name = "bm25"
 
     def __init__(self, k1: float = 1.5, b: float = 0.75):
-        self.k1 = k1
-        self.b = b
-        self.corpus: list[tuple[str, list[str]]] = []
-        self.doc_freqs: Counter = Counter()
-        self.doc_lens: list[int] = []
-        self.avg_dl: float = 0.0
-        self.n_docs: int = 0
+        from palaia.bm25 import BM25 as _BM25
 
+        self._engine = _BM25(k1=k1, b=b)
+
+    # Delegate index/search to the shared engine
     def index(self, documents: list[tuple[str, str]]) -> None:
         """Index a list of (doc_id, text) tuples."""
-        self.corpus = []
-        self.doc_freqs = Counter()
-        self.doc_lens = []
-
-        for doc_id, text in documents:
-            tokens = _tokenize(text)
-            self.corpus.append((doc_id, tokens))
-            self.doc_lens.append(len(tokens))
-            seen = set(tokens)
-            for t in seen:
-                self.doc_freqs[t] += 1
-
-        self.n_docs = len(self.corpus)
-        self.avg_dl = sum(self.doc_lens) / self.n_docs if self.n_docs else 1.0
+        self._engine.index(documents)
 
     def search(self, query: str, top_k: int = 10) -> list[tuple[str, float]]:
         """Search the index. Returns list of (doc_id, score) sorted desc."""
-        query_tokens = _tokenize(query)
-        if not query_tokens or not self.corpus:
-            return []
+        return self._engine.search(query, top_k=top_k)
 
-        scores = []
-        for idx, (doc_id, doc_tokens) in enumerate(self.corpus):
-            score = 0.0
-            dl = self.doc_lens[idx]
-            tf_map = Counter(doc_tokens)
+    # Expose internal state for any code that reads these attributes directly
+    @property
+    def corpus(self):
+        return self._engine.corpus
 
-            for qt in query_tokens:
-                if qt not in tf_map:
-                    continue
-                tf = tf_map[qt]
-                df = self.doc_freqs.get(qt, 0)
-                idf = math.log((self.n_docs - df + 0.5) / (df + 0.5) + 1.0)
-                tf_norm = (tf * (self.k1 + 1)) / (tf + self.k1 * (1 - self.b + self.b * dl / self.avg_dl))
-                score += idf * tf_norm
-
-            if score > 0:
-                scores.append((doc_id, score))
-
-        scores.sort(key=lambda x: x[1], reverse=True)
-        return scores[:top_k]
+    @property
+    def n_docs(self):
+        return self._engine.n_docs
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Not applicable for BM25. Raises NotImplementedError."""

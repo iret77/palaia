@@ -7,57 +7,21 @@ no tiering, auto-expire via TTL, read/unread state, and GC cleanup.
 
 from __future__ import annotations
 
+import logging
 import os
-import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
+from palaia.frontmatter import FRONTMATTER_RE, parse_yaml_simple, to_yaml_simple
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TTL_HOURS = 72
 
-
-def _parse_yaml_simple(text: str) -> dict:
-    """Minimal YAML-like parser for memo frontmatter."""
-    result = {}
-    for line in text.strip().split("\n"):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if ":" not in line:
-            continue
-        key, _, value = line.partition(":")
-        key = key.strip()
-        value = value.strip()
-        if value == "true":
-            result[key] = True
-        elif value == "false":
-            result[key] = False
-        elif value == "null":
-            result[key] = None
-        elif value.isdigit():
-            result[key] = int(value)
-        elif (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
-            result[key] = value[1:-1]
-        else:
-            result[key] = value
-    return result
-
-
-def _to_yaml_simple(data: dict) -> str:
-    """Minimal dict -> YAML-like frontmatter string."""
-    lines = []
-    for k, v in data.items():
-        if v is None:
-            lines.append(f"{k}: null")
-        elif isinstance(v, bool):
-            lines.append(f"{k}: {'true' if v else 'false'}")
-        elif isinstance(v, int):
-            lines.append(f"{k}: {v}")
-        else:
-            lines.append(f"{k}: {v}")
-    return "\n".join(lines)
+# Backward-compat aliases
+_parse_yaml_simple = parse_yaml_simple
+_to_yaml_simple = to_yaml_simple
 
 
 def _parse_memo(text: str) -> tuple[dict, str]:

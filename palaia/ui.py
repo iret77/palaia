@@ -11,8 +11,11 @@ Box-drawing characters used:
 
 from __future__ import annotations
 
+import logging
 import shutil
 from typing import Sequence
+
+logger = logging.getLogger(__name__)
 
 from palaia import __version__
 

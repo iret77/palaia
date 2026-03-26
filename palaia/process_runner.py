@@ -7,9 +7,12 @@ tracks execution state, and persists progress.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Step parsing patterns
 _NUMBERED_RE = re.compile(r"^\s*(\d+)[.)]\s+(.+)$")

@@ -20,7 +20,9 @@ def palaia_root(tmp_path):
     root.mkdir()
     for sub in ("hot", "warm", "cold", "wal", "index"):
         (root / sub).mkdir()
-    save_config(root, dict(DEFAULT_CONFIG))
+    config = dict(DEFAULT_CONFIG)
+    config["allow_private_urls"] = True
+    save_config(root, config)
     return root
 
 

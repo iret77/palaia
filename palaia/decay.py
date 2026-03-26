@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import math
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 
 def decay_score(

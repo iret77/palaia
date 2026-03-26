@@ -48,8 +48,9 @@ class MetadataIndex:
     Cache lives at .palaia/index/metadata.json.
     """
 
-    def __init__(self, palaia_root: Path):
+    def __init__(self, palaia_root: Path, backend=None):
         self.palaia_root = palaia_root
+        self._backend = backend
         self.index_dir = palaia_root / "index"
         self.index_path = self.index_dir / "metadata.json"
         self._cache: dict[str, dict[str, Any]] | None = None
@@ -117,11 +118,16 @@ class MetadataIndex:
 
     def get(self, entry_id: str) -> dict[str, Any] | None:
         """Get cached metadata for an entry."""
+        if self._backend:
+            return self._backend.get_entry(entry_id)
         cache = self._load()
         return cache.get(entry_id)
 
     def update(self, entry_id: str, meta: dict, tier: str) -> None:
         """Update or insert metadata for an entry."""
+        if self._backend:
+            self._backend.upsert_entry(entry_id, meta, tier)
+            return
         with self._lock:
             cache = self._load()
             cache[entry_id] = self._extract_indexed(meta, tier)
@@ -130,6 +136,9 @@ class MetadataIndex:
 
     def remove(self, entry_id: str) -> bool:
         """Remove an entry from the index. Returns True if it existed."""
+        if self._backend:
+            self._backend.remove_entry(entry_id)
+            return True
         with self._lock:
             cache = self._load()
             if entry_id in cache:
@@ -141,6 +150,8 @@ class MetadataIndex:
 
     def find_by_hash(self, content_hash: str) -> str | None:
         """Find entry ID by content hash (O(n) over index, not disk)."""
+        if self._backend:
+            return self._backend.find_by_hash(content_hash)
         cache = self._load()
         for entry_id, meta in cache.items():
             if meta.get("content_hash") == content_hash:
@@ -152,6 +163,14 @@ class MetadataIndex:
 
         This is metadata only — no body content.
         """
+        if self._backend:
+            tiers_to_query = ["hot", "warm"] + (["cold"] if include_cold else [])
+            results = []
+            for tier in tiers_to_query:
+                rows = self._backend.query_entries(tier=tier)
+                for meta in rows:
+                    results.append((meta, tier))
+            return results
         cache = self._load()
         tiers = {"hot", "warm"} | ({"cold"} if include_cold else set())
         results = []
@@ -163,6 +182,8 @@ class MetadataIndex:
 
     def is_populated(self) -> bool:
         """Check if the index has any entries."""
+        if self._backend:
+            return self._backend.entry_count() > 0
         cache = self._load()
         return len(cache) > 0
 
@@ -175,6 +196,23 @@ class MetadataIndex:
         Returns:
             Number of entries indexed.
         """
+        if self._backend:
+            # When using a backend, scan disk and upsert into the backend
+            count = 0
+            for tier in TIERS:
+                tier_dir = self.palaia_root / tier
+                if not tier_dir.exists():
+                    continue
+                for p in sorted(tier_dir.glob("*.md")):
+                    try:
+                        text = p.read_text(encoding="utf-8")
+                        meta, _body = parse_entry_fn(text)
+                        entry_id = meta.get("id", p.stem)
+                        self._backend.upsert_entry(entry_id, meta, tier)
+                        count += 1
+                    except (OSError, UnicodeDecodeError):
+                        continue
+            return count
         self._cache = {}
         count = 0
         for tier in TIERS:
@@ -196,6 +234,8 @@ class MetadataIndex:
 
     def cleanup(self, valid_ids: set[str]) -> int:
         """Remove entries not in the valid set. Returns count removed."""
+        if self._backend:
+            return self._backend.cleanup_entries(valid_ids)
         cache = self._load()
         stale = [eid for eid in cache if eid not in valid_ids]
         for eid in stale:
@@ -207,6 +247,17 @@ class MetadataIndex:
 
     def stats(self) -> dict:
         """Return index statistics."""
+        if self._backend:
+            total = self._backend.entry_count()
+            tiers = {}
+            for tier in TIERS:
+                c = self._backend.entry_count(tier=tier)
+                if c > 0:
+                    tiers[tier] = c
+            return {
+                "indexed_entries": total,
+                "by_tier": tiers,
+            }
         cache = self._load()
         tiers = {}
         for meta in cache.values():

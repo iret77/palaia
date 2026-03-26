@@ -3,71 +3,29 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import uuid
 from datetime import datetime, timezone
 
-FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
+from palaia.enums import EntryStatus, EntryType, Priority
+from palaia.frontmatter import FRONTMATTER_RE, parse_yaml_simple, quote_yaml_value, to_yaml_simple
+
+logger = logging.getLogger(__name__)
+
+# Backward-compat aliases (tests and ingest.py import the underscore-prefixed names)
+_parse_yaml_simple = parse_yaml_simple
+_to_yaml_simple = to_yaml_simple
+_quote_yaml_value = quote_yaml_value
 
 # Entry class types (ADR-012)
-VALID_TYPES = {"memory", "process", "task"}
+VALID_TYPES = {e.value for e in EntryType}
 DEFAULT_TYPE = "memory"
 
 # Task-specific structured fields (ADR-012)
-VALID_STATUSES = {"open", "in-progress", "done", "wontfix"}
-VALID_PRIORITIES = {"critical", "high", "medium", "low"}
-
-
-def _parse_yaml_simple(text: str) -> dict:
-    """Minimal YAML-like parser for frontmatter. No dependency needed.
-
-
-    Handles: key: value, key: [a, b, c], quoted strings.
-    """
-    result = {}
-    for line in text.strip().split("\n"):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if ":" not in line:
-            continue
-        # Only split on the FIRST colon to preserve colons in values (URLs, timestamps, etc.)
-        key, _, value = line.partition(":")
-        key = key.strip()
-        value = value.strip()
-        # List
-        if value.startswith("[") and value.endswith("]"):
-            items = value[1:-1].split(",")
-            result[key] = [i.strip().strip("'\"") for i in items if i.strip()]
-        # Number (int)
-        elif value.isdigit():
-            result[key] = int(value)
-        # Float
-        elif re.match(r"^\d+\.\d+$", value):
-            result[key] = float(value)
-        # Quoted string
-        elif (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
-            result[key] = value[1:-1]
-        else:
-            result[key] = value
-    return result
-
-
-def _to_yaml_simple(data: dict) -> str:
-    """Minimal dict → YAML-like frontmatter string."""
-    lines = []
-    for k, v in data.items():
-        if isinstance(v, list):
-            items = ", ".join(str(i) for i in v)
-            lines.append(f"{k}: [{items}]")
-        elif isinstance(v, float):
-            lines.append(f"{k}: {v}")
-        elif isinstance(v, int):
-            lines.append(f"{k}: {v}")
-        else:
-            lines.append(f"{k}: {v}")
-    return "\n".join(lines)
+VALID_STATUSES = {e.value for e in EntryStatus}
+VALID_PRIORITIES = {e.value for e in Priority}
 
 
 def extract_title_from_content(body: str, max_length: int = 80) -> str | None:
@@ -190,7 +148,27 @@ def create_entry(
             meta["due_date"] = due_date
 
     fm = _to_yaml_simple(meta)
-    return f"---\n{fm}\n---\n\n{body}\n"
+    sanitized_body = _sanitize_body(body)
+    return f"---\n{fm}\n---\n\n{sanitized_body}\n"
+
+
+def _sanitize_body(body: str) -> str:
+    """Prevent body content from being parsed as frontmatter.
+
+    A body starting with '---' on its own line could inject metadata fields
+    if not properly separated from the real frontmatter. We ensure the body
+    cannot contain a pattern that mimics a frontmatter block at its start.
+    """
+    lines = body.split("\n")
+    sanitized = []
+    for line in lines:
+        # Escape lines that consist of only dashes (3+) optionally with whitespace
+        # These could be mistaken for frontmatter delimiters on re-parse
+        if re.match(r"^---+\s*$", line):
+            sanitized.append(f"\\{line}")
+        else:
+            sanitized.append(line)
+    return "\n".join(sanitized)
 
 
 def parse_entry(text: str) -> tuple[dict, str]:
@@ -209,8 +187,8 @@ def update_access(meta: dict) -> dict:
 
     meta["accessed"] = datetime.now(timezone.utc).isoformat()
     meta["access_count"] = meta.get("access_count", 0) + 1
-    days_since(meta.get("created", meta["accessed"]))
-    meta["decay_score"] = decay_score(0, meta["access_count"])
+    d = days_since(meta.get("created", meta["accessed"]))
+    meta["decay_score"] = decay_score(d, meta["access_count"])
     return meta
 
 

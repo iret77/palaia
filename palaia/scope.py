@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 VALID_SCOPES = {"private", "team", "public"}
 SHARED_PREFIX = "shared:"
 

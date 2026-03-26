@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import time as _time
 from datetime import datetime, timezone
@@ -26,6 +27,8 @@ from palaia.metadata_index import MetadataIndex
 from palaia.scope import can_access, normalize_scope
 from palaia.wal import WAL, WALEntry
 
+logger = logging.getLogger(__name__)
+
 TIERS = ("hot", "warm", "cold")
 
 
@@ -35,10 +38,14 @@ class Store:
     def __init__(self, palaia_root: Path):
         self.root = palaia_root
         self.config = load_config(palaia_root)
-        self.wal = WAL(palaia_root)
+
+        # Create storage backend (None = use legacy JSON files)
+        self._backend = self._create_backend()
+
+        self.wal = WAL(palaia_root, backend=self._backend)
         self.lock = PalaiaLock(palaia_root, self.config["lock_timeout_seconds"])
-        self.embedding_cache = EmbeddingCache(palaia_root)
-        self.metadata_index = MetadataIndex(palaia_root)
+        self.embedding_cache = EmbeddingCache(palaia_root, backend=self._backend)
+        self.metadata_index = MetadataIndex(palaia_root, backend=self._backend)
         self._aliases = get_aliases(palaia_root)
         self._access_debounce: dict[str, float] = {}  # entry_id -> last update timestamp
         self._access_debounce_seconds = 60.0  # min seconds between access metadata writes
@@ -46,6 +53,35 @@ class Store:
         # Ensure tier directories
         for tier in TIERS:
             (self.root / tier).mkdir(parents=True, exist_ok=True)
+
+        # Auto-migrate if needed
+        if self._backend:
+            self._auto_migrate()
+
+    def _create_backend(self):
+        """Create backend if configured. Returns None for legacy JSON mode."""
+        db_setting = self.config.get("database_backend", "auto")
+        db_url = self.config.get("database_url") or os.environ.get("PALAIA_DATABASE_URL")
+
+        # Only create backend if explicitly configured or DB URL provided
+        if db_setting == "sqlite":
+            from palaia.backends.sqlite import SQLiteBackend
+
+            return SQLiteBackend(self.root)
+        elif db_url:
+            from palaia.backends import create_backend
+
+            return create_backend(self.root, self.config)
+
+        # Default "auto" without DB URL keeps legacy JSON behavior for backward compat
+        return None
+
+    def _auto_migrate(self):
+        """Auto-migrate flat-file indexes to backend on first use."""
+        from palaia.backends.migrate import migrate_to_backend, needs_migration
+
+        if needs_migration(self.root):
+            migrate_to_backend(self.root, self._backend)
 
     def _resolve_names(self, agent: str | None) -> set[str] | None:
         """Resolve agent to all matching names via aliases."""
@@ -150,8 +186,8 @@ class Store:
         # Fire-and-forget — write must not fail because of embedding errors
         try:
             self._index_single_entry(entry_id, meta, body)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to index entry %s: %s", entry_id, e)
 
         return entry_id
 
@@ -286,8 +322,8 @@ class Store:
             # Recompute embedding for updated content (fire-and-forget)
             try:
                 self._index_single_entry(entry_id, meta, old_body)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to re-index entry %s after edit: %s", entry_id, e)
 
         # Update metadata index (determine tier from path)
         tier = path.parent.name

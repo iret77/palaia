@@ -6,7 +6,10 @@ Heuristic detection via keyword and pattern matching.
 
 from __future__ import annotations
 
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 # Canonical significance tags
 SIGNIFICANCE_TAGS: tuple[str, ...] = (

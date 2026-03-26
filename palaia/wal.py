@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class WALEntry:
@@ -59,16 +62,24 @@ class WALEntry:
 class WAL:
     """Write-Ahead Log manager."""
 
-    def __init__(self, palaia_root: Path):
+    def __init__(self, palaia_root: Path, backend=None):
+        self._backend = backend
         self.wal_dir = palaia_root / "wal"
-        self.wal_dir.mkdir(parents=True, exist_ok=True)
+        if not backend:
+            self.wal_dir.mkdir(parents=True, exist_ok=True)
 
     def _entry_path(self, entry: WALEntry) -> Path:
         ts = entry.timestamp.replace(":", "-").replace("+", "p")
         return self.wal_dir / f"{ts}-{entry.id}.json"
 
-    def log(self, entry: WALEntry) -> Path:
-        """Write a pending WAL entry to disk."""
+    def log(self, entry: WALEntry) -> Path | None:
+        """Write a pending WAL entry to disk (or backend)."""
+        if self._backend:
+            self._backend.log_wal(
+                entry.id, entry.operation, entry.target,
+                entry.payload_hash, entry.payload or "",
+            )
+            return None
         path = self._entry_path(entry)
         tmp = path.with_suffix(".tmp")
         with open(tmp, "w") as f:
@@ -80,6 +91,10 @@ class WAL:
 
     def commit(self, entry: WALEntry) -> None:
         """Mark a WAL entry as committed."""
+        if self._backend:
+            self._backend.commit_wal(entry.id)
+            entry.status = "committed"
+            return
         entry.status = "committed"
         path = self._entry_path(entry)
         # Ensure WAL directory exists (may have been deleted between crash and recovery)
@@ -99,6 +114,9 @@ class WAL:
 
     def get_pending(self) -> list[WALEntry]:
         """Return all pending (uncommitted) WAL entries."""
+        if self._backend:
+            rows = self._backend.get_pending_wal()
+            return [WALEntry.from_dict(r) for r in rows]
         pending = []
         for p in sorted(self.wal_dir.glob("*.json")):
             try:
@@ -112,8 +130,9 @@ class WAL:
 
     def recover(self, store) -> int:
         """Replay pending entries. Returns count of recovered entries."""
-        # Ensure WAL directory exists before replay
-        self.wal_dir.mkdir(parents=True, exist_ok=True)
+        if not self._backend:
+            # Ensure WAL directory exists before replay
+            self.wal_dir.mkdir(parents=True, exist_ok=True)
         pending = self.get_pending()
         recovered = 0
         for entry in pending:
@@ -128,14 +147,20 @@ class WAL:
             else:
                 # Can't recover without payload, mark rolled back
                 entry.status = "rolled_back"
-                path = self._entry_path(entry)
-                if path.exists():
-                    with open(path, "w") as f:
-                        json.dump(entry.to_dict(), f, indent=2)
+                if self._backend:
+                    # Backend WAL: commit marks it as done (no separate rolled_back state)
+                    self._backend.commit_wal(entry.id)
+                else:
+                    path = self._entry_path(entry)
+                    if path.exists():
+                        with open(path, "w") as f:
+                            json.dump(entry.to_dict(), f, indent=2)
         return recovered
 
     def cleanup(self, max_age_days: int = 7) -> int:
         """Remove old committed/rolled_back WAL entries."""
+        if self._backend:
+            return self._backend.cleanup_wal(max_age_days)
         now = datetime.now(timezone.utc)
         removed = 0
         for p in self.wal_dir.glob("*.json"):

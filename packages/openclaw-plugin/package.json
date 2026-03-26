@@ -1,6 +1,6 @@
 {
   "name": "@byte5ai/palaia",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Palaia memory backend for OpenClaw",
   "main": "index.ts",
   "openclaw": {
@@ -29,7 +29,7 @@
     "directory": "packages/openclaw-plugin"
   },
   "peerDependencies": {
-    "openclaw": ">=2025.1.0"
+    "openclaw": ">=2026.3.22"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.32.0"

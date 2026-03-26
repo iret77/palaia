@@ -10,6 +10,7 @@ import { Type } from "@sinclair/typebox";
 import { run, runJson, type RunnerOpts } from "./runner.js";
 import type { PalaiaPluginConfig } from "./config.js";
 import { sanitizeScope, isValidScope } from "./hooks.js";
+import type { OpenClawPluginApi } from "./types.js";
 
 /** Shape returned by `palaia query --json` */
 interface QueryResult {
@@ -62,7 +63,7 @@ function buildRunnerOpts(config: PalaiaPluginConfig): RunnerOpts {
 /**
  * Register all Palaia agent tools on the given plugin API.
  */
-export function registerTools(api: any, config: PalaiaPluginConfig): void {
+export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig): void {
   const opts = buildRunnerOpts(config);
 
   // ── memory_search ──────────────────────────────────────────────

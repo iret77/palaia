@@ -7,11 +7,14 @@ Falls back to a simple mkdir-based lock if neither is available.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import time
 import warnings
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 STALE_LOCK_SECONDS = 60
 
@@ -102,9 +105,9 @@ class PalaiaLock:
 
             # Fast path: PID is dead and lock is at least 5s old
             if age > 5 and lock_pid and not self._is_pid_alive(lock_pid):
-                warnings.warn(
-                    f"Stale lock detected (pid {lock_pid} is dead, age: {age:.0f}s). Overriding stale lock.",
-                    stacklevel=3,
+                logger.warning(
+                    "Stale lock detected (pid %d is dead, age: %.0fs). Overriding stale lock.",
+                    lock_pid, age,
                 )
                 try:
                     self.lock_path.unlink(missing_ok=True)
@@ -113,9 +116,9 @@ class PalaiaLock:
                 return True
 
             if age > STALE_LOCK_SECONDS:
-                warnings.warn(
-                    f"Stale lock detected (age: {age:.0f}s, pid: {lock_pid}). Overriding stale lock.",
-                    stacklevel=3,
+                logger.warning(
+                    "Stale lock detected (age: %.0fs, pid: %s). Overriding stale lock.",
+                    age, lock_pid,
                 )
                 try:
                     self.lock_path.unlink(missing_ok=True)

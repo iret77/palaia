@@ -3162,6 +3162,7 @@ def main():
     )
     parser.add_argument("--version", action="version", version=f"palaia {__version__}")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
 
     sub = parser.add_subparsers(dest="command")
 
@@ -3544,6 +3545,12 @@ def main():
     p_migrate.add_argument("--json", action="store_true", help="Output as JSON")
 
     args = parser.parse_args()
+
+    _logging.basicConfig(
+        level=_logging.DEBUG if args.verbose else _logging.WARNING,
+        format="%(name)s: %(message)s",
+    )
+
     if not args.command:
         parser.print_help()
         return 1

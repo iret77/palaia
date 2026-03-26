@@ -8,8 +8,11 @@ to entry frontmatter.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from palaia.scope import validate_scope
 
@@ -187,8 +190,12 @@ class ProjectManager:
         return sorted(agents)
 
     def _strip_project_from_entries(self, project_name: str, store) -> int:
-        """Remove project tag from all entries belonging to a project."""
+        """Remove project tag from all entries belonging to a project.
+
+        WAL-protected: each entry rewrite is logged before execution.
+        """
         from palaia.entry import parse_entry, serialize_entry
+        from palaia.wal import WALEntry
 
         count = 0
         for tier in ("hot", "warm", "cold"):
@@ -202,7 +209,16 @@ class ProjectManager:
                     if meta.get("project") == project_name:
                         del meta["project"]
                         new_text = serialize_entry(meta, body)
-                        store.write_raw(str(p.relative_to(store.root)), new_text)
+                        target = str(p.relative_to(store.root))
+                        wal_entry = WALEntry(
+                            operation="write",
+                            target=target,
+                            payload_hash=meta.get("content_hash", ""),
+                            payload=new_text,
+                        )
+                        store.wal.log(wal_entry)
+                        store.write_raw(target, new_text)
+                        store.wal.commit(wal_entry)
                         count += 1
                 except (OSError, UnicodeDecodeError):
                     continue

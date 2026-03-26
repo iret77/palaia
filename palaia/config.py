@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Standard VPS installation path — checked as fallback when Path.home() differs.
 # Mockable in tests via monkeypatch on palaia.config.VPS_OPENCLAW_BASE.
@@ -28,6 +31,12 @@ DEFAULT_CONFIG = {
     "max_entries_per_tier": None,  # None = unlimited
     "max_total_chars": None,  # None = unlimited
     "gc_type_weights": {"process": 2.0, "task": 1.5, "memory": 1.0},
+    # Security: allow ingesting URLs that resolve to private/internal IPs
+    "allow_private_urls": False,
+    # Storage backend: "auto" (detect), "sqlite" (force), "postgres" (force)
+    "database_backend": "auto",
+    # PostgreSQL connection URL (None = use SQLite)
+    "database_url": None,
 }
 
 

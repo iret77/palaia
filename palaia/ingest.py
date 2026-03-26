@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import ipaddress
+import logging
 import os
 import re
+import socket
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -12,7 +15,76 @@ from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
+from palaia.config import load_config
 from palaia.store import Store
+
+logger = logging.getLogger(__name__)
+
+# --- URL validation (SSRF prevention) ---
+
+# IP ranges that must be blocked unless allow_private_urls is True
+_BLOCKED_NETWORKS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),   # Link-local + cloud metadata
+    ipaddress.ip_network("0.0.0.0/8"),
+    # IPv6 equivalents
+    ipaddress.ip_network("::1/128"),           # Loopback
+    ipaddress.ip_network("fc00::/7"),          # Unique local
+    ipaddress.ip_network("fe80::/10"),         # Link-local
+]
+
+_ALLOWED_SCHEMES = {"http", "https"}
+
+
+class SSRFError(ValueError):
+    """Raised when a URL targets a blocked resource."""
+
+
+def _validate_url(url: str, *, allow_private: bool = False) -> None:
+    """Validate URL against SSRF attacks.
+
+    Blocks file://, private IPs, loopback, link-local, and cloud metadata
+    endpoints unless allow_private is True.
+    """
+    parsed = urlparse(url)
+
+    # Scheme check
+    if parsed.scheme not in _ALLOWED_SCHEMES:
+        raise SSRFError(
+            f"URL scheme '{parsed.scheme}' is not allowed. "
+            f"Only {_ALLOWED_SCHEMES} are permitted."
+        )
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise SSRFError("URL has no hostname.")
+
+    if allow_private:
+        return
+
+    # Resolve hostname to IP addresses
+    try:
+        addrinfos = socket.getaddrinfo(hostname, parsed.port or 443, proto=socket.IPPROTO_TCP)
+    except socket.gaierror as e:
+        raise SSRFError(f"Cannot resolve hostname '{hostname}': {e}") from e
+
+    for family, _type, _proto, _canonname, sockaddr in addrinfos:
+        ip_str = sockaddr[0]
+        try:
+            addr = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+
+        for network in _BLOCKED_NETWORKS:
+            if addr in network:
+                raise SSRFError(
+                    f"URL resolves to blocked address {ip_str} "
+                    f"(network {network}). Use allow_private_urls=true "
+                    f"in config to override."
+                )
 
 # Supported text extensions
 TEXT_EXTENSIONS = {".txt", ".md", ".markdown", ".rst", ".text"}
@@ -325,7 +397,10 @@ class DocumentIngestor:
         raise ValueError(f"Unsupported file format: {ext}")
 
     def _read_url(self, url: str) -> tuple[list[_PageChunk], str]:
-        """Fetch URL and extract text."""
+        """Fetch URL and extract text. Validates URL against SSRF attacks."""
+        allow_private = self.config.get("allow_private_urls", False)
+        _validate_url(url, allow_private=allow_private)
+
         with urlopen(url) as resp:  # noqa: S310
             content_type = resp.headers.get("Content-Type", "")
             data = resp.read().decode("utf-8", errors="replace")
