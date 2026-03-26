@@ -63,7 +63,13 @@ export interface ServiceDefinition {
 // ── Context Engine Types ────────────────────────────────────────────────
 
 export interface ContextEngine {
-  query(params: Record<string, unknown>): Promise<unknown>;
+  bootstrap?(): Promise<void>;
+  ingest?(messages: unknown[]): Promise<void>;
+  assemble(budget: { maxTokens: number }): Promise<{ content: string; tokenEstimate: number }>;
+  compact?(): Promise<void>;
+  afterTurn?(turn: unknown): Promise<void>;
+  prepareSubagentSpawn?(parentContext: unknown): Promise<unknown>;
+  onSubagentEnded?(result: unknown): Promise<void>;
 }
 
 // ── Logger ──────────────────────────────────────────────────────────────

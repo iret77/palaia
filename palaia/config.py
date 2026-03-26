@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
@@ -37,6 +38,21 @@ DEFAULT_CONFIG = {
     "database_backend": "auto",
     # PostgreSQL connection URL (None = use SQLite)
     "database_url": None,
+    # Embedding provider chain and per-provider model overrides
+    "embedding_chain": [],
+    "embedding_models": {},
+    # Store mode and multi-agent setup
+    "store_mode": "default",
+    "multi_agent": False,
+    "agent": None,
+    "aliases": {},
+    # Migration and maintenance
+    "migration_acknowledged": False,
+    "last_gc": None,
+    # OpenClaw plugin configuration
+    "plugin_config": {},
+    # Workspace identifier for sync
+    "workspace_id": None,
 }
 
 
@@ -100,7 +116,7 @@ def get_root(start: str = ".") -> Path:
 def load_config(palaia_root: Path) -> dict:
     """Load config from .palaia/config.json, merged with defaults."""
     config_path = palaia_root / "config.json"
-    config = dict(DEFAULT_CONFIG)
+    config = copy.deepcopy(DEFAULT_CONFIG)
     if config_path.exists():
         with open(config_path, "r") as f:
             user_config = json.load(f)

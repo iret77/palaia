@@ -1125,7 +1125,7 @@ def _check_capture_level(palaia_root: Path | None) -> dict[str, Any]:
         "label": "Capture level",
         "status": "info",
         "message": "No capture level configured",
-        "fix": "Set capture level with: palaia init --capture-level <off|sparsam|normal|aggressiv>\n"
+        "fix": "Set capture level with: palaia init --capture-level <off|minimal|normal|aggressive>\n"
         "  Recommended: palaia init --capture-level normal",
     }
 
@@ -1435,6 +1435,105 @@ def _check_index_staleness(palaia_root: Path | None) -> dict[str, Any]:
         "status": "ok",
         "message": f"{cached_count}/{total_entries} entries indexed ({missing} pending)",
         "details": {"total": total_entries, "cached": cached_count, "missing": missing},
+    }
+
+
+def _check_storage_backend(palaia_root: Path | None) -> dict[str, Any]:
+    """Check storage backend health and migration status."""
+    if palaia_root is None:
+        return {
+            "name": "storage_backend",
+            "label": "Storage backend",
+            "status": "error",
+            "message": "Not initialized",
+        }
+
+    findings: list[dict[str, Any]] = []
+    db_path = palaia_root / "palaia.db"
+
+    # Check 1: Is SQLite DB present?
+    if not db_path.exists():
+        metadata_json = palaia_root / "index" / "metadata.json"
+        if metadata_json.exists():
+            return {
+                "name": "storage_backend",
+                "label": "Storage backend",
+                "status": "warn",
+                "message": "Flat-file storage detected. Migration to SQLite pending.",
+                "fix": "Run palaia status to trigger auto-migration",
+            }
+        return {
+            "name": "storage_backend",
+            "label": "Storage backend",
+            "status": "ok",
+            "message": "No SQLite database (legacy or not yet initialized)",
+        }
+
+    # Check 2: DB integrity
+    import sqlite3
+
+    try:
+        conn = sqlite3.connect(str(db_path))
+        result = conn.execute("PRAGMA integrity_check").fetchone()
+        if result[0] != "ok":
+            findings.append(f"integrity check failed: {result[0]}")
+        conn.close()
+    except Exception as e:
+        return {
+            "name": "storage_backend",
+            "label": "Storage backend",
+            "status": "error",
+            "message": f"Cannot open SQLite database: {e}",
+        }
+
+    # Check 3: Orphaned .migrated files
+    try:
+        migrated_files = list(palaia_root.glob("**/*.migrated"))
+    except (PermissionError, OSError):
+        migrated_files = []
+
+    # Check 4: Entry count consistency
+    disk_count = 0
+    for tier in ("hot", "warm", "cold"):
+        tier_dir = palaia_root / tier
+        if tier_dir.exists():
+            try:
+                disk_count += sum(1 for _ in tier_dir.glob("*.md"))
+            except (PermissionError, OSError):
+                pass
+
+    db_count = 0
+    try:
+        conn = sqlite3.connect(str(db_path))
+        row = conn.execute("SELECT COUNT(*) FROM entries").fetchone()
+        db_count = row[0] if row else 0
+        conn.close()
+    except Exception:
+        pass
+
+    if disk_count > 0 and db_count == 0:
+        findings.append(
+            f"{disk_count} entries on disk but 0 in database — migration may have failed"
+        )
+
+    # Build result
+    if findings:
+        return {
+            "name": "storage_backend",
+            "label": "Storage backend",
+            "status": "error" if any("integrity" in f or "migration may" in f for f in findings) else "warn",
+            "message": "; ".join(findings),
+        }
+
+    parts = [f"SQLite OK ({db_count} entries)"]
+    if migrated_files:
+        parts.append(f"{len(migrated_files)} .migrated backup(s)")
+
+    return {
+        "name": "storage_backend",
+        "label": "Storage backend",
+        "status": "ok",
+        "message": ", ".join(parts),
     }
 
 

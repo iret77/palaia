@@ -54,6 +54,19 @@
 - `palaia export`/`palaia import` still work as aliases for `palaia sync export`/`palaia sync import`.
 - No data loss. No manual steps required.
 
+### Downgrading to v2.1
+
+If you need to revert to v2.1 after upgrading:
+1. Rename `.migrated` files back to their original names:
+   ```bash
+   cd .palaia
+   for f in index/*.migrated wal/*.migrated; do
+     mv "$f" "${f%.migrated}"
+   done
+   ```
+2. Remove `palaia.db` (optional — v2.1 ignores it)
+3. Install v2.1: `pip install palaia==2.1.0`
+
 ---
 
 ## v2.1.0 — 2026-03-24

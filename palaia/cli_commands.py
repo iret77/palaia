@@ -124,12 +124,16 @@ def cmd_query(args):
         except Exception:
             pass
 
-    if bm25_only and not has_embeddings:
-        print("Note: Keyword search only (BM25). For semantic search: pip install sentence-transformers")
-        print()
-
     if not results:
         print_header()
+        # M5: guide on first query with empty store
+        try:
+            store = Store(root)
+            all_entries = store.all_entries(include_cold=True)
+            if len(all_entries) == 0:
+                print("[palaia] Your memory is empty. Knowledge will be auto-captured from conversations, or write explicitly: palaia write 'your text'", file=sys.stderr)
+        except Exception:
+            pass
         print("\nNo results found.")
         return 0
 
@@ -383,12 +387,6 @@ def cmd_status(args):
             budget_rows.append(("Max total chars", str(budget_info["max_total_chars"])))
             budget_rows.append(("  Usage", budget_info.get("chars_usage", "?")))
         print(table_kv(budget_rows))
-
-    has_embed = any(s["available"] and s["name"] != "bm25" for s in statuses)
-    bm25_only = all(s["name"] == "bm25" for s in statuses) or not has_embed
-    if bm25_only:
-        print("\nNote: Semantic search is not enabled. Results are keyword-based only.")
-        print("  Run 'palaia detect' to see available providers.")
 
     plugin_status = "active" if info["plugin_detected"] else "not detected"
     print(f"\nOpenClaw Plugin: {plugin_status}")

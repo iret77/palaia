@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from palaia.nudge import GRADUATION_THRESHOLD, NudgeTracker
+from palaia.nudge import GRADUATION_THRESHOLD, NudgeTracker, reset_nudge_throttle
 
 
 @pytest.fixture
@@ -24,6 +24,7 @@ def palaia_root(tmp_path):
         "store_version": "1.9.0",
     }
     (root / "config.json").write_text(json.dumps(config))
+    reset_nudge_throttle()  # Each test starts with a fresh throttle
     return root
 
 
@@ -143,13 +144,16 @@ class TestFrequencyLimit:
         agent_state = tracker._state["TestAgent"]["write_without_type"]
         agent_state["last_nudge"] = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
         tracker._save()
-        # Reload
+        # Simulate new CLI invocation (fresh process)
+        reset_nudge_throttle()
         tracker2 = NudgeTracker(palaia_root)
         assert tracker2.should_nudge("write_without_type", "TestAgent") is True
 
     def test_different_patterns_independent_cooldown(self, palaia_root):
         tracker = NudgeTracker(palaia_root)
         tracker.record_nudge("write_without_type", "TestAgent")
+        # Reset per-invocation throttle so we can test pattern independence
+        reset_nudge_throttle()
         # Different pattern should still be nudgeable
         assert tracker.should_nudge("write_without_tags", "TestAgent") is True
 
@@ -170,6 +174,8 @@ class TestMultiAgent:
         tracker = NudgeTracker(palaia_root)
         tracker.record_failure("write_without_type", "AgentA")
         tracker.record_nudge("write_without_type", "AgentA")
+        # Reset per-invocation throttle so we can test agent independence
+        reset_nudge_throttle()
         # AgentB unaffected
         assert tracker.should_nudge("write_without_type", "AgentB") is True
 

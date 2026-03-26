@@ -475,15 +475,15 @@ Hints override LLM detection. Multiple hints supported. Automatically stripped f
 
 ### Capture Levels
 ```bash
-palaia init --capture-level <off|sparsam|normal|aggressiv>
+palaia init --capture-level <off|minimal|normal|aggressive>
 ```
 
 | Level | Behavior |
 |-------|----------|
 | `off` | Manual-only memory |
-| `sparsam` | Significant exchanges, min 5 turns |
+| `minimal` | Significant exchanges, min 5 turns |
 | `normal` | Significant exchanges, min 2 turns (default) |
-| `aggressiv` | Every exchange, min 1 turn |
+| `aggressive` | Every exchange, min 1 turn |
 
 ---
 

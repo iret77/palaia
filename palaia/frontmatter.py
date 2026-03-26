@@ -44,10 +44,10 @@ def parse_yaml_simple(text: str) -> dict:
             items = value[1:-1].split(",")
             result[key] = [i.strip().strip("'\"") for i in items if i.strip()]
         # Number (int)
-        elif value.isdigit():
+        elif value.lstrip("-").isdigit() and (value[0] != "-" or len(value) > 1):
             result[key] = int(value)
         # Float
-        elif re.match(r"^\d+\.\d+$", value):
+        elif re.match(r"^-?\d+\.\d+$", value):
             result[key] = float(value)
         # Quoted string
         elif (value.startswith('"') and value.endswith('"')) or (

@@ -9,15 +9,21 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import sqlite3
 import struct
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+from palaia.bm25 import cosine_similarity as _cosine_similarity
+
 logger = logging.getLogger(__name__)
 
 _SCHEMA_VERSION = 1
+
+_MIGRATIONS: dict[int, str] = {
+    # Future migrations go here:
+    # 2: "ALTER TABLE entries ADD COLUMN new_field TEXT DEFAULT ''",
+}
 
 _SCHEMA_SQL = """\
 CREATE TABLE IF NOT EXISTS entries (
@@ -123,17 +129,30 @@ class SQLiteBackend:
             return False
 
     def _ensure_schema(self) -> None:
-        """Create tables and indexes if they don't exist."""
+        """Create or migrate database schema."""
         self.conn.executescript(_SCHEMA_SQL)
-        # Set schema version if not present.
-        cur = self.conn.execute("SELECT version FROM schema_version LIMIT 1")
-        row = cur.fetchone()
-        if row is None:
+        # Use INSERT OR IGNORE to handle concurrent connections safely.
+        self.conn.execute(
+            "INSERT OR IGNORE INTO schema_version (version) VALUES (?)",
+            (_SCHEMA_VERSION,),
+        )
+        self.conn.commit()
+        row = self.conn.execute(
+            "SELECT version FROM schema_version LIMIT 1"
+        ).fetchone()
+        if row and row["version"] < _SCHEMA_VERSION:
+            current = row["version"]
+            for version in range(current + 1, _SCHEMA_VERSION + 1):
+                if version in _MIGRATIONS:
+                    self.conn.executescript(_MIGRATIONS[version])
             self.conn.execute(
-                "INSERT INTO schema_version (version) VALUES (?)",
+                "UPDATE schema_version SET version = ?",
                 (_SCHEMA_VERSION,),
             )
-        self.conn.commit()
+            self.conn.commit()
+            logger.info(
+                "Schema upgraded from v%d to v%d", current, _SCHEMA_VERSION
+            )
 
     # ── Metadata ──────────────────────────────────────────────────────
 
@@ -456,13 +475,4 @@ def _blob_to_floats(blob: bytes) -> list[float]:
     return list(struct.unpack(f"<{n}f", blob))
 
 
-def _cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Compute cosine similarity between two vectors."""
-    if len(a) != len(b):
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(x * x for x in b))
-    if norm_a == 0.0 or norm_b == 0.0:
-        return 0.0
-    return dot / (norm_a * norm_b)
+# _cosine_similarity is imported from palaia.bm25

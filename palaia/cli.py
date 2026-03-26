@@ -1233,6 +1233,9 @@ def cmd_skill(args):
 
 def main():
     from palaia.cli_args import build_parser
+    from palaia.nudge import reset_nudge_throttle
+
+    reset_nudge_throttle()  # Each CLI invocation starts fresh
 
     parser = build_parser()
     args = parser.parse_args()

@@ -39,8 +39,6 @@ import {
   isValidScope,
 } from "./hooks/state.js";
 
-import { sendReaction } from "./hooks/reactions.js";
-
 import {
   loadPriorities,
   resolvePriorities,
@@ -248,12 +246,13 @@ export function createPalaiaContextEngine(
         // Load and resolve priorities (Issue #121)
         const prio = await loadPriorities(config.workspace || "");
         const agentId = process.env.PALAIA_AGENT || undefined;
+        const project = config.captureProject || undefined;
         const resolvedPrio = resolvePriorities(prio, {
           recallTypeWeight: config.recallTypeWeight,
           recallMinScore: config.recallMinScore,
           maxInjectedChars: config.maxInjectedChars,
           tier: config.tier,
-        }, agentId);
+        }, agentId, project);
 
         // Convert token budget to char budget (~4 chars per token)
         const maxChars = Math.min(resolvedPrio.maxInjectedChars || 4000, budget.maxTokens * 4);
@@ -349,10 +348,9 @@ export function createPalaiaContextEngine(
           chars += line.length;
         }
 
+        // Build nudge text and check remaining budget before appending
         const USAGE_NUDGE = "[palaia] auto-capture=on. Manual write: --type process (SOPs/checklists) or --type task (todos with assignee/deadline) only. Conversation knowledge is auto-captured — do not duplicate with manual writes.";
-        text += USAGE_NUDGE + "\n\n";
-
-        // Nudges
+        let agentNudges = "";
         try {
           const pluginState = await loadPluginState(config.workspace);
           pluginState.successfulRecalls++;
@@ -361,12 +359,19 @@ export function createPalaiaContextEngine(
           }
           const { nudges } = checkNudges(pluginState);
           if (nudges.length > 0) {
-            text += "\n\n## Agent Nudge (Palaia)\n\n" + nudges.join("\n\n");
+            agentNudges = "\n\n## Agent Nudge (Palaia)\n\n" + nudges.join("\n\n");
           }
           await savePluginState(pluginState, config.workspace);
         } catch {
           // Non-fatal
         }
+
+        // Before adding nudges, check remaining budget
+        const nudgeText = USAGE_NUDGE + "\n\n" + agentNudges;
+        if (chars + nudgeText.length <= maxChars) {
+          text += nudgeText;
+        }
+        // If nudges don't fit, skip them — the recall content is more important
 
         _lastAssembleState.recallOccurred = entries.some(
           (e) => typeof e.score === "number" && e.score >= resolvedPrio.recallMinScore,

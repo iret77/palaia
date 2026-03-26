@@ -6,7 +6,12 @@ import json
 
 import pytest
 
-from palaia.backends.migrate import MigrationResult, migrate_to_backend, needs_migration
+from palaia.backends.migrate import (
+    MigrationResult,
+    _should_rename,
+    migrate_to_backend,
+    needs_migration,
+)
 from palaia.backends.sqlite import SQLiteBackend
 
 
@@ -149,7 +154,44 @@ class TestIdempotency:
 
         r1 = migrate_to_backend(palaia_root, backend)
         assert r1.entries_migrated == 1
+        assert r1.status == "complete"
 
         # Second run — file is already .migrated
         r2 = migrate_to_backend(palaia_root, backend)
         assert r2.entries_migrated == 0
+
+
+class TestMigrationStatus:
+    def test_complete_status(self, palaia_root, backend):
+        """Successful migration returns status 'complete'."""
+        metadata = {"e1": {"id": "e1", "title": "T", "tier": "hot"}}
+        (palaia_root / "index" / "metadata.json").write_text(json.dumps(metadata))
+
+        result = migrate_to_backend(palaia_root, backend)
+        assert result.status == "complete"
+        assert result.as_dict() == {"migrated": 1, "errors": 0, "status": "complete"}
+
+    def test_result_as_dict(self, palaia_root, backend):
+        """MigrationResult.as_dict() returns expected format."""
+        result = MigrationResult(entries_migrated=5, errors=["e1", "e2"], status="partial")
+        d = result.as_dict()
+        assert d["migrated"] == 5
+        assert d["errors"] == 2
+        assert d["status"] == "partial"
+
+
+class TestShouldRename:
+    def test_no_errors(self):
+        assert _should_rename(0, 100) is True
+
+    def test_low_error_rate(self):
+        assert _should_rename(5, 100) is True  # 5% < 10%
+
+    def test_high_error_rate(self):
+        assert _should_rename(20, 100) is False  # 20% > 10%
+
+    def test_all_errors(self):
+        assert _should_rename(100, 100) is False
+
+    def test_empty_data(self):
+        assert _should_rename(0, 0) is True

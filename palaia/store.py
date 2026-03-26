@@ -84,19 +84,40 @@ class Store:
         return SQLiteBackend(self.root)
 
     def _auto_migrate(self):
-        """Auto-migrate flat-file indexes to backend on first use."""
+        """Auto-migrate flat-file indexes to backend on first use.
+
+        Uses a lock to prevent concurrent migrations.
+        Only flags success if migration is fully complete (no errors).
+        """
         from palaia.backends.migrate import migrate_to_backend, needs_migration
 
-        if needs_migration(self.root):
-            migrate_to_backend(self.root, self._backend)
-            # Flag migration success for one-shot nudge
-            try:
-                config = load_config(self.root)
-                if not config.get("migration_acknowledged"):
-                    flag_file = self.root / ".migration_success"
-                    flag_file.write_text("1")
-            except Exception:
-                pass
+        if not needs_migration(self.root):
+            return
+
+        # Use a separate lock file for migration to avoid blocking normal
+        # store operations (write/edit/gc) which use .lock.
+        migrate_lock_path = self.root / ".migrate_lock"
+        migration_lock = PalaiaLock.__new__(PalaiaLock)
+        migration_lock.lock_path = migrate_lock_path
+        migration_lock.timeout = 60
+        migration_lock._fd = None
+        migration_lock._mkdir_lock = None
+        with migration_lock:
+            # Re-check under lock (another process may have migrated already)
+            if not needs_migration(self.root):
+                return
+
+            result = migrate_to_backend(self.root, self._backend)
+
+            # Only flag success if migration is fully complete
+            if result.status == "complete":
+                try:
+                    config = load_config(self.root)
+                    if not config.get("migration_acknowledged"):
+                        flag_file = self.root / ".migration_success"
+                        flag_file.write_text("1")
+                except Exception:
+                    pass
 
     def _resolve_names(self, agent: str | None) -> set[str] | None:
         """Resolve agent to all matching names via aliases."""

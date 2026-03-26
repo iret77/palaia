@@ -21,7 +21,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # init
     p_init = sub.add_parser("init", help="Initialize .palaia directory")
-    p_init.add_argument("--agent", default=None, help="Agent name (required for first init)")
+    p_init.add_argument("--agent", default=None, help="Agent name (optional, auto-detected from OpenClaw config)")
     p_init.add_argument("--path", default=None, help="Target directory")
     p_init.add_argument("--json", action="store_true", help="Output as JSON")
     p_init.add_argument(
@@ -40,8 +40,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--capture-level",
         default=None,
         dest="capture_level",
-        choices=["off", "sparsam", "normal", "aggressiv"],
-        help="Auto-capture level for OpenClaw plugin (off|sparsam|normal|aggressiv)",
+        choices=["off", "minimal", "normal", "aggressive", "sparsam", "aggressiv"],
+        help="Auto-capture level for OpenClaw plugin (off|minimal|normal|aggressive)",
     )
 
     # write

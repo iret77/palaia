@@ -328,12 +328,13 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
       try {
         // Load and resolve priorities (Issue #121)
         const prio = await loadPriorities(resolved.workspace);
+        const project = config.captureProject || undefined;
         const resolvedPrio = resolvePriorities(prio, {
           recallTypeWeight: config.recallTypeWeight,
           recallMinScore: config.recallMinScore,
           maxInjectedChars: config.maxInjectedChars,
           tier: config.tier,
-        }, resolved.agentId);
+        }, resolved.agentId, project);
 
         const maxChars = resolvedPrio.maxInjectedChars || 4000;
         const limit = Math.min(config.maxResults || 10, 20);
@@ -440,11 +441,8 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
           chars += line.length;
         }
 
-        // Persistent usage nudge — compact guidance for the agent
+        // Build nudge text and check remaining budget before appending
         const USAGE_NUDGE = "[palaia] auto-capture=on. Manual write: --type process (SOPs/checklists) or --type task (todos with assignee/deadline) only. Conversation knowledge is auto-captured — do not duplicate with manual writes.";
-        text += USAGE_NUDGE + "\n\n";
-
-        // Update recall counter for satisfaction/transparency nudges (Issue #87)
         let nudgeContext = "";
         try {
           const pluginState = await loadPluginState(resolved.workspace);
@@ -460,6 +458,13 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
         } catch {
           // Non-fatal
         }
+
+        // Before adding nudges, check remaining budget
+        const nudgeText = USAGE_NUDGE + "\n\n" + nudgeContext;
+        if (chars + nudgeText.length <= maxChars) {
+          text += nudgeText;
+        }
+        // If nudges don't fit, skip them — the recall content is more important
 
         // Track recall in session-isolated turn state for emoji reactions
         // Only flag recall as meaningful if at least one result scores above threshold

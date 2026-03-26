@@ -38,15 +38,35 @@ def json_out(data, args):
 
 
 def resolve_agent(args) -> str | None:
-    """Resolve agent name: explicit --agent flag > config > env var > 'default'."""
+    """Resolve agent name: explicit --agent flag > config/env > detect > 'default'.
+
+    In multi-agent mode, env var PALAIA_AGENT takes precedence over config
+    to allow per-session identity. A warning is printed if multi-agent is
+    detected but no agent identity is set.
+    """
     explicit = getattr(args, "agent", None)
     if explicit:
         return explicit
     try:
         root = get_root()
-        config_agent = get_agent(root)
-        if config_agent:
-            return config_agent
+        config = load_config(root)
+        if config.get("multi_agent"):
+            # Multi-agent: env var > config > detect > default
+            resolved = (
+                os.environ.get("PALAIA_AGENT")
+                or config.get("agent")
+                or detect_current_agent()
+                or "default"
+            )
+            if resolved == "default":
+                print("[palaia] WARNING: Multi-agent setup detected but no agent identity set.", file=sys.stderr)
+                print("[palaia] Set PALAIA_AGENT env var or use --agent flag. Falling back to 'default'.", file=sys.stderr)
+            return resolved
+        else:
+            # Single-agent: config > env var > detect > default
+            config_agent = config.get("agent")
+            if config_agent:
+                return config_agent
     except FileNotFoundError:
         pass
     detected = detect_current_agent()

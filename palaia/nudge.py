@@ -106,6 +106,24 @@ GRADUATION_THRESHOLD = 3
 # Frequency limit: max 1 nudge per pattern per hour (seconds)
 NUDGE_COOLDOWN_SECONDS = 3600
 
+# Per-invocation throttle: only the first nudge fires per CLI call.
+# In production each CLI call is a fresh process so this starts at 0.
+# Keyed by str(root) so tests with different tmp dirs don't interfere.
+_nudges_this_invocation: dict[str, int] = {}
+MAX_NUDGES_PER_INVOCATION = 1
+
+
+def reset_nudge_throttle(root_key: str | None = None) -> None:
+    """Reset the per-invocation nudge counter.
+
+    Called at CLI entry point (each palaia command is a fresh invocation).
+    In tests, call with root_key=str(palaia_root) to reset for a specific root.
+    """
+    if root_key is None:
+        _nudges_this_invocation.clear()
+    else:
+        _nudges_this_invocation.pop(root_key, None)
+
 
 class NudgeTracker:
     """Tracks nudge state per agent with graduation and regression support.
@@ -124,6 +142,7 @@ class NudgeTracker:
 
     def __init__(self, palaia_root: Path):
         self.root = palaia_root
+        self._root_key = str(palaia_root)
         self.state_file = palaia_root / "nudge-state.json"
         self._state: dict[str, dict[str, Any]] = self._load()
 
@@ -166,10 +185,14 @@ class NudgeTracker:
         """Check if a nudge should be shown for this pattern.
 
         Returns True if:
+        - Per-invocation limit not reached (max 1 nudge per CLI call)
         - Pattern is not graduated
         - For one-shot nudges: has never been shown before
         - Cooldown period has elapsed (max 1 nudge per pattern per hour)
         """
+        if _nudges_this_invocation.get(self._root_key, 0) >= MAX_NUDGES_PER_INVOCATION:
+            return False
+
         state = self._get_pattern_state(pattern_id, agent)
 
         if state["graduated"]:
@@ -206,6 +229,7 @@ class NudgeTracker:
         state = self._get_pattern_state(pattern_id, agent)
         state["nudge_count"] = state.get("nudge_count", 0) + 1
         state["last_nudge"] = datetime.now(timezone.utc).isoformat()
+        _nudges_this_invocation[self._root_key] = _nudges_this_invocation.get(self._root_key, 0) + 1
         self._save()
 
     def record_success(self, pattern_id: str, agent: str) -> None:

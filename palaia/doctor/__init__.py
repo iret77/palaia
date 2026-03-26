@@ -26,6 +26,7 @@ from palaia.doctor.checks import (
     _check_projects_usage,
     _check_smart_memory_skill,
     _check_stale_unassigned_tasks,
+    _check_storage_backend,
     _check_store_version,
     _check_unread_memos,
     _check_version_available,
@@ -67,6 +68,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_wal_health(palaia_root),
         _check_loop_artifacts(palaia_root),
         _check_stale_unassigned_tasks(palaia_root),
+        _check_storage_backend(palaia_root),
     ]
     return results
 
@@ -97,6 +99,7 @@ __all__ = [
     "_check_projects_usage",
     "_check_smart_memory_skill",
     "_check_stale_unassigned_tasks",
+    "_check_storage_backend",
     "_check_store_version",
     "_check_unread_memos",
     "_check_version_available",

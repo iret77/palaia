@@ -161,7 +161,12 @@ CAPTURE_LEVEL_MAP = {
     "off": {
         "autoCapture": False,
     },
-    "sparsam": {
+    "minimal": {
+        "autoCapture": True,
+        "captureFrequency": "significant",
+        "captureMinTurns": 5,
+    },
+    "sparsam": {  # legacy alias for minimal
         "autoCapture": True,
         "captureFrequency": "significant",
         "captureMinTurns": 5,
@@ -171,7 +176,12 @@ CAPTURE_LEVEL_MAP = {
         "captureFrequency": "significant",
         "captureMinTurns": 2,
     },
-    "aggressiv": {
+    "aggressive": {
+        "autoCapture": True,
+        "captureFrequency": "every",
+        "captureMinTurns": 1,
+    },
+    "aggressiv": {  # legacy alias for aggressive
         "autoCapture": True,
         "captureFrequency": "every",
         "captureMinTurns": 1,
@@ -573,13 +583,7 @@ def init_palaia(
     elif len(chain) > 1:
         messages.append(f"Embedding chain configured: {' -> '.join(chain)}")
     else:
-        messages.append("No semantic search providers found. Using BM25 only.")
-        messages.append("  To enable semantic search, install one of:")
-        messages.append("  - sentence-transformers: pip install sentence-transformers")
-        messages.append("  - fastembed: pip install fastembed")
-        messages.append("  - ollama: https://ollama.ai (then: palaia config set-chain ollama bm25)")
-        messages.append("  - OpenAI: set OPENAI_API_KEY env var")
-        messages.append("  Then run: palaia warmup")
+        messages.append("No semantic search providers found. Using BM25 keyword search.")
 
     # Capture-level
     if capture_level and capture_level in CAPTURE_LEVEL_MAP:
@@ -596,26 +600,22 @@ def init_palaia(
             messages.append("  autoCapture=off (no automatic knowledge capture)")
     elif capture_level is None and _is_openclaw_environment():
         messages.append("\nOpenClaw environment detected.")
-        messages.append("Configure auto-capture with: palaia init --capture-level <off|sparsam|normal|aggressiv>")
-        messages.append("  off      — No automatic capture")
-        messages.append("  sparsam  — Capture significant exchanges (minTurns=5)")
-        messages.append("  normal   — Capture significant exchanges (minTurns=2) [recommended]")
-        messages.append("  aggressiv — Capture every exchange (minTurns=1)")
+        messages.append("Configure auto-capture with: palaia init --capture-level <off|minimal|normal|aggressive>")
+        messages.append("  off        — No automatic capture")
+        messages.append("  minimal    — Capture significant exchanges (minTurns=5)")
+        messages.append("  normal     — Capture significant exchanges (minTurns=2) [recommended]")
+        messages.append("  aggressive — Capture every exchange (minTurns=1)")
 
-    # Post-init instructions
+    # Clean post-init summary (agent-friendly, no expert wall)
     messages.append("")
-    messages.append("SETUP REQUIRED — Continue with these steps:")
-    messages.append("1. Run: palaia doctor --fix")
-    messages.append("   (Checks your system, fixes common issues, configures version tracking)")
-    messages.append("2. Run: palaia detect")
-    messages.append("   (Finds available search providers on your system)")
-    messages.append("3. Run: palaia warmup")
-    messages.append("   (Pre-downloads embedding models for instant search)")
-    messages.append("4. Read the palaia SKILL.md section 'Plugin Activation' and configure the OpenClaw memory plugin")
-    messages.append("   (npm install -g @byte5ai/palaia, then patch openclaw.json, then restart gateway)")
-    messages.append("5. Report your setup results to the user")
-    messages.append("")
-    messages.append("Do NOT skip these steps. The memory system is not fully operational until all steps are complete.")
+    messages.append(f"[palaia] Initialized at {target}")
+    messages.append(f"[palaia] Agent: {config.get('agent', 'default')}")
+    messages.append("[palaia] Storage: SQLite (automatic)")
+    if chain and chain != ["bm25"]:
+        messages.append(f"[palaia] Embeddings: {', '.join(chain)}")
+    else:
+        messages.append("[palaia] Embeddings: BM25 keyword search (run 'palaia detect' for semantic search)")
+    messages.append("[palaia] Ready. Auto-capture is active.")
 
     return result
 
