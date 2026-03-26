@@ -145,6 +145,12 @@ import {
   setLogger as setReactionsLogger,
 } from "./reactions.js";
 
+import {
+  loadPriorities,
+  resolvePriorities,
+  filterBlocked,
+} from "../priorities.js";
+
 // ============================================================================
 // Logger (Issue: api.logger integration)
 // ============================================================================
@@ -320,7 +326,16 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
       const hookOpts = buildRunnerOpts(config, { workspace: resolved.workspace });
 
       try {
-        const maxChars = config.maxInjectedChars || 4000;
+        // Load and resolve priorities (Issue #121)
+        const prio = await loadPriorities(resolved.workspace);
+        const resolvedPrio = resolvePriorities(prio, {
+          recallTypeWeight: config.recallTypeWeight,
+          recallMinScore: config.recallMinScore,
+          maxInjectedChars: config.maxInjectedChars,
+          tier: config.tier,
+        }, resolved.agentId);
+
+        const maxChars = resolvedPrio.maxInjectedChars || 4000;
         const limit = Math.min(config.maxResults || 10, 20);
         let entries: QueryResult["results"] = [];
 
@@ -344,7 +359,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
                   const resp = await mgr.query({
                     text: userMessage,
                     top_k: limit,
-                    include_cold: config.tier === "all",
+                    include_cold: resolvedPrio.tier === "all",
                   }, config.timeoutMs || 3000);
                   if (resp?.result?.results && Array.isArray(resp.result.results)) {
                     entries = resp.result.results;
@@ -360,7 +375,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
             if (!serverQueried) {
               try {
                 const queryArgs: string[] = ["query", userMessage, "--limit", String(limit)];
-                if (config.tier === "all") {
+                if (resolvedPrio.tier === "all") {
                   queryArgs.push("--all");
                 }
                 const result = await runJson<QueryResult>(queryArgs, { ...hookOpts, timeoutMs: 15000 });
@@ -380,10 +395,10 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
           isListFallback = true;
           try {
             const listArgs: string[] = ["list"];
-            if (config.tier === "all") {
+            if (resolvedPrio.tier === "all") {
               listArgs.push("--all");
             } else {
-              listArgs.push("--tier", config.tier || "hot");
+              listArgs.push("--tier", resolvedPrio.tier || "hot");
             }
             const result = await runJson<QueryResult>(listArgs, hookOpts);
             if (result && Array.isArray(result.results)) {
@@ -396,8 +411,9 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
 
         if (entries.length === 0) return;
 
-        // Apply type-weighted reranking
-        const ranked = rerankByTypeWeight(entries, config.recallTypeWeight);
+        // Apply type-weighted reranking and blocked filtering (Issue #121)
+        const rankedRaw = rerankByTypeWeight(entries, resolvedPrio.recallTypeWeight);
+        const ranked = filterBlocked(rankedRaw, resolvedPrio.blocked);
 
         // Build context string with char budget (compact format for token efficiency)
         const SCOPE_SHORT: Record<string, string> = { team: "t", private: "p", public: "pub" };
@@ -449,7 +465,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
         // Only flag recall as meaningful if at least one result scores above threshold
         // List-fallback never triggers brain emoji (not query-relevant)
         const hasRelevantRecall = !isListFallback && entries.some(
-          (e) => typeof e.score === "number" && e.score >= config.recallMinScore,
+          (e) => typeof e.score === "number" && e.score >= resolvedPrio.recallMinScore,
         );
         const sessionKey = resolveSessionKeyFromCtx(ctx);
         if (sessionKey && hasRelevantRecall) {

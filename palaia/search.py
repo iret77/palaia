@@ -242,6 +242,8 @@ class SearchEngine:
                 result_entry = {
                     "id": doc_id,
                     "score": round(score, 4),
+                    "bm25_score": round(bm25_norm.get(doc_id, 0.0), 4),
+                    "embed_score": round(embed_norm.get(doc_id, 0.0), 4),
                     "type": meta.get("type", "memory"),
                     "scope": meta.get("scope", "team"),
                     "title": meta.get("title", ""),

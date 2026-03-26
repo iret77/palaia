@@ -19,6 +19,8 @@ export interface QueryResult {
     body?: string;
     content?: string;
     score: number;
+    bm25_score?: number;
+    embed_score?: number;
     tier: string;
     scope: string;
     title?: string;
@@ -337,6 +339,8 @@ export interface RankedEntry {
   tier: string;
   type: string;
   score: number;
+  bm25Score?: number;
+  embedScore?: number;
   weightedScore: number;
 }
 
@@ -356,6 +360,8 @@ export function rerankByTypeWeight(
         tier: r.tier,
         type,
         score: r.score,
+        bm25Score: r.bm25_score,
+        embedScore: r.embed_score,
         weightedScore: r.score * weight,
       };
     })

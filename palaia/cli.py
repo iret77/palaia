@@ -124,6 +124,7 @@ GATED_COMMANDS = frozenset(
         "warmup",
         "migrate",
         "embed-server",
+        "priorities",
     }
 )
 
@@ -2315,6 +2316,123 @@ def cmd_skill(args):
     return 0
 
 
+def cmd_priorities(args):
+    """View and manage injection priorities (#121)."""
+    from palaia.config import find_palaia_root
+    from palaia.services.priorities import (
+        block_entry_svc,
+        list_blocked_svc,
+        reset_priorities_svc,
+        set_priority_svc,
+        show_priorities,
+        unblock_entry_svc,
+    )
+
+    root = find_palaia_root()
+    action = getattr(args, "priorities_action", None)
+    agent = getattr(args, "agent", None)
+    project = getattr(args, "project", None)
+
+    if action == "block":
+        result = block_entry_svc(root, args.entry_id, agent=agent, project=project)
+        if _json_out(result, args):
+            return 0
+        scope = f" (agent: {agent})" if agent else (f" (project: {project})" if project else "")
+        print(f"Blocked: {args.entry_id}{scope}")
+        return 0
+
+    if action == "unblock":
+        result = unblock_entry_svc(root, args.entry_id, agent=agent, project=project)
+        if _json_out(result, args):
+            return 0
+        print(f"Unblocked: {args.entry_id}")
+        return 0
+
+    if action == "set":
+        try:
+            result = set_priority_svc(root, args.key, args.value, agent=agent, project=project)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        if _json_out(result, args):
+            return 0
+        scope = agent or project or "global"
+        print(f"Set {args.key} = {args.value} (scope: {scope})")
+        return 0
+
+    if action == "list-blocked":
+        result = list_blocked_svc(root, agent=agent, project=project)
+        if _json_out(result, args):
+            return 0
+        if not result["blocked"]:
+            print("No blocked entries.")
+        else:
+            for b in result["blocked"]:
+                print(f"  {b['id']}  (source: {b['source']})")
+        return 0
+
+    if action == "reset":
+        result = reset_priorities_svc(root, agent=agent, project=project)
+        if _json_out(result, args):
+            return 0
+        print(f"Priorities reset ({result['reset']})")
+        return 0
+
+    # Default: show priorities (simulate injection)
+    query = getattr(args, "query", None)
+    limit = getattr(args, "limit", 10)
+    include_cold = getattr(args, "include_cold", False)
+
+    result = show_priorities(root, query=query, agent=agent, project=project,
+                             limit=limit, include_cold=include_cold)
+
+    if _json_out(result, args):
+        return 0
+
+    # Human-readable output
+    resolved = result["resolved"]
+    sources = result.get("sources", {})
+
+    agent_str = result.get("agent") or "-"
+    proj_str = result.get("project") or "-"
+    print(f"Injection Priorities (agent: {agent_str}, project: {proj_str})\n")
+
+    print("Config:")
+    for key in ("recallMinScore", "maxInjectedChars", "tier"):
+        val = resolved.get(key, "?")
+        src = sources.get(key, "default")
+        print(f"  {key:20s} {val}  ({src})")
+    tw = resolved.get("recallTypeWeight", {})
+    tw_str = " ".join(f"{k}={v}" for k, v in sorted(tw.items()))
+    print(f"  {'typeWeights':20s} {tw_str}  ({sources.get('recallTypeWeight', 'default')})")
+
+    blocked = resolved.get("blocked", [])
+    if blocked:
+        print(f"\nBlocked: {', '.join(blocked)}")
+
+    entries = result.get("results", [])
+    if entries:
+        print(f"\nSimulated injection (query: \"{query or '(none)'}\"):")
+        print(f"{'ID':10s} {'BM25':>6s} {'Embed':>6s} {'Comb':>6s} {'TyWt':>6s} {'Final':>7s}  {'Type':8s} Title")
+        for e in entries:
+            eid = e["id"][:8] + ".."
+            print(
+                f"{eid:10s} {e.get('bm25_score', 0):6.2f} {e.get('embed_score', 0):6.2f} "
+                f"{e.get('combined_score', 0):6.2f} x{e.get('type_weight', 1.0):<5.1f} "
+                f"{e.get('weighted_score', 0):7.4f}  {e.get('type', '?'):8s} {e.get('title', '')[:40]}"
+            )
+        print(f"\n{len(entries)} entries would be injected")
+
+    blocked_entries = result.get("blocked_entries", [])
+    if blocked_entries:
+        print(f"{len(blocked_entries)} entries blocked (not shown)")
+
+    if not entries and not query:
+        print("\nTip: Pass a query to simulate injection: palaia priorities \"your query here\"")
+
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="palaia",
@@ -2704,6 +2822,45 @@ def main():
     p_migrate.add_argument("--scope", default=None, help="Override scope for all entries")
     p_migrate.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # priorities (#121)
+    p_priorities = sub.add_parser("priorities", help="View and manage injection priorities")
+    priorities_sub = p_priorities.add_subparsers(dest="priorities_action")
+    p_priorities.add_argument("query", nargs="?", default=None, help="Query to simulate injection")
+    p_priorities.add_argument("--agent", default=None, help="Agent name")
+    p_priorities.add_argument("--project", default=None, help="Project name")
+    p_priorities.add_argument("--limit", type=int, default=10, help="Max entries (default: 10)")
+    p_priorities.add_argument("--all", action="store_true", dest="include_cold", help="Include cold tier")
+    p_priorities.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_prio_block = priorities_sub.add_parser("block", help="Block an entry from injection")
+    p_prio_block.add_argument("entry_id", help="Entry UUID (full or short prefix)")
+    p_prio_block.add_argument("--agent", default=None, help="Block only for this agent")
+    p_prio_block.add_argument("--project", default=None, help="Block only for this project")
+    p_prio_block.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_prio_unblock = priorities_sub.add_parser("unblock", help="Unblock an entry")
+    p_prio_unblock.add_argument("entry_id", help="Entry UUID")
+    p_prio_unblock.add_argument("--agent", default=None, help="Agent scope")
+    p_prio_unblock.add_argument("--project", default=None, help="Project scope")
+    p_prio_unblock.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_prio_set = priorities_sub.add_parser("set", help="Set a priority parameter")
+    p_prio_set.add_argument("key", help="Config key (recallMinScore, maxInjectedChars, tier, typeWeight.process, ...)")
+    p_prio_set.add_argument("value", help="Value to set")
+    p_prio_set.add_argument("--agent", default=None, help="Set for this agent only")
+    p_prio_set.add_argument("--project", default=None, help="Set for this project only")
+    p_prio_set.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_prio_list = priorities_sub.add_parser("list-blocked", help="List blocked entries")
+    p_prio_list.add_argument("--agent", default=None, help="Agent scope")
+    p_prio_list.add_argument("--project", default=None, help="Project scope")
+    p_prio_list.add_argument("--json", action="store_true", help="Output as JSON")
+
+    p_prio_reset = priorities_sub.add_parser("reset", help="Reset priorities")
+    p_prio_reset.add_argument("--agent", default=None, help="Reset only this agent's overrides")
+    p_prio_reset.add_argument("--project", default=None, help="Reset only this project's overrides")
+    p_prio_reset.add_argument("--json", action="store_true", help="Output as JSON")
+
     args = parser.parse_args()
 
     _logging.basicConfig(
@@ -2747,6 +2904,7 @@ def main():
         "instance": cmd_instance,
         "embed-server": cmd_embed_server,
         "skill": cmd_skill,
+        "priorities": cmd_priorities,
     }
     try:
         return commands[args.command](args)

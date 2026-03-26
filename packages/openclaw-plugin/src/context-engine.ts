@@ -41,6 +41,12 @@ import {
 
 import { sendReaction } from "./hooks/reactions.js";
 
+import {
+  loadPriorities,
+  resolvePriorities,
+  filterBlocked,
+} from "./priorities.js";
+
 /**
  * ContextEngine adapter for deeper OpenClaw integration.
  * Maps the 7 ContextEngine lifecycle hooks to palaia functionality.
@@ -239,8 +245,18 @@ export function createPalaiaContextEngine(
       }
 
       try {
+        // Load and resolve priorities (Issue #121)
+        const prio = await loadPriorities(config.workspace || "");
+        const agentId = process.env.PALAIA_AGENT || undefined;
+        const resolvedPrio = resolvePriorities(prio, {
+          recallTypeWeight: config.recallTypeWeight,
+          recallMinScore: config.recallMinScore,
+          maxInjectedChars: config.maxInjectedChars,
+          tier: config.tier,
+        }, agentId);
+
         // Convert token budget to char budget (~4 chars per token)
-        const maxChars = Math.min(config.maxInjectedChars || 4000, budget.maxTokens * 4);
+        const maxChars = Math.min(resolvedPrio.maxInjectedChars || 4000, budget.maxTokens * 4);
         const limit = Math.min(config.maxResults || 10, 20);
         let entries: QueryResult["results"] = [];
 
@@ -255,7 +271,7 @@ export function createPalaiaContextEngine(
                 const resp = await mgr.query({
                   text: userMessage,
                   top_k: limit,
-                  include_cold: config.tier === "all",
+                  include_cold: resolvedPrio.tier === "all",
                 }, config.timeoutMs || 3000);
                 if (resp?.result?.results && Array.isArray(resp.result.results)) {
                   entries = resp.result.results;
@@ -270,7 +286,7 @@ export function createPalaiaContextEngine(
               try {
                 const { runJson } = await import("./runner.js");
                 const queryArgs: string[] = ["query", userMessage, "--limit", String(limit)];
-                if (config.tier === "all") queryArgs.push("--all");
+                if (resolvedPrio.tier === "all") queryArgs.push("--all");
                 const result = await runJson<QueryResult>(queryArgs, { ...opts, timeoutMs: 15000 });
                 if (result && Array.isArray(result.results)) {
                   entries = result.results;
@@ -287,10 +303,10 @@ export function createPalaiaContextEngine(
           try {
             const { runJson } = await import("./runner.js");
             const listArgs: string[] = ["list"];
-            if (config.tier === "all") {
+            if (resolvedPrio.tier === "all") {
               listArgs.push("--all");
             } else {
-              listArgs.push("--tier", config.tier || "hot");
+              listArgs.push("--tier", resolvedPrio.tier || "hot");
             }
             const result = await runJson<QueryResult>(listArgs, opts);
             if (result && Array.isArray(result.results)) {
@@ -305,8 +321,9 @@ export function createPalaiaContextEngine(
           return { content: "", tokenEstimate: 0 };
         }
 
-        // Apply type-weighted reranking
-        const ranked = rerankByTypeWeight(entries, config.recallTypeWeight);
+        // Apply type-weighted reranking and blocked filtering (Issue #121)
+        const rankedRaw = rerankByTypeWeight(entries, resolvedPrio.recallTypeWeight);
+        const ranked = filterBlocked(rankedRaw, resolvedPrio.blocked);
 
         // Build context string
         const SCOPE_SHORT: Record<string, string> = { team: "t", private: "p", public: "pub" };
@@ -352,7 +369,7 @@ export function createPalaiaContextEngine(
         }
 
         _lastAssembleState.recallOccurred = entries.some(
-          (e) => typeof e.score === "number" && e.score >= config.recallMinScore,
+          (e) => typeof e.score === "number" && e.score >= resolvedPrio.recallMinScore,
         );
 
         return {
