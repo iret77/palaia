@@ -9,7 +9,7 @@
 import { Type } from "@sinclair/typebox";
 import { run, runJson, type RunnerOpts } from "./runner.js";
 import type { PalaiaPluginConfig } from "./config.js";
-import { sanitizeScope, isValidScope } from "./hooks.js";
+import { sanitizeScope, isValidScope } from "./hooks/index.js";
 import type { OpenClawPluginApi } from "./types.js";
 
 /** Shape returned by `palaia query --json` */

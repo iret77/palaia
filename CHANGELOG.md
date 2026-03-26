@@ -1,5 +1,47 @@
 # Changelog
 
+## v2.2.0 — 2026-03-26
+
+### Breaking Changes
+- **OpenClaw plugin**: Requires OpenClaw >=2026.3.22 (new plugin-sdk imports)
+- **Plugin entry point**: Migrated from plain function export to `definePluginEntry` pattern
+- **Python**: Minimum version remains 3.9, but v2.2 adds optional `sqlite-vec` and `psycopg` dependencies
+
+### Security (Phase 0)
+- **SSRF prevention in URL ingestion** — `_read_url()` now validates URLs against private IPs, loopback, link-local, and cloud metadata endpoints. Only HTTP(S) schemes allowed. Configurable via `allow_private_urls` setting.
+- **Structured logging** — All 27 Python modules now use `logging.getLogger(__name__)`. Added `--verbose` / `-v` CLI flag for debug output. Bare `except: pass` blocks replaced with logged diagnostics.
+- **YAML frontmatter injection prevention** — Body content containing `---` delimiters can no longer inject metadata fields via `_sanitize_body()` and `_quote_yaml_value()`.
+
+### Storage Backend Architecture (Phase 2)
+- **Pluggable storage backends** — New `StorageBackend` protocol with provider-chain auto-detection, mirroring the embedding provider chain pattern.
+- **SQLite backend** (default when `database_backend=sqlite`) — Single-file database with WAL mode, FTS5 full-text search, optional `sqlite-vec` for native vector KNN. Zero new dependencies (sqlite3 is stdlib).
+- **PostgreSQL + pgvector backend** — For distributed agent teams. HNSW ANN vector search, MVCC concurrent writes, JSONB tags, tsvector full-text. Activate via `PALAIA_DATABASE_URL` or `palaia config set database_url`.
+- **Automatic migration** — Existing `metadata.json`, `embeddings.json`, and WAL files are automatically migrated to the active backend. Old files renamed to `.migrated`.
+
+### OpenClaw Integration (Phases 1 + 1.5)
+- **Plugin SDK migration** — Migrated to `definePluginEntry` pattern with typed `OpenClawPluginApi` interface. Local type definitions in `src/types.ts`.
+- **ContextEngine adapter** — New `src/context-engine.ts` maps 7 ContextEngine lifecycle hooks (bootstrap, ingest, assemble, compact, afterTurn, prepareSubagentSpawn, onSubagentEnded) to palaia functionality. Falls back to legacy hooks for older OpenClaw versions.
+- **hooks.ts decomposition** — Monolithic 2091-line file split into `hooks/recall.ts`, `hooks/capture.ts`, `hooks/state.ts`, `hooks/reactions.ts`, `hooks/index.ts`.
+
+### Code Quality (Phase 3)
+- **Shared frontmatter parser** — `palaia/frontmatter.py` eliminates duplicate YAML parser in `entry.py` and `memo.py`.
+- **Shared BM25** — `palaia/bm25.py` unifies duplicate BM25 implementations in `search.py` and `embeddings.py`.
+- **Type-safe enums** — `palaia/enums.py` with `Tier`, `EntryType`, `EntryStatus`, `Priority`, `Scope` as `str, Enum` (backward-compatible with string comparisons).
+- **Module rename** — `locking.py` → `project_lock.py` for clarity (shim kept for backward compat).
+- **Service layer** — Business logic extracted from `cli.py` into `palaia/services/` package.
+- **Doctor decomposition** — `doctor.py` split into `palaia/doctor/` package (checks, fixes, detection).
+
+### Data Integrity (Phase 4)
+- **Fixed decay calculation** — `update_access()` now correctly uses `days_since(created)` instead of always passing 0.
+- **WAL protection for project strip** — `_strip_project_from_entries()` now WAL-logged.
+- **Encapsulation fix** — `embed_server.py` uses `embedding_cache.reload()` instead of accessing `._cache` directly.
+
+### Test Infrastructure (Phase 5)
+- **Shared conftest.py** — `palaia_root` and `store` fixtures in `tests/conftest.py`, removing ~40 duplicates.
+- **Coverage configuration** — `[tool.coverage]` section in pyproject.toml.
+
+---
+
 ## v2.1.0 — 2026-03-24
 
 ### Bug Fixes

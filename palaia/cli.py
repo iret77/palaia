@@ -379,407 +379,62 @@ def _process_nudge(context_text: str, context_tags: list[str] | None, args) -> N
         pass  # Never block normal operation
 
 
-def _detect_agents() -> list[str]:
-    """Detect OpenClaw agents by checking ~/.openclaw/agents/ directory."""
-    agents_dir = Path.home() / ".openclaw" / "agents"
-    if not agents_dir.is_dir():
-        return []
-    return [d.name for d in agents_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
-
-
-class _AgentDetectResult:
-    """Result of OpenClaw agent auto-detection."""
-
-    __slots__ = ("agent", "status", "count")
-
-    def __init__(self, agent: str | None, status: str, count: int = 0):
-        self.agent = agent
-        # status: "found" | "multiple" | "no_config" | "no_agents"
-        self.status = status
-        self.count = count
-
-
-def _detect_agent_from_openclaw_config() -> str | None:
-    """Try to auto-detect agent name from OpenClaw config file.
-
-    Convenience wrapper around _detect_agent_from_openclaw_config_ext().
-    Returns agent name or None.
-    """
-    result = _detect_agent_from_openclaw_config_ext()
-    return result.agent
-
-
-def _detect_agent_from_openclaw_config_ext() -> _AgentDetectResult:
-    """Try to auto-detect agent name from OpenClaw config file.
-
-    Reads ~/.openclaw/openclaw.json, config.json (or .yaml) and inspects agents.
-    Supports two formats:
-    - agents.list: [{id, name, default, ...}, ...]  (standard OpenClaw format)
-    - agents as object: {agentId: {name: ..., ...}, ...}  (legacy/alternative)
-
-    Returns _AgentDetectResult with status info for better error messages.
-    """
-    # Standard OpenClaw paths + VPS fallback (#51)
-    from palaia.config import VPS_OPENCLAW_BASE
-
-    _home = Path.home()
-    _base_dirs = [_home / ".openclaw"]
-    # Add VPS standard path as fallback when home dir differs
-    if VPS_OPENCLAW_BASE != _home / ".openclaw" and VPS_OPENCLAW_BASE.is_dir():
-        _base_dirs.append(VPS_OPENCLAW_BASE)
-
-    config_candidates: list[Path] = []
-    for base in _base_dirs:
-        config_candidates.extend(
-            [
-                base / "openclaw.json",
-                base / "openclaw.yaml",
-                base / "openclaw.yml",
-                base / "config.json",
-                base / "config.yaml",
-                base / "config.yml",
-            ]
-        )
-
-    # Also check OPENCLAW_CONFIG env var
-    env_config = os.environ.get("OPENCLAW_CONFIG")
-    if env_config:
-        config_candidates.insert(0, Path(env_config))
-
-    for config_path in config_candidates:
-        if not config_path.exists():
-            continue
-        try:
-            if config_path.suffix == ".json":
-                with open(config_path) as f:
-                    data = json.load(f)
-            elif config_path.suffix in (".yaml", ".yml"):
-                try:
-                    import yaml  # type: ignore[import-untyped]
-
-                    with open(config_path) as f:
-                        data = yaml.safe_load(f)
-                except ImportError:
-                    continue
-            else:
-                continue
-
-            agents_section = data.get("agents", {})
-            if not isinstance(agents_section, dict):
-                continue
-
-            # Format 1: agents.list = [{id, name, ...}, ...]
-            agent_list = agents_section.get("list")
-            if isinstance(agent_list, list) and agent_list:
-                if len(agent_list) == 1:
-                    name = agent_list[0].get("name") or agent_list[0].get("id")
-                    return _AgentDetectResult(name, "found", 1)
-
-                # Multiple agents → look for default:true
-                for agent in agent_list:
-                    if agent.get("default") is True:
-                        name = agent.get("name") or agent.get("id")
-                        return _AgentDetectResult(name, "found", len(agent_list))
-
-                return _AgentDetectResult(None, "multiple", len(agent_list))
-
-            # Format 2: agents = {agentId: {name: ..., ...}, ...}
-            # (Object with agent-IDs as keys, excluding known meta-keys)
-            meta_keys = {"defaults", "list", "version"}
-            agent_keys = [k for k in agents_section if k not in meta_keys]
-            if agent_keys:
-                if len(agent_keys) == 1:
-                    key = agent_keys[0]
-                    val = agents_section[key]
-                    name = val.get("name", key) if isinstance(val, dict) else key
-                    return _AgentDetectResult(name, "found", 1)
-
-                # Multiple → look for default:true
-                for key in agent_keys:
-                    val = agents_section[key]
-                    if isinstance(val, dict) and val.get("default") is True:
-                        name = val.get("name", key)
-                        return _AgentDetectResult(name, "found", len(agent_keys))
-
-                return _AgentDetectResult(None, "multiple", len(agent_keys))
-
-            # Config exists but no agents found
-            return _AgentDetectResult(None, "no_agents", 0)
-        except (json.JSONDecodeError, OSError, KeyError, TypeError):
-            continue
-
-    return _AgentDetectResult(None, "no_config", 0)
-
-
-CAPTURE_LEVEL_MAP = {
-    "off": {
-        "autoCapture": False,
-    },
-    "sparsam": {
-        "autoCapture": True,
-        "captureFrequency": "significant",
-        "captureMinTurns": 5,
-    },
-    "normal": {
-        "autoCapture": True,
-        "captureFrequency": "significant",
-        "captureMinTurns": 2,
-    },
-    "aggressiv": {
-        "autoCapture": True,
-        "captureFrequency": "every",
-        "captureMinTurns": 1,
-    },
-}
-
-
-def _is_openclaw_environment() -> bool:
-    """Detect if we're running in an OpenClaw environment."""
-    # Check for OpenClaw workspace or config
-    openclaw_dir = Path.home() / ".openclaw"
-    if openclaw_dir.is_dir():
-        return True
-    if os.environ.get("OPENCLAW_HOME"):
-        return True
-    return False
-
-
-def _apply_capture_level(palaia_root: Path, capture_level: str | None, args) -> None:
-    """Apply capture-level configuration to .palaia/config.json.
-
-    If capture_level is None and OpenClaw environment is detected,
-    suggests setting a capture level (non-interactive in CLI context).
-    """
-    if capture_level and capture_level in CAPTURE_LEVEL_MAP:
-        config = load_config(palaia_root)
-        config["plugin_config"] = CAPTURE_LEVEL_MAP[capture_level]
-        save_config(palaia_root, config)
-        if not getattr(args, "json", False):
-            print(f"\nCapture level set to: {capture_level}")
-            level_config = CAPTURE_LEVEL_MAP[capture_level]
-            if level_config.get("autoCapture"):
-                freq = level_config.get("captureFrequency", "significant")
-                turns = level_config.get("captureMinTurns", 2)
-                print(f"  autoCapture=true, frequency={freq}, minTurns={turns}")
-            else:
-                print("  autoCapture=off (no automatic knowledge capture)")
-    elif capture_level is None and _is_openclaw_environment():
-        # Suggest capture level
-        if not getattr(args, "json", False):
-            print("\nOpenClaw environment detected.")
-            print("Configure auto-capture with: palaia init --capture-level <off|sparsam|normal|aggressiv>")
-            print("  off      — No automatic capture")
-            print("  sparsam  — Capture significant exchanges (minTurns=5)")
-            print("  normal   — Capture significant exchanges (minTurns=2) [recommended]")
-            print("  aggressiv — Capture every exchange (minTurns=1)")
+# Backward-compat: agent detection moved to services.admin
+from palaia.services.admin import (  # noqa: E402
+    _AgentDetectResult,
+    _detect_agents,
+    _detect_agent_from_openclaw_config,
+    _detect_agent_from_openclaw_config_ext,
+    CAPTURE_LEVEL_MAP,
+)
 
 
 def cmd_init(args):
     """Initialize .palaia directory."""
-    # Respect PALAIA_HOME if set and no explicit path given
-    explicit_path = getattr(args, "path", None)
-    if explicit_path:
-        target = Path(explicit_path) / ".palaia"
-    else:
-        env_home = os.environ.get("PALAIA_HOME")
-        if env_home:
-            env_path = Path(env_home)
-            if env_path.name == ".palaia":
-                target = env_path
-            else:
-                target = env_path / ".palaia"
-        else:
-            target = Path(".") / ".palaia"
-    is_reinit = target.exists()
-    agent_name = getattr(args, "agent", None)
-    used_default = False
+    from palaia.services.admin import init_palaia
 
-    # Resolve agent name when not explicitly provided
-    if not agent_name:
-        if is_reinit:
-            # Re-init: keep existing agent if set
-            try:
-                existing_config = load_config(target)
-                if existing_config.get("agent"):
-                    agent_name = None  # Will be preserved in re-init path
-                else:
-                    # Try auto-detect, fall back to "default"
-                    detected = _detect_agent_from_openclaw_config()
-                    if detected:
-                        agent_name = detected
-                        if not getattr(args, "json", False):
-                            print(f"Auto-detected agent: {agent_name} (from OpenClaw config)")
-                    else:
-                        agent_name = "default"
-                        used_default = True
-            except (json.JSONDecodeError, OSError):
-                detected = _detect_agent_from_openclaw_config()
-                if detected:
-                    agent_name = detected
-                    if not getattr(args, "json", False):
-                        print(f"Auto-detected agent: {agent_name} (from OpenClaw config)")
-                else:
-                    agent_name = "default"
-                    used_default = True
-        else:
-            # Fresh init: try auto-detect, fall back to "default"
-            detected = _detect_agent_from_openclaw_config()
-            if detected:
-                agent_name = detected
-                if not getattr(args, "json", False):
-                    print(f"Auto-detected agent: {agent_name} (from OpenClaw config)")
-            else:
-                agent_name = "default"
-                used_default = True
+    result = init_palaia(
+        path=getattr(args, "path", None),
+        agent=getattr(args, "agent", None),
+        store_mode=getattr(args, "store_mode", None),
+        capture_level=getattr(args, "capture_level", None),
+        reset=getattr(args, "reset", False),
+    )
 
-    if is_reinit:
-        # Re-init: update only explicitly provided values
-        existing_config = load_config(target)
-
-        # Update agent if provided
-        if agent_name:
-            existing_config["agent"] = agent_name
-
-        # Check if chain is already configured
-        existing_chain = existing_config.get("embedding_chain")
-
-        if existing_chain and len(existing_chain) > 0:
-            # Apply capture-level on re-init too (Issue #67)
-            capture_level = getattr(args, "capture_level", None)
-            if capture_level and capture_level in CAPTURE_LEVEL_MAP:
-                existing_config["plugin_config"] = CAPTURE_LEVEL_MAP[capture_level]
-
-            # Chain exists, just save updated config (agent may have changed)
-            save_config(target, existing_config)
-
-            if capture_level and capture_level in CAPTURE_LEVEL_MAP:
-                if not getattr(args, "json", False):
-                    print(f"Capture level set to: {capture_level}")
-
-            if _json_out({"status": "updated", "path": str(target), "agent": existing_config.get("agent")}, args):
-                return 0
-            print(f"Updated config: {target}")
-            if existing_config.get("agent"):
-                print(f"Agent: {existing_config['agent']}")
+    # For re-init with existing chain (early return path)
+    if result["status"] == "updated" and "embedding_chain" not in result:
+        if _json_out({"status": "updated", "path": result["path"], "agent": result.get("agent")}, args):
             return 0
+        # Print messages from service
+        if not getattr(args, "json", False):
+            for msg in result.get("messages", []):
+                print(msg)
+        print(f"Updated config: {result['path']}")
+        if result.get("agent"):
+            print(f"Agent: {result['agent']}")
+        return 0
 
-        # Fall through to auto-configure chain
-        config = existing_config
-    else:
-        target.mkdir(parents=True)
-        for sub in ("hot", "warm", "cold", "wal", "index"):
-            (target / sub).mkdir()
-        config = dict(DEFAULT_CONFIG)
-
-    # Auto-detect providers and configure the best chain
-    from palaia.embeddings import detect_providers
-
-    detected = detect_providers()
-    detected_map = {p["name"]: p["available"] for p in detected}
-
-    # Build embedding chain. Priority: cloud APIs first (fastest at query time),
-    # then local providers as fallback. This is the *chain order* (what gets
-    # tried first at query time), NOT the *detection order* in embeddings.py
-    # (which is: ollama → sentence-transformers → fastembed → openai → gemini → bm25).
-    chain = []
-    if detected_map.get("openai"):
-        chain.append("openai")
-    if detected_map.get("gemini"):
-        chain.append("gemini")
-    if detected_map.get("fastembed"):
-        chain.append("fastembed")
-    elif detected_map.get("sentence-transformers"):
-        chain.append("sentence-transformers")
-    elif detected_map.get("ollama"):
-        chain.append("ollama")
-    chain.append("bm25")  # always last
-
-    config["embedding_chain"] = chain
-
-    # Multi-agent detection
-    agents = _detect_agents()
-    if len(agents) > 1:
-        # Multi-agent: do NOT bake a static agent into config.
-        # Each agent must set PALAIA_AGENT env var at runtime.
-        config["agent"] = None
-        config["multi_agent"] = True
-        store_mode = getattr(args, "store_mode", None)
-        if store_mode == "isolated":
-            config["store_mode"] = "isolated"
-            print(f"Found {len(agents)} agents: {', '.join(agents)}")
-            print("  Using isolated stores — each agent gets its own .palaia directory.")
-        else:
-            config["store_mode"] = "shared"
-            print(f"Found {len(agents)} agents: {', '.join(agents)}")
-            print(f"  Using shared store at {target}")
-            print("  All agents will see team-scoped entries.")
-            print("  Each agent MUST set PALAIA_AGENT env var for correct attribution.")
-            if store_mode is None:
-                print("  (Use 'palaia init --isolated' for separate stores per agent)")
-    else:
-        # Single-agent or no agents: store identity if provided
-        if agent_name:
-            config["agent"] = agent_name
-        config["multi_agent"] = False
-        if len(agents) == 1:
-            print(f"Found 1 agent: {agents[0]}")
-        config["store_mode"] = "shared"
-
-    config["store_version"] = __version__
-    save_config(target, config)
-
-    if not is_reinit:
+    # Fresh init or re-init with chain reconfiguration
+    if result["status"] == "created":
         if _json_out(
             {
                 "status": "created",
-                "path": str(target),
-                "embedding_chain": chain,
-                "agents": agents,
-                "store_mode": config.get("store_mode", "shared"),
+                "path": result["path"],
+                "embedding_chain": result.get("embedding_chain", []),
+                "agents": result.get("agents", []),
+                "store_mode": result.get("store_mode", "shared"),
             },
             args,
         ):
             return 0
-        print(f"Initialized Palaia at {target}")
-        if used_default:
+        print(f"Initialized Palaia at {result['path']}")
+        if result.get("used_default"):
             print("Initialized with agent: default (use --agent NAME to customize)")
 
-    # Show chain info
-    has_local = any(p in chain for p in ("sentence-transformers", "fastembed", "ollama"))
-    has_openai = "openai" in chain
-    if has_openai and not has_local:
-        print(f"Embedding chain: {' -> '.join(chain)} (no local fallback)")
-        print("  If OpenAI is unavailable, search quality will drop significantly.")
-        print("  Recommend: pip install sentence-transformers && palaia warmup")
-    elif len(chain) > 1:
-        print(f"Embedding chain configured: {' -> '.join(chain)}")
-    else:
-        print("No semantic search providers found. Using BM25 only.")
-        print("  To enable semantic search, install one of:")
-        print("  - sentence-transformers: pip install sentence-transformers")
-        print("  - fastembed: pip install fastembed")
-        print("  - ollama: https://ollama.ai (then: palaia config set-chain ollama bm25)")
-        print("  - OpenAI: set OPENAI_API_KEY env var")
-        print("  Then run: palaia warmup")
-
-    # --- Capture-Level Configuration (Issue #67) ---
-    capture_level = getattr(args, "capture_level", None)
-    _apply_capture_level(target, capture_level, args)
-
-    # Post-init instructions for LLM agents
-    print()
-    print("SETUP REQUIRED — Continue with these steps:")
-    print("1. Run: palaia doctor --fix")
-    print("   (Checks your system, fixes common issues, configures version tracking)")
-    print("2. Run: palaia detect")
-    print("   (Finds available search providers on your system)")
-    print("3. Run: palaia warmup")
-    print("   (Pre-downloads embedding models for instant search)")
-    print("4. Read the palaia SKILL.md section 'Plugin Activation' and configure the OpenClaw memory plugin")
-    print("   (npm install -g @byte5ai/palaia, then patch openclaw.json, then restart gateway)")
-    print("5. Report your setup results to the user")
-    print()
-    print("Do NOT skip these steps. The memory system is not fully operational until all steps are complete.")
+    # Print all messages from service (chain info, capture level, setup instructions)
+    if not getattr(args, "json", False):
+        for msg in result.get("messages", []):
+            print(msg)
 
     return 0
 
@@ -812,42 +467,23 @@ def _nudge_hint(hint_key: str, message: str, args) -> None:
 
 def cmd_write(args):
     """Write a memory entry."""
+    from palaia.services.write import write_entry
+
     check_version_nag()
     root = get_root()
-    store = Store(root)
-
-    # Recovery check
-    recovered = store.recover()
-    if recovered and not getattr(args, "json", False):
-        print(f"Recovered {recovered} pending entries from WAL.")
-
-    # Resolve agent from config if not explicitly set
     agent = _resolve_agent(args)
     instance = _resolve_instance_for_write(args)
+    tags = args.tags.split(",") if args.tags else None
 
-    # Private scope requires an agent identity — reject early
-    scope = getattr(args, "scope", None) or "team"
-    if scope == "private" and (not agent or agent == "default"):
-        # Check if this is a real multi-agent setup without explicit agent
-        config = load_config(root)
-        if config.get("multi_agent") and not os.environ.get("PALAIA_AGENT"):
-            print(
-                "Error: Cannot write with scope 'private' without an agent identity. "
-                "Private entries are only accessible to their owning agent. "
-                "Set PALAIA_AGENT env var or run 'palaia init --agent NAME'.",
-                file=sys.stderr,
-            )
-            return 1
-
-    entry_type = getattr(args, "type", None)
-    entry_id = store.write(
+    result = write_entry(
+        root,
         body=args.text,
         scope=args.scope,
         agent=agent,
-        tags=args.tags.split(",") if args.tags else None,
+        tags=tags,
         title=args.title,
         project=getattr(args, "project", None),
-        entry_type=entry_type,
+        entry_type=getattr(args, "type", None),
         status=getattr(args, "status", None),
         priority=getattr(args, "priority", None),
         assignee=getattr(args, "assignee", None),
@@ -855,86 +491,26 @@ def cmd_write(args):
         instance=instance,
     )
 
-    # Check if this was a dedup (existing entry returned)
-    entry = store.read(entry_id)
-    tier = "hot"
-    scope = args.scope or "team"
-    deduplicated = False
-    if entry:
-        meta, _ = entry
-        scope = meta.get("scope", scope)
-        # Check tier
-        for t in ("hot", "warm", "cold"):
-            if (root / t / f"{entry_id}.md").exists():
-                tier = t
-                break
+    # Handle error from service (e.g. private scope without agent)
+    if "error" in result:
+        if _json_out({"error": result["error"]}, args):
+            return 1
+        print(f"Error: {result['error']}", file=sys.stderr)
+        return 1
 
-    # --- Adaptive Nudging (Issue #68) ---
-    nudge_messages = []
-    try:
-        from palaia.nudge import NudgeTracker
+    # Recovery message
+    if result.get("recovered") and not getattr(args, "json", False):
+        print(f"Recovered {result['recovered']} pending entries from WAL.")
 
-        tracker = NudgeTracker(root)
-        agent_for_nudge = _resolve_agent(args) or "default"
-
-        # Track success/failure for each pattern
-        if entry_type:
-            tracker.record_success("write_without_type", agent_for_nudge)
-        else:
-            tracker.record_failure("write_without_type", agent_for_nudge)
-            if tracker.should_nudge("write_without_type", agent_for_nudge):
-                msg = tracker.get_nudge_message("write_without_type")
-                if msg:
-                    nudge_messages.append(msg)
-                    tracker.record_nudge("write_without_type", agent_for_nudge)
-
-        if args.tags:
-            tracker.record_success("write_without_tags", agent_for_nudge)
-        else:
-            tracker.record_failure("write_without_tags", agent_for_nudge)
-            if tracker.should_nudge("write_without_tags", agent_for_nudge):
-                msg = tracker.get_nudge_message("write_without_tags")
-                if msg:
-                    nudge_messages.append(msg)
-                    tracker.record_nudge("write_without_tags", agent_for_nudge)
-
-        # write_without_project: only nudge in multi-project setups
-        project_arg = getattr(args, "project", None)
-        try:
-            pm = ProjectManager(root)
-            projects = pm.list()
-            if len(projects) > 1:
-                if project_arg:
-                    tracker.record_success("write_without_project", agent_for_nudge)
-                else:
-                    tracker.record_failure("write_without_project", agent_for_nudge)
-                    if tracker.should_nudge("write_without_project", agent_for_nudge):
-                        msg = tracker.get_nudge_message("write_without_project")
-                        if msg:
-                            nudge_messages.append(msg)
-                            tracker.record_nudge("write_without_project", agent_for_nudge)
-        except Exception:
-            pass
-    except Exception:
-        pass  # Never block normal operation with nudge errors
-
-    # --- Significance auto-detection (Issue #70) ---
-    significance_detected: list[str] = []
-    if not args.tags:
-        # Only auto-detect when user hasn't explicitly set tags
-        try:
-            from palaia.significance import detect_significance
-
-            significance_detected = detect_significance(args.text)
-        except Exception:
-            pass
+    nudge_messages = result.get("nudge", [])
+    significance_detected = result.get("significance", [])
 
     if _json_out(
         {
-            "id": entry_id,
-            "tier": tier,
-            "scope": scope,
-            "deduplicated": deduplicated,
+            "id": result["id"],
+            "tier": result["tier"],
+            "scope": result["scope"],
+            "deduplicated": result["deduplicated"],
             **({"nudge": nudge_messages} if nudge_messages else {}),
             **({"significance": significance_detected} if significance_detected else {}),
         },
@@ -942,80 +518,58 @@ def cmd_write(args):
     ):
         return 0
 
-    print(f"Written: {entry_id}")
+    print(f"Written: {result['id']}")
 
-    # Significance suggestion (Issue #70)
     if significance_detected:
         tags_str = ", ".join(significance_detected)
-        print(
-            f"\nDetected significance: [{tags_str}]. Use --tags to confirm.",
-            file=sys.stderr,
-        )
+        print(f"\nDetected significance: [{tags_str}]. Use --tags to confirm.", file=sys.stderr)
 
-    # Print nudge messages
     for nudge_msg in nudge_messages:
         print(f"\nHint: {nudge_msg}", file=sys.stderr)
 
-    # Memo nudge (ADR-011)
     _memo_nudge(args)
 
-    # Process nudge: show relevant processes for context
-    write_text = args.text
     write_title = getattr(args, "title", None) or ""
     write_tags = args.tags.split(",") if args.tags else []
-    _process_nudge(f"{write_title} {write_text}", write_tags, args)
+    _process_nudge(f"{write_title} {args.text}", write_tags, args)
 
     return 0
 
 
 def cmd_edit(args):
     """Edit an existing memory entry."""
+    from palaia.services.write import edit_entry
+
     check_version_nag()
     root = get_root()
-    store = Store(root)
-    store.recover()
-
-    entry_id = args.entry_id
-    # Accept short IDs (prefix match)
-    if len(entry_id) < 36:
-        entry_id = _resolve_short_id(store, entry_id)
-        if entry_id is None:
-            msg = f"No entry found matching: {args.entry_id}"
-            if _json_out({"error": msg}, args):
-                return 1
-            print(msg, file=sys.stderr)
-            return 1
-
+    agent = _resolve_agent(args)
     body = getattr(args, "text", None)
     tags = args.tags.split(",") if getattr(args, "tags", None) else None
 
-    # Scope enforcement: resolve agent from config (#39)
-    agent = _resolve_agent(args)
+    result = edit_entry(
+        root,
+        args.entry_id,
+        body=body,
+        agent=agent,
+        tags=tags,
+        title=getattr(args, "title", None),
+        status=getattr(args, "status", None),
+        priority=getattr(args, "priority", None),
+        assignee=getattr(args, "assignee", None),
+        due_date=getattr(args, "due_date", None),
+        entry_type=getattr(args, "type", None),
+    )
 
-    try:
-        meta = store.edit(
-            entry_id=entry_id,
-            body=body,
-            agent=agent,
-            tags=tags,
-            title=getattr(args, "title", None),
-            status=getattr(args, "status", None),
-            priority=getattr(args, "priority", None),
-            assignee=getattr(args, "assignee", None),
-            due_date=getattr(args, "due_date", None),
-            entry_type=getattr(args, "type", None),
-        )
-    except (ValueError, PermissionError) as e:
-        if _json_out({"error": str(e)}, args):
+    if "error" in result:
+        if _json_out({"error": result["error"]}, args):
             return 1
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"Error: {result['error']}", file=sys.stderr)
         return 1
 
-    if _json_out({"id": entry_id, "updated": True, "meta": meta}, args):
+    if _json_out(result, args):
         return 0
 
-    print(f"Updated: {entry_id}")
-    # Show what changed
+    print(f"Updated: {result['id']}")
     changes = []
     if body is not None:
         changes.append("content")
@@ -1031,29 +585,22 @@ def cmd_edit(args):
 
 def _resolve_short_id(store, short_id: str) -> str | None:
     """Resolve a short ID prefix to full UUID."""
-    for tier in ("hot", "warm", "cold"):
-        tier_dir = store.root / tier
-        if not tier_dir.exists():
-            continue
-        for p in tier_dir.glob("*.md"):
-            if p.stem.startswith(short_id):
-                return p.stem
-    return None
+    from palaia.services.query import _resolve_short_id as _svc_resolve
+    return _svc_resolve(store, short_id)
 
 
 def cmd_query(args):
     """Search memories."""
+    from palaia.services.query import search_entries, enrich_rag_results
+
     check_version_nag()
     root = get_root()
-    store = Store(root)
-    store.recover()
-
     agent = _resolve_agent(args)
 
-    engine = SearchEngine(store)
-    results = engine.search(
+    svc_result = search_entries(
+        root,
         args.query,
-        top_k=args.limit,
+        limit=args.limit,
         include_cold=args.all,
         project=getattr(args, "project", None),
         agent=agent,
@@ -1067,6 +614,10 @@ def cmd_query(args):
         cross_project=getattr(args, "cross_project", False),
     )
 
+    results = svc_result["results"]
+    has_embeddings = svc_result["has_embeddings"]
+    bm25_only = svc_result["bm25_only"]
+
     # --- Adaptive Nudging for query (Issue #68) ---
     query_nudge_messages = []
     try:
@@ -1079,9 +630,9 @@ def cmd_query(args):
         if query_type:
             tracker.record_success("query_without_type_filter", agent_for_nudge)
         else:
-            # Only nudge if typed entries exist in the store
             has_typed = False
             try:
+                store = Store(root)
                 all_entries = store.all_entries(include_cold=False)
                 has_typed = any(m.get("type") for m, _, _ in all_entries)
             except Exception:
@@ -1094,7 +645,7 @@ def cmd_query(args):
                         query_nudge_messages.append(msg)
                         tracker.record_nudge("query_without_type_filter", agent_for_nudge)
     except Exception:
-        pass  # Never block normal operation
+        pass
 
     if _json_out(
         {
@@ -1105,33 +656,17 @@ def cmd_query(args):
     ):
         return 0
 
-    # BM25-only note
-    if not engine.has_embeddings and not getattr(args, "json", False):
-        config = load_config(root)
-        chain_cfg = config.get("embedding_chain", [])
-        bm25_only = not chain_cfg or chain_cfg == ["bm25"]
-        if bm25_only:
-            print("Note: Keyword search only (BM25). For semantic search: pip install sentence-transformers")
-            print()
+    if not has_embeddings and bm25_only:
+        print("Note: Keyword search only (BM25). For semantic search: pip install sentence-transformers")
+        print()
 
     if not results:
         print_header()
         print("\nNo results found.")
         return 0
 
-    # RAG output format
     if getattr(args, "rag", False):
-        # Enrich results with full body and source metadata for RAG
-        enriched = []
-        for r in results:
-            entry = store.read(r["id"])
-            if entry:
-                meta, body = entry
-                r["full_body"] = body
-                r["source"] = meta.get("source", "")
-                r["chunk_index"] = meta.get("chunk_index", 0) if isinstance(meta.get("chunk_index"), int) else 0
-                r["chunk_total"] = meta.get("chunk_total", 0) if isinstance(meta.get("chunk_total"), int) else 0
-            enriched.append(r)
+        enriched = enrich_rag_results(root, results)
         print(format_rag_output(args.query, enriched))
         return 0
 
@@ -1153,89 +688,43 @@ def cmd_query(args):
         )
     )
 
-    search_tier = "hybrid" if engine.has_embeddings else "BM25"
+    search_tier = "hybrid" if has_embeddings else "BM25"
     print(f"\n{len(results)} result(s) found. (Search tier: {search_tier})")
 
-    # Adaptive nudge messages (Issue #68)
     for nudge_msg in query_nudge_messages:
         print(f"\nHint: {nudge_msg}", file=sys.stderr)
 
-    # Memo nudge (ADR-011)
     _memo_nudge(args)
-
-    # Process nudge: show relevant processes for query context
-    query_tags = []  # query doesn't have explicit tags
-    _process_nudge(args.query, query_tags, args)
+    _process_nudge(args.query, [], args)
 
     return 0
 
 
 def cmd_get(args):
     """Read a specific memory entry by ID or path."""
+    from palaia.services.query import get_entry
+
     root = get_root()
-    store = Store(root)
-    store.recover()
-
-    # Accept UUID or path like hot/uuid.md
-    entry_id = args.path
-    if "/" in entry_id:
-        # Extract ID from path
-        entry_id = entry_id.split("/")[-1].replace(".md", "")
-
-    # Accept short IDs (prefix match) — consistent with edit and process run
-    if len(entry_id) < 36:
-        resolved = _resolve_short_id(store, entry_id)
-        if resolved:
-            entry_id = resolved
-
-    # Scope enforcement: resolve agent from config (#39)
     agent = _resolve_agent(args)
-    entry = store.read(entry_id, agent=agent)
-    if entry is None:
-        if _json_out({"error": "not_found", "id": entry_id}, args):
+
+    result = get_entry(
+        root,
+        args.path,
+        agent=agent,
+        from_line=getattr(args, "from_line", None),
+        num_lines=getattr(args, "lines", None),
+    )
+
+    if "error" in result:
+        if _json_out(result, args):
             return 1
-        print(f"Entry not found: {entry_id}", file=sys.stderr)
+        print(f"Entry not found: {result['id']}", file=sys.stderr)
         return 1
 
-    meta, body = entry
-
-    # Determine tier
-    tier = "unknown"
-    for t in ("hot", "warm", "cold"):
-        if (root / t / f"{entry_id}.md").exists():
-            tier = t
-            break
-
-    # Handle --from / --lines slicing
-    lines = body.split("\n")
-    from_line = getattr(args, "from_line", None)
-    num_lines = getattr(args, "lines", None)
-    if from_line is not None:
-        lines = lines[max(0, from_line - 1) :]
-    if num_lines is not None:
-        lines = lines[:num_lines]
-    sliced_body = "\n".join(lines)
-
-    if _json_out(
-        {
-            "id": entry_id,
-            "content": sliced_body,
-            "meta": {
-                "scope": meta.get("scope", "team"),
-                "tier": tier,
-                "title": meta.get("title", ""),
-                "tags": meta.get("tags", []),
-                "agent": meta.get("agent", ""),
-                "created": meta.get("created", ""),
-                "accessed": meta.get("accessed", ""),
-                "decay_score": meta.get("decay_score", 0),
-            },
-        },
-        args,
-    ):
+    if _json_out(result, args):
         return 0
 
-    print(sliced_body)
+    print(result["content"])
     return 0
 
 
@@ -1315,15 +804,16 @@ def cmd_ingest(args):
 
 def cmd_recover(args):
     """Run WAL recovery."""
-    root = get_root()
-    store = Store(root)
-    recovered = store.recover()
+    from palaia.services.admin import recover
 
-    if _json_out({"replayed": recovered, "errors": 0}, args):
+    root = get_root()
+    result = recover(root)
+
+    if _json_out(result, args):
         return 0
 
-    if recovered:
-        print(f"Recovered {recovered} pending entries from WAL.")
+    if result["replayed"]:
+        print(f"Recovered {result['replayed']} pending entries from WAL.")
     else:
         print("No pending WAL entries.")
     return 0
@@ -1331,74 +821,40 @@ def cmd_recover(args):
 
 def cmd_list(args):
     """List memories in a tier or across all tiers."""
+    from palaia.services.query import list_entries
+
     check_version_nag()
     root = get_root()
-    store = Store(root)
-    store.recover()
-
     list_all = getattr(args, "all", False)
-    # Scope enforcement: resolve agent from config for access control (#39)
     scope_agent = _resolve_agent(args)
+    agent_filter = getattr(args, "agent", None)
 
-    if list_all:
-        # List across all tiers — returns (meta, body, tier) tuples
-        raw_entries = store.all_entries(include_cold=True, agent=scope_agent)
-        entries_with_tier = [(meta, body, tier) for meta, body, tier in raw_entries]
-        tier_label = "all tiers"
-    else:
-        tier = args.tier or "hot"
-        raw = store.list_entries(tier, agent=scope_agent)
-        entries_with_tier = [(meta, body, tier) for meta, body in raw]
-        tier_label = tier
+    svc_result = list_entries(
+        root,
+        tier=getattr(args, "tier", None),
+        list_all=list_all,
+        agent=scope_agent,
+        project=getattr(args, "project", None),
+        tag_filters=getattr(args, "tag", None),
+        scope=getattr(args, "scope", None),
+        agent_filter=agent_filter,
+        entry_type=getattr(args, "type", None),
+        status=getattr(args, "status", None),
+        priority=getattr(args, "priority", None),
+        assignee=getattr(args, "assignee", None),
+        instance=getattr(args, "instance", None),
+        before=getattr(args, "before", None),
+        after=getattr(args, "after", None),
+        cross_project=getattr(args, "cross_project", False),
+        agent_names=_resolve_agent_names(agent_filter) if agent_filter else None,
+    )
 
-    # Apply filters (#37)
-    project_filter = getattr(args, "project", None)
-    tag_filters = getattr(args, "tag", None)  # list or None (--tag is append)
-    scope_filter = getattr(args, "scope", None)
-    agent_filter = getattr(args, "agent", None)  # explicit --agent flag for filtering
-    type_filter = getattr(args, "type", None)
-    status_filter = getattr(args, "status", None)
-    priority_filter = getattr(args, "priority", None)
-    assignee_filter = getattr(args, "assignee", None)
-    instance_filter = getattr(args, "instance", None)
-
-    cross_project = getattr(args, "cross_project", False)
-    if project_filter and not cross_project:
-        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("project") == project_filter]
-    if tag_filters:
-        # AND logic: entry must have ALL specified tags
-        for tag in tag_filters:
-            entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if tag in (m.get("tags") or [])]
-    if scope_filter:
-        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("scope") == scope_filter]
-    if agent_filter:
-        agent_names = _resolve_agent_names(agent_filter)
-        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("agent") in agent_names]
-    if type_filter:
-        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("type", "memory") == type_filter]
-    if status_filter:
-        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("status") == status_filter]
-    if priority_filter:
-        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("priority") == priority_filter]
-    if assignee_filter:
-        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("assignee") == assignee_filter]
-    if instance_filter:
-        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("instance") == instance_filter]
-
-    # Temporal filters (Issue #74)
-    before_filter = getattr(args, "before", None)
-    after_filter = getattr(args, "after", None)
-    if before_filter:
-        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("created", "") < before_filter]
-    if after_filter:
-        entries_with_tier = [(m, b, t) for m, b, t in entries_with_tier if m.get("created", "") > after_filter]
-
-    # Cross-project: if set, don't filter by project (Issue #38)
-    # (project_filter is already applied above, but cross_project skips it via argparse logic)
+    tier_label = svc_result["tier"]
+    entries_with_tier = svc_result["entries_with_tier"]
 
     if _json_out(
         {
-            "tier": "all" if list_all else tier_label,
+            "tier": tier_label,
             "entries": [
                 {
                     "id": meta.get("id", "?"),
@@ -1466,101 +922,42 @@ def cmd_list(args):
 
 def cmd_status(args):
     """Show system status."""
+    from palaia.services.status import collect_status
+
     check_version_nag()
     root = get_root()
-    store = Store(root)
-    recovered = store.recover()
-
-    info = store.status()
-
-    # Compute index hint for both JSON and text output
-    try:
-        from palaia.index import EmbeddingCache as _EC
-
-        _cache = _EC(root)
-        _idx_count = len(_cache._load()) if hasattr(_cache, "_load") else None
-    except Exception:
-        _idx_count = None
-    _total = info["total"]
-    if isinstance(_idx_count, int) and isinstance(_total, int):
-        _not_indexed = _total - _idx_count
-        if _not_indexed > 0:
-            info["index_hint"] = (
-                f"Index: {_idx_count}/{_total} — {_not_indexed} entries not indexed. Run: palaia warmup"
-            )
-        else:
-            info["index_hint"] = f"Index: {_idx_count}/{_total} — fully indexed"
-    else:
-        info["index_hint"] = None
+    info = collect_status(root)
 
     if _json_out(info, args):
         return 0
 
     print_header()
 
-    # Calculate disk size
-    disk_bytes = 0
-    for tier in ("hot", "warm", "cold"):
-        tier_dir = root / tier
-        if tier_dir.exists():
-            for f in tier_dir.iterdir():
-                if f.is_file():
-                    disk_bytes += f.stat().st_size
-
-    # Count projects
-    projects_file = root / "projects.json"
-    project_count = 0
-    if projects_file.exists():
-        try:
-            pdata = json.loads(projects_file.read_text())
-            project_count = len(pdata) if isinstance(pdata, dict) else 0
-        except Exception:
-            pass
-
-    # Last write / Last GC timestamps
-    last_write = _find_latest_mtime(root, ("hot", "warm"))
-    last_gc = _find_gc_time(root)
-
+    # Build entries string
     entries_str = f"{info['entries']['hot']} hot"
     if info["entries"]["warm"]:
         entries_str += f" / {info['entries']['warm']} warm"
     if info["entries"]["cold"]:
         entries_str += f" / {info['entries']['cold']} cold"
 
-    # Entry class breakdown (ADR-012)
-    type_counts = {"memory": 0, "process": 0, "task": 0}
-    task_status_counts = {}
-    for tier_name in ("hot", "warm", "cold"):
-        tier_dir = root / tier_name
-        if not tier_dir.exists():
-            continue
-        for p in tier_dir.glob("*.md"):
-            try:
-                from palaia.entry import parse_entry as _pe
-
-                text = p.read_text(encoding="utf-8")
-                meta, _ = _pe(text)
-                et = meta.get("type", "memory")
-                type_counts[et] = type_counts.get(et, 0) + 1
-                if et == "task":
-                    st = meta.get("status", "open")
-                    task_status_counts[st] = task_status_counts.get(st, 0) + 1
-            except Exception:
-                continue
-
+    type_counts = info["type_counts"]
+    task_status_counts = info["task_status_counts"]
     class_parts = []
     for et in ("memory", "process", "task"):
         if type_counts.get(et, 0) > 0:
             class_parts.append(f"{type_counts[et]} {et}")
     class_str = " / ".join(class_parts) if class_parts else "none"
 
+    last_write = info["last_write"]
+    last_gc = info["last_gc"]
+
     store_rows = [
         ("Root", str(info["palaia_root"])),
-        ("Store version", f"v{__version__}"),
+        ("Store version", f"v{info['version']}"),
         ("Entries", entries_str),
         ("Classes", class_str),
-        ("Projects", str(project_count)),
-        ("Disk size", format_size(disk_bytes)),
+        ("Projects", str(info["project_count"])),
+        ("Disk size", format_size(info["disk_bytes"])),
         ("Last write", relative_time(last_write) if last_write else "never"),
         ("Last GC", relative_time(last_gc) if last_gc else "never"),
     ]
@@ -1571,18 +968,14 @@ def cmd_status(args):
 
     if info["wal_pending"]:
         store_rows.append(("WAL pending", str(info["wal_pending"])))
-    if recovered:
-        store_rows.append(("WAL recovered", f"{recovered} entries"))
+    if info["recovered"]:
+        store_rows.append(("WAL recovered", f"{info['recovered']} entries"))
 
     print(section("Store"))
     print(table_kv(store_rows))
 
     # Embedding chain status
-    from palaia.embeddings import build_embedding_chain
-
-    chain = build_embedding_chain(store.config)
-    statuses = chain.provider_status()
-
+    statuses = info["embedding_statuses"]
     embed_rows = []
     labels = ["Primary", "Fallback", "Last resort"]
     for i, s in enumerate(statuses):
@@ -1591,20 +984,11 @@ def cmd_status(args):
         avail = "ok" if s["available"] else "n/a"
         embed_rows.append((label, f"{s['name']}{model_str} [{avail}]"))
 
-    # Index status
-    try:
-        from palaia.index import EmbeddingCache
-
-        cache = EmbeddingCache(root)
-        idx_count = len(cache._load()) if hasattr(cache, "_load") else "?"
-    except Exception:
-        idx_count = "?"
-    embed_rows.append(("Index", f"{idx_count}/{info['total']} entries indexed"))
+    embed_rows.append(("Index", f"{info['idx_count']}/{info['total']} entries indexed"))
 
     print(section("Embeddings"))
     print(table_kv(embed_rows))
 
-    # Index hint (warmup guidance)
     if info.get("index_hint"):
         print(info["index_hint"], file=sys.stderr)
 
@@ -1629,83 +1013,19 @@ def cmd_status(args):
         print("\nNote: Semantic search is not enabled. Results are keyword-based only.")
         print("  Run 'palaia detect' to see available providers.")
 
-    # OpenClaw Plugin detection (L-2)
-    plugin_detected = False
-    try:
-        plugin_config_candidates = [
-            root.parent / "openclaw.json",
-            Path.home() / ".openclaw" / "openclaw.json",
-        ]
-        env_config = os.environ.get("OPENCLAW_CONFIG")
-        if env_config:
-            plugin_config_candidates.insert(0, Path(env_config))
-        for candidate in plugin_config_candidates:
-            if candidate.exists():
-                cfg_data = json.loads(candidate.read_text())
-                if "palaia" in json.dumps(cfg_data.get("plugins", {})):
-                    plugin_detected = True
-                    break
-    except Exception:
-        pass
-    plugin_status = "active" if plugin_detected else "not detected"
+    plugin_status = "active" if info["plugin_detected"] else "not detected"
     print(f"\nOpenClaw Plugin: {plugin_status}")
 
     return 0
 
 
-def _find_latest_mtime(root: Path, tiers: tuple[str, ...] = ("hot",)) -> str | None:
-    """Find the latest file mtime across tiers, return as ISO string."""
-    from datetime import datetime, timezone
-
-    latest = 0.0
-    for tier in tiers:
-        tier_dir = root / tier
-        if not tier_dir.exists():
-            continue
-        for f in tier_dir.iterdir():
-            if f.is_file():
-                mt = f.stat().st_mtime
-                if mt > latest:
-                    latest = mt
-    if latest == 0.0:
-        return None
-    return datetime.fromtimestamp(latest, tz=timezone.utc).isoformat()
-
-
-def _find_gc_time(root: Path) -> str | None:
-    """Try to find the last GC run timestamp from config or file markers."""
-
-    config_path = root / "config.json"
-    if config_path.exists():
-        try:
-            config = json.loads(config_path.read_text())
-            gc_ts = config.get("last_gc")
-            if gc_ts:
-                return gc_ts
-        except Exception:
-            pass
-    return None
-
-
 def cmd_detect(args):
     """Detect available embedding providers."""
-    import platform
+    from palaia.services.admin import detect_embedding_providers
 
-    from palaia.embeddings import detect_providers
+    result = detect_embedding_providers()
 
-    sys_info = f"{platform.system()} {platform.machine()}"
-    py_ver = platform.python_version()
-
-    providers = detect_providers()
-
-    if _json_out(
-        {
-            "system": sys_info,
-            "python": py_ver,
-            "providers": providers,
-        },
-        args,
-    ):
+    if _json_out(result, args):
         return 0
 
     print_header()
@@ -1713,8 +1033,8 @@ def cmd_detect(args):
     print(
         table_kv(
             [
-                ("System", sys_info),
-                ("Python", py_ver),
+                ("System", result["system"]),
+                ("Python", result["python"]),
             ]
         )
     )
@@ -1722,7 +1042,7 @@ def cmd_detect(args):
     # Build provider rows
     available = []
     provider_rows = []
-    for p in providers:
+    for p in result["providers"]:
         name = p["name"]
         if name == "ollama":
             if p["server_running"]:
@@ -1800,245 +1120,137 @@ def cmd_detect(args):
     return 0
 
 
-def cmd_config_set_chain(args):
-    """Set the embedding fallback chain."""
-    root = get_root()
-    config = load_config(root)
-
-    chain = args.providers
-    valid_providers = {"openai", "sentence-transformers", "fastembed", "ollama", "bm25"}
-    for p in chain:
-        if p not in valid_providers:
-            if _json_out({"error": f"Unknown provider: {p}. Valid: {', '.join(sorted(valid_providers))}"}, args):
-                return 1
-            print(f"Unknown provider: {p}", file=sys.stderr)
-            print(f"Valid providers: {', '.join(sorted(valid_providers))}", file=sys.stderr)
-            return 1
-
-    # Ensure bm25 at the end if not present
-    if "bm25" not in chain:
-        chain = chain + ["bm25"]
-
-    config["embedding_chain"] = chain
-    save_config(root, config)
-
-    chain_str = " -> ".join(chain)
-    if _json_out({"embedding_chain": chain}, args):
-        return 0
-    print(f"Embedding chain: {chain_str}")
-    return 0
-
-
-def cmd_config_set_alias(args):
-    """Set an agent alias."""
-    root = get_root()
-    from_name = args.from_name
-    to_name = args.to_name
-    try:
-        set_alias(root, from_name, to_name)
-    except ValueError as e:
-        if _json_out({"error": str(e)}, args):
-            return 1
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    if _json_out({"alias": from_name, "target": to_name}, args):
-        return 0
-    print(f"Alias set: {from_name} -> {to_name}")
-    return 0
-
-
-def cmd_config_get_aliases(args):
-    """Show all agent aliases."""
-    root = get_root()
-    aliases = get_aliases(root)
-    if _json_out({"aliases": aliases}, args):
-        return 0
-    if not aliases:
-        print("No aliases configured.")
-        return 0
-    for src, tgt in sorted(aliases.items()):
-        print(f"  {src} -> {tgt}")
-    return 0
-
-
-def cmd_config_remove_alias(args):
-    """Remove an agent alias."""
-    root = get_root()
-    from_name = args.from_name
-    removed = remove_alias(root, from_name)
-    if _json_out({"removed": removed, "alias": from_name}, args):
-        return 0
-    if removed:
-        print(f"Alias removed: {from_name}")
-    else:
-        print(f"No alias found for: {from_name}")
-        return 1
-    return 0
-
-
 def cmd_config(args):
     """Get or set configuration values."""
+    from palaia.services.admin import (
+        config_set_chain,
+        config_set_alias_svc,
+        config_get_aliases_svc,
+        config_remove_alias_svc,
+        config_get,
+        config_set,
+        config_list_all,
+    )
+
+    root = get_root()
+
     if args.action == "set-chain":
-        return cmd_config_set_chain(args)
-    if args.action == "set-alias":
-        return cmd_config_set_alias(args)
-    if args.action == "get-aliases":
-        return cmd_config_get_aliases(args)
-    if args.action == "remove-alias":
-        return cmd_config_remove_alias(args)
-    if args.action == "get":
-        root = get_root()
-        config = load_config(root)
-        key = args.key
-        if key in config:
-            if _json_out({"key": key, "value": config[key]}, args):
-                return 0
-            print(f"{key} = {config[key]}")
-        else:
-            if _json_out({"error": f"Unknown key: {key}"}, args):
+        result = config_set_chain(root, args.providers)
+        if "error" in result:
+            if _json_out(result, args):
                 return 1
-            print(f"Unknown config key: {key}", file=sys.stderr)
+            print(f"Unknown provider: {result['error']}", file=sys.stderr)
             return 1
-    elif args.action == "set":
-        root = get_root()
-        config = load_config(root)
-        key = args.key
-        value = args.value
-
-        # Type coercion based on default config
-        if key in DEFAULT_CONFIG:
-            default_val = DEFAULT_CONFIG[key]
-            if isinstance(default_val, int):
-                try:
-                    value = int(value)
-                except ValueError:
-                    pass
-            elif isinstance(default_val, float):
-                try:
-                    value = float(value)
-                except ValueError:
-                    pass
-
-        config[key] = value
-        save_config(root, config)
-        if _json_out({"key": key, "value": value}, args):
+        if _json_out(result, args):
             return 0
-        print(f"{key} = {value}")
-    elif args.action == "list":
-        root = get_root()
-        config = load_config(root)
-        if _json_out(config, args):
+        print(f"Embedding chain: {' -> '.join(result['embedding_chain'])}")
+        return 0
+
+    if args.action == "set-alias":
+        result = config_set_alias_svc(root, args.from_name, args.to_name)
+        if "error" in result:
+            if _json_out(result, args):
+                return 1
+            print(f"Error: {result['error']}", file=sys.stderr)
+            return 1
+        if _json_out(result, args):
             return 0
-        for k, v in sorted(config.items()):
+        print(f"Alias set: {args.from_name} -> {args.to_name}")
+        return 0
+
+    if args.action == "get-aliases":
+        result = config_get_aliases_svc(root)
+        if _json_out(result, args):
+            return 0
+        aliases = result["aliases"]
+        if not aliases:
+            print("No aliases configured.")
+            return 0
+        for src, tgt in sorted(aliases.items()):
+            print(f"  {src} -> {tgt}")
+        return 0
+
+    if args.action == "remove-alias":
+        result = config_remove_alias_svc(root, args.from_name)
+        if _json_out(result, args):
+            return 0
+        if result["removed"]:
+            print(f"Alias removed: {args.from_name}")
+        else:
+            print(f"No alias found for: {args.from_name}")
+            return 1
+        return 0
+
+    if args.action == "get":
+        result = config_get(root, args.key)
+        if "error" in result:
+            if _json_out(result, args):
+                return 1
+            print(f"Unknown config key: {args.key}", file=sys.stderr)
+            return 1
+        if _json_out(result, args):
+            return 0
+        print(f"{result['key']} = {result['value']}")
+        return 0
+
+    if args.action == "set":
+        result = config_set(root, args.key, args.value)
+        if _json_out(result, args):
+            return 0
+        print(f"{result['key']} = {result['value']}")
+        return 0
+
+    if args.action == "list":
+        result = config_list_all(root)
+        if _json_out(result, args):
+            return 0
+        for k, v in sorted(result.items()):
             print(f"{k} = {v}")
+        return 0
+
     return 0
 
 
 def _reindex_entries(root, config, args) -> dict:
     """Build embedding index for all HOT+WARM entries missing from cache.
 
+    Backward-compat wrapper around palaia.services.admin.reindex_entries.
     Returns dict with keys: indexed, new, cached.
     """
-    from palaia.embeddings import BM25Provider, auto_detect_provider
+    from palaia.services.admin import reindex_entries
 
-    store = Store(root)
-    is_json = getattr(args, "json", False)
-
-    try:
-        provider = auto_detect_provider(config)
-    except Exception:
-        provider = BM25Provider()
-
-    if isinstance(provider, BM25Provider):
-        return {"indexed": 0, "new": 0, "cached": 0}
-
-    entries = store.all_entries_unfiltered(include_cold=False)
-    total = len(entries)
-    if total == 0:
-        return {"indexed": 0, "new": 0, "cached": 0}
-
-    # Separate entries into cached and uncached
-    uncached_entries = []
-    cached_count = 0
-    for meta, body, _tier in entries:
-        entry_id = meta.get("id", "")
-        if not entry_id:
-            continue
-        if store.embedding_cache.get_cached(entry_id) is not None:
-            cached_count += 1
-        else:
-            title = meta.get("title", "")
-            tags = " ".join(meta.get("tags", []))
-            full_text = f"{title} {tags} {body}"
-            uncached_entries.append((entry_id, full_text))
-
-    if not uncached_entries:
-        if not is_json:
-            print(f"Indexed {total}/{total} entries (0 new, {cached_count} cached)", file=sys.stderr)
-        return {"indexed": total, "new": 0, "cached": cached_count}
-
-    # Batch embed uncached entries
-    model_name = getattr(provider, "model_name", None) or getattr(provider, "model", "unknown")
-    batch_size = 32
-    new_count = 0
-
-    for i in range(0, len(uncached_entries), batch_size):
-        batch = uncached_entries[i : i + batch_size]
-        texts = [text for _, text in batch]
-        ids = [eid for eid, _ in batch]
-
-        try:
-            vectors = provider.embed(texts)
-            for eid, vec in zip(ids, vectors):
-                store.embedding_cache.set_cached(eid, vec, model=model_name)
-                new_count += 1
-        except Exception as e:
-            if not is_json:
-                print(f"Embedding failed for batch {i // batch_size + 1}: {e}", file=sys.stderr)
-            break
-
-        # Progress every 10 entries
-        done = min(i + len(batch), len(uncached_entries))
-        if not is_json and done % 10 < batch_size and done < len(uncached_entries):
-            print(f"Indexing: {cached_count + done}/{total}...", file=sys.stderr)
-
-    indexed = cached_count + new_count
-    if not is_json:
-        print(f"Indexed {indexed}/{total} entries ({new_count} new, {cached_count} cached)", file=sys.stderr)
-
-    return {"indexed": indexed, "new": new_count, "cached": cached_count}
+    return reindex_entries(root, config)
 
 
 def cmd_warmup(args):
     """Pre-download embedding models for instant first search."""
+    from palaia.services.admin import warmup as warmup_svc
+
     root = get_root()
-    config = load_config(root)
-    from palaia.embeddings import warmup_providers
-    from palaia.entry import parse_entry
-
-    results = warmup_providers(config)
-
-    # Rebuild metadata index from disk
-    store = Store(root)
-    meta_count = store.metadata_index.rebuild(parse_entry)
+    result = warmup_svc(root)
     is_json = getattr(args, "json", False)
+
     if not is_json:
-        print(f"Metadata index: {meta_count} entries indexed", file=sys.stderr)
+        print(f"Metadata index: {result['meta_count']} entries indexed", file=sys.stderr)
+        if result["new"] > 0 or result["cached"] > 0:
+            print(
+                f"Indexed {result['indexed']}/{result['indexed']} entries "
+                f"({result['new']} new, {result['cached']} cached)",
+                file=sys.stderr,
+            )
 
-    # Reindex entries after model warmup
-    index_stats = _reindex_entries(root, config, args)
-
-    if _json_out({"providers": results, **index_stats}, args):
+    providers = result["providers"]
+    if _json_out({"providers": providers, "indexed": result["indexed"], "new": result["new"], "cached": result["cached"]}, args):
         return 0
 
-    if not results:
+    if not providers:
         print("No embedding providers configured (using BM25 keyword search).")
         return 0
 
     print_header()
     print(section("Warmup"))
     warmup_rows = []
-    for r in results:
+    for r in providers:
         status = {"ready": "ok", "skipped": "skip", "action_needed": "warn"}.get(r["status"], "error")
         warmup_rows.append((r["name"], f"[{status}]", r["message"]))
     print(
@@ -2054,14 +1266,13 @@ def cmd_warmup(args):
 
 def cmd_gc(args):
     """Run garbage collection / tier rotation."""
-    root = get_root()
-    store = Store(root)
-    store.recover()
+    from palaia.services.admin import run_gc
 
+    root = get_root()
     dry_run = getattr(args, "dry_run", False)
     budget = getattr(args, "budget", False)
 
-    result = store.gc(dry_run=dry_run, budget=budget)
+    result = run_gc(root, dry_run=dry_run, budget=budget)
 
     if _json_out(result, args):
         return 0
@@ -2071,11 +1282,9 @@ def cmd_gc(args):
         if not candidates:
             print("No entries found.")
             return 0
-        from palaia.ui import table_multi as _tm
-
         rows = [(c["id"], c["title"][:30], f"{c['score']:.4f}", c["tier"], c["reason"]) for c in candidates]
         print(
-            _tm(
+            table_multi(
                 headers=("ID", "Title", "Score", "Tier", "Reason"),
                 rows=rows,
                 min_widths=(8, 30, 8, 4, 20),
@@ -2206,39 +1415,22 @@ def cmd_migrate(args):
     return 0
 
 
+# Backward-compat: _suggest_type moved to services.admin
+def _suggest_type(title: str, body: str, meta: dict) -> str:
+    from palaia.services.admin import suggest_type
+    return suggest_type(title, body, meta)
+
+
 def _cmd_migrate_suggest(store, root, args):
     """Suggest entry type assignments for existing entries without a type field."""
-    from palaia.entry import parse_entry
+    from palaia.services.admin import migrate_suggest
 
-    suggestions = []
-    for tier in ("hot", "warm", "cold"):
-        tier_dir = root / tier
-        if not tier_dir.exists():
-            continue
-        for p in tier_dir.glob("*.md"):
-            try:
-                text = p.read_text(encoding="utf-8")
-                meta, body = parse_entry(text)
-                if "type" in meta:
-                    continue  # Already has a type
-                entry_id = meta.get("id", p.stem)
-                title = meta.get("title", "(untitled)")
-                # Simple heuristic for type suggestion
-                suggested_type = _suggest_type(title, body, meta)
-                suggestions.append(
-                    {
-                        "id": entry_id,
-                        "title": title,
-                        "tier": tier,
-                        "suggested_type": suggested_type,
-                    }
-                )
-            except Exception:
-                continue
+    result = migrate_suggest(root)
 
-    if _json_out({"suggestions": suggestions, "total": len(suggestions)}, args):
+    if _json_out(result, args):
         return 0
 
+    suggestions = result["suggestions"]
     if not suggestions:
         print("All entries already have a type assigned.")
         return 0
@@ -2263,89 +1455,56 @@ def _cmd_migrate_suggest(store, root, args):
     return 0
 
 
-def _suggest_type(title: str, body: str, meta: dict) -> str:
-    """Heuristic to suggest entry type based on content."""
-    combined = f"{title} {body}".lower()
-    # Task indicators
-    task_keywords = ["todo", "task", "bug", "fix", "issue", "ticket", "deadline", "assigned", "blocker"]
-    if any(kw in combined for kw in task_keywords):
-        return "task"
-    # Process indicators
-    process_keywords = ["checklist", "sop", "procedure", "workflow", "step 1", "step 2", "how to", "guide", "runbook"]
-    if any(kw in combined for kw in process_keywords):
-        return "process"
-    return "memory"
-
-
 def cmd_setup(args):
     """Multi-agent setup: create .palaia symlinks for agent directories."""
+    from palaia.services.admin import setup_multi_agent
+
     if not args.multi_agent:
         print("Usage: palaia setup --multi-agent <agents-dir>", file=sys.stderr)
         return 1
 
-    agents_dir = Path(args.multi_agent)
-    if not agents_dir.is_dir():
-        msg = f"Directory not found: {agents_dir}"
-        if _json_out({"error": msg}, args):
-            return 1
-        print(f"Error: {msg}", file=sys.stderr)
-        return 1
-
     root = get_root()
-    store_path = root  # The .palaia directory itself
+    result = setup_multi_agent(
+        root,
+        args.multi_agent,
+        dry_run=getattr(args, "dry_run", False),
+    )
 
-    # Scan for agent subdirectories
-    agent_dirs = sorted([d for d in agents_dir.iterdir() if d.is_dir() and not d.name.startswith(".")])
-
-    if not agent_dirs:
-        msg = f"No agent directories found in {agents_dir}"
-        if _json_out({"error": msg, "agents": []}, args):
+    if "error" in result:
+        if _json_out(result, args):
             return 1
-        print(f"No agent directories found in {agents_dir}", file=sys.stderr)
+        print(f"Error: {result['error']}", file=sys.stderr)
         return 1
 
-    dry_run = getattr(args, "dry_run", False)
-    agents = []
-    symlinks_created = 0
+    # Print action details
+    if not getattr(args, "json", False):
+        for action in result.get("actions", []):
+            label = action["action"]
+            agent = action["agent"]
+            if label == "skip":
+                print(f"  [skip] {agent}: {action.get('reason', '')}")
+            elif label == "plan":
+                print(f"  [plan] {agent}: would create .palaia -> {action.get('target', '')}")
+            elif label == "ok":
+                print(f"  [ok] {agent}: .palaia -> {action.get('target', '')}")
+            elif label == "error":
+                print(f"  [error] {agent}: {action.get('error', '')}")
 
-    for agent_dir in agent_dirs:
-        agent_name = agent_dir.name
-        symlink_path = agent_dir / ".palaia"
-        agents.append(agent_name)
-
-        if symlink_path.exists() or symlink_path.is_symlink():
-            if not dry_run and not getattr(args, "json", False):
-                print(f"  [skip] {agent_name}: .palaia already exists")
-            continue
-
-        if dry_run:
-            if not getattr(args, "json", False):
-                print(f"  [plan] {agent_name}: would create .palaia -> {store_path}")
-            symlinks_created += 1
-        else:
-            try:
-                symlink_path.symlink_to(store_path)
-                symlinks_created += 1
-                if not getattr(args, "json", False):
-                    print(f"  [ok] {agent_name}: .palaia -> {store_path}")
-            except OSError as e:
-                if not getattr(args, "json", False):
-                    print(f"  [error] {agent_name}: {e}")
-
-    result = {
-        "agents": agents,
-        "symlinks_created": symlinks_created,
-        "store_path": str(store_path),
-        "dry_run": dry_run,
-    }
-
-    if _json_out(result, args):
+    if _json_out(
+        {
+            "agents": result["agents"],
+            "symlinks_created": result["symlinks_created"],
+            "store_path": result["store_path"],
+            "dry_run": result["dry_run"],
+        },
+        args,
+    ):
         return 0
 
-    if not dry_run:
-        print(f"\n{symlinks_created} symlink(s) created for {len(agents)} agent(s).")
+    if not result["dry_run"]:
+        print(f"\n{result['symlinks_created']} symlink(s) created for {len(result['agents'])} agent(s).")
     else:
-        print(f"\nDry run: {symlinks_created} symlink(s) would be created for {len(agents)} agent(s).")
+        print(f"\nDry run: {result['symlinks_created']} symlink(s) would be created for {len(result['agents'])} agent(s).")
     return 0
 
 
@@ -2578,40 +1737,41 @@ def cmd_project(args):
 
 def cmd_instance(args):
     """Manage session instance identity."""
+    from palaia.services.admin import instance_set, instance_get, instance_clear
+
     root = get_root()
     action = args.instance_action
 
     if action == "set":
-        set_instance(root, args.name)
-        if _json_out({"instance": args.name, "status": "set"}, args):
+        result = instance_set(root, args.name)
+        if _json_out(result, args):
             return 0
         print(f"Instance set: {args.name}")
         return 0
 
     elif action == "get":
-        instance = get_instance(root)
-        if _json_out({"instance": instance}, args):
+        result = instance_get(root)
+        if _json_out(result, args):
             return 0
-        if instance:
-            print(f"Current instance: {instance}")
+        if result["instance"]:
+            print(f"Current instance: {result['instance']}")
         else:
             print("No instance set.")
         return 0
 
     elif action == "clear":
-        clear_instance(root)
-        if _json_out({"instance": None, "status": "cleared"}, args):
+        result = instance_clear(root)
+        if _json_out(result, args):
             return 0
         print("Instance cleared.")
         return 0
 
     else:
-        # No subcommand: show current instance
-        instance = get_instance(root)
-        if _json_out({"instance": instance}, args):
+        result = instance_get(root)
+        if _json_out(result, args):
             return 0
-        if instance:
-            print(f"Current instance: {instance}")
+        if result["instance"]:
+            print(f"Current instance: {result['instance']}")
         else:
             print("No instance set. Use: palaia instance set NAME")
         return 0

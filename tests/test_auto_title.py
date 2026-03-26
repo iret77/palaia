@@ -2,19 +2,8 @@
 
 import pytest
 
-from palaia.config import DEFAULT_CONFIG, save_config
 from palaia.entry import create_entry, extract_title_from_content, parse_entry
 from palaia.store import Store
-
-
-@pytest.fixture
-def palaia_root(tmp_path):
-    root = tmp_path / ".palaia"
-    root.mkdir()
-    for sub in ("hot", "warm", "cold", "wal", "index"):
-        (root / sub).mkdir()
-    save_config(root, DEFAULT_CONFIG)
-    return root
 
 
 # --- Unit tests for extract_title_from_content ---

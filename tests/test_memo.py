@@ -7,18 +7,7 @@ import time
 
 import pytest
 
-from palaia.config import DEFAULT_CONFIG, save_config
 from palaia.memo import MemoManager
-
-
-@pytest.fixture
-def palaia_root(tmp_path):
-    root = tmp_path / ".palaia"
-    root.mkdir()
-    for sub in ("hot", "warm", "cold", "wal", "index"):
-        (root / sub).mkdir()
-    save_config(root, DEFAULT_CONFIG)
-    return root
 
 
 @pytest.fixture

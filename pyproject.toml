@@ -62,3 +62,10 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["palaia"]
+omit = ["palaia/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true

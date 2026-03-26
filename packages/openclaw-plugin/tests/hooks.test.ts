@@ -36,7 +36,7 @@ import {
   resolvePerAgentContext,
   type ExtractionResult,
   type PalaiaHint,
-} from "../src/hooks.js";
+} from "../src/hooks/index.js";
 import { DEFAULT_RECALL_TYPE_WEIGHTS, resolveConfig } from "../src/config.js";
 
 // ============================================================================

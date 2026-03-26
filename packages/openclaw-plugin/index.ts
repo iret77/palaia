@@ -11,13 +11,18 @@
  * - agent_end: Auto-capture of significant exchanges (opt-in, Issue #64)
  * - palaia-recovery: WAL replay on startup
  *
+ * Phase 1.5: ContextEngine adapter support. When the host provides
+ * api.registerContextEngine, palaia registers as a ContextEngine.
+ * Otherwise, falls back to legacy hook-based integration.
+ *
  * Activation:
  *   plugins: { slots: { memory: "palaia" } }
  */
 
 import { resolveConfig, type PalaiaPluginConfig } from "./src/config.js";
 import { registerTools } from "./src/tools.js";
-import { registerHooks } from "./src/hooks.js";
+import { registerHooks } from "./src/hooks/index.js";
+import { createPalaiaContextEngine } from "./src/context-engine.js";
 import type { OpenClawPluginApi, OpenClawPluginEntry } from "./src/types.js";
 
 // Plugin entry point compatible with OpenClaw plugin-sdk definePluginEntry
@@ -46,8 +51,12 @@ const palaiaPlugin: OpenClawPluginEntry = {
     // Register agent tools (memory_search, memory_get, memory_write)
     registerTools(api, config);
 
-    // Register lifecycle hooks (before_prompt_build, recovery service)
-    registerHooks(api, config);
+    // Register ContextEngine when available, otherwise use legacy hooks
+    if (api.registerContextEngine) {
+      api.registerContextEngine("palaia", createPalaiaContextEngine(api, config));
+    } else {
+      registerHooks(api, config);  // Legacy fallback
+    }
   },
 };
 

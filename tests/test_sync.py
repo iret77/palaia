@@ -11,21 +11,6 @@ from palaia.store import Store
 from palaia.sync import MANIFEST_NAME, export_entries, import_entries
 
 
-@pytest.fixture
-def palaia_root(tmp_path):
-    root = tmp_path / ".palaia"
-    root.mkdir()
-    for sub in ("hot", "warm", "cold", "wal", "index"):
-        (root / sub).mkdir()
-    save_config(root, DEFAULT_CONFIG)
-    return root
-
-
-@pytest.fixture
-def store(palaia_root):
-    return Store(palaia_root)
-
-
 def test_export_no_public_entries(palaia_root, store, monkeypatch):
     """Export with no public entries returns empty."""
     store.write("private stuff", scope="team")
