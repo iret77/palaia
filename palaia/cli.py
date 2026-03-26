@@ -697,6 +697,38 @@ def cmd_query(args):
     for nudge_msg in query_nudge_messages:
         print(f"\nHint: {nudge_msg}", file=sys.stderr)
 
+    # --- priorities_hint nudge (v2.2) ---
+    if results:
+        try:
+            from palaia.nudge import NudgeTracker
+
+            tracker = NudgeTracker(root)
+            agent_for_nudge = agent or "default"
+            priorities_path = root / "priorities.json"
+            if not priorities_path.exists():
+                # Check if multi-agent setup (>1 agent)
+                store = Store(root)
+                agents = set()
+                for meta, _, _ in store.all_entries(include_cold=False):
+                    a = meta.get("agent")
+                    if a:
+                        agents.add(a)
+                    if len(agents) > 1:
+                        break
+                if len(agents) > 1:
+                    if tracker.should_nudge("priorities_hint", agent_for_nudge):
+                        msg = tracker.get_nudge_message("priorities_hint")
+                        if msg:
+                            print(f"\n{msg}", file=sys.stderr)
+                            tracker.record_nudge("priorities_hint", agent_for_nudge)
+            else:
+                # priorities.json exists → graduate
+                tracker.record_success("priorities_hint", agent_for_nudge)
+                tracker.record_success("priorities_hint", agent_for_nudge)
+                tracker.record_success("priorities_hint", agent_for_nudge)
+        except Exception:
+            pass
+
     _memo_nudge(args)
     _process_nudge(args.query, [], args)
 
@@ -1018,6 +1050,36 @@ def cmd_status(args):
 
     plugin_status = "active" if info["plugin_detected"] else "not detected"
     print(f"\nOpenClaw Plugin: {plugin_status}")
+
+    # --- curate_reminder nudge (v2.2) ---
+    try:
+        from palaia.nudge import NudgeTracker
+
+        total_count = info.get("total", 0)
+        if total_count > 100:
+            tracker = NudgeTracker(root)
+            agent_for_nudge = info.get("config", {}).get("agent", "default")
+            if tracker.should_nudge("curate_reminder", agent_for_nudge):
+                # Check oldest entry age
+                store = Store(root)
+                oldest_days = 0
+                for tier in ("hot", "warm", "cold"):
+                    tier_dir = root / tier
+                    if tier_dir.exists():
+                        for f in tier_dir.iterdir():
+                            if f.is_file():
+                                import time
+                                age_days = (time.time() - f.stat().st_mtime) / 86400
+                                if age_days > oldest_days:
+                                    oldest_days = age_days
+                if oldest_days >= 90:
+                    msg = tracker.get_nudge_message("curate_reminder")
+                    if msg:
+                        msg = msg.format(count=total_count, days=int(oldest_days))
+                        print(f"\n{msg}", file=sys.stderr)
+                        tracker.record_nudge("curate_reminder", agent_for_nudge)
+    except Exception:
+        pass
 
     return 0
 

@@ -33,7 +33,7 @@ DEFAULT_CONFIG = {
     "gc_type_weights": {"process": 2.0, "task": 1.5, "memory": 1.0},
     # Security: allow ingesting URLs that resolve to private/internal IPs
     "allow_private_urls": False,
-    # Storage backend: "auto" (detect), "sqlite" (force), "postgres" (force)
+    # Storage backend: "auto" (= SQLite default), "sqlite", "postgres", "legacy" (JSON files)
     "database_backend": "auto",
     # PostgreSQL connection URL (None = use SQLite)
     "database_url": None,

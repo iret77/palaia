@@ -55,10 +55,8 @@ def collect_status(root: Path) -> dict:
 
     # Compute index hint
     try:
-        from palaia.index import EmbeddingCache as _EC
-
-        _cache = _EC(root)
-        _idx_count = len(_cache._load()) if hasattr(_cache, "_load") else None
+        _cache = store.embedding_cache
+        _idx_count = _cache.stats().get("cached_entries", None)
     except Exception:
         _idx_count = None
     _total = info["total"]

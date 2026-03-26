@@ -61,6 +61,21 @@ NUDGE_PATTERNS: dict[str, dict[str, str]] = {
             "and `palaia config set showCaptureConfirm true/false`"
         ),
     },
+    "curate_reminder": {
+        "message": (
+            "Tip: You have {count} entries, some dating back {days} days. "
+            "Consider running `palaia curate analyze` to review, deduplicate, "
+            "and clean up your knowledge base."
+        ),
+        "cooldown": 604800,  # 7 days
+    },
+    "priorities_hint": {
+        "message": (
+            "Tip: In multi-agent setups, use `palaia priorities` to control "
+            "which memories each agent sees. This prevents cross-agent injection noise."
+        ),
+        "cooldown": 86400,  # 24 hours
+    },
 }
 
 # Graduation threshold: consecutive successes required
@@ -148,7 +163,9 @@ class NudgeTracker:
                     last_time = last_time.replace(tzinfo=timezone.utc)
                 now = datetime.now(timezone.utc)
                 elapsed = (now - last_time).total_seconds()
-                if elapsed < NUDGE_COOLDOWN_SECONDS:
+                pattern = NUDGE_PATTERNS.get(pattern_id, {})
+                cooldown = pattern.get("cooldown", NUDGE_COOLDOWN_SECONDS)
+                if elapsed < cooldown:
                     return False
             except (ValueError, TypeError):
                 pass  # Invalid timestamp, allow nudge

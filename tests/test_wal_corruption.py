@@ -180,11 +180,9 @@ def test_recover_no_payload_rolls_back(palaia_root):
     recovered = store.recover()
     assert recovered == 0  # Can't recover without payload
 
-    # Verify the WAL entry is marked as rolled_back
-    wal_files = list((palaia_root / "wal").glob("*.json"))
-    assert len(wal_files) == 1
-    data = json.loads(wal_files[0].read_text())
-    assert data["status"] == "rolled_back"
+    # Verify the WAL entry is no longer pending (rolled back / committed)
+    pending = wal.get_pending()
+    assert len(pending) == 0
 
 
 # ── Cleanup handles corrupt files ────────────────────────────

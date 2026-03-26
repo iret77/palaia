@@ -589,6 +589,17 @@ palaia package info <file>
 
 The `--agent` flag on import attributes all imported entries to a specific agent name.
 
+## Knowledge Curation (`palaia curate`)
+
+When your user wants to migrate knowledge to a new instance, clean up old entries, or review what's accumulated:
+
+1. **Analyze**: `palaia curate analyze [--project NAME]` — clusters entries thematically, detects duplicates, recommends KEEP/MERGE/DROP per cluster. Outputs a Markdown report.
+2. **Apply**: `palaia curate apply <report.md>` — parses the user-edited report and produces a clean `.palaia-pkg.json` for import on the new instance.
+
+The report includes a Scope Mapping table where the user can remap scopes (e.g., rename agents, promote private->team, drop an agent's entries entirely).
+
+Tell your user: "I can analyze your memory for cleanup. Want me to run a curation report?"
+
 ## Process Runner
 
 Run stored process entries as interactive checklists:
@@ -667,6 +678,17 @@ Palaia includes a graduation system that adapts to agent behavior:
 - New processes always trigger nudges until a pattern is established
 
 **Important:** SKILL.md documentation is the primary source for agent behavior. Nudging is the safety net for when agents don't read the docs — not a replacement for good documentation.
+
+## Injection Priorities (`palaia priorities`)
+
+In multi-agent setups, control which memories are injected into each agent's context:
+
+- `palaia priorities` — show what would be injected (with score breakdown)
+- `palaia priorities block <entry-id> [--agent NAME]` — block an entry from injection for a specific agent
+- `palaia priorities set recallMinScore 0.8 --agent orchestrator` — set per-agent injection thresholds
+- `palaia priorities set typeWeight.process 0.5 --agent orchestrator` — reduce process entry weight for an agent
+
+Config is stored in `.palaia/priorities.json` with layered overrides: global -> per-agent -> per-project.
 
 ## Transparency Features
 
@@ -857,10 +879,14 @@ palaia query "question" --project X --rag
 ### Sync
 
 ```bash
-# Export entries for sharing
-palaia export [--project NAME] [--output DIR] [--remote GIT_URL]
+# Export entries for sharing (preferred)
+palaia sync export [--project NAME] [--output DIR] [--remote GIT_URL]
 
 # Import entries from an export
+palaia sync import <path> [--dry-run]
+
+# Legacy aliases (deprecated, still work)
+palaia export [--project NAME] [--output DIR] [--remote GIT_URL]
 palaia import <path> [--dry-run]
 
 # Import from other memory formats (smart-memory, flat-file, json-memory, generic-md)

@@ -59,22 +59,29 @@ class Store:
             self._auto_migrate()
 
     def _create_backend(self):
-        """Create backend if configured. Returns None for legacy JSON mode."""
+        """Create the storage backend.
+
+        Default is SQLite (zero-config, no expert knowledge needed).
+        PostgreSQL when PALAIA_DATABASE_URL is set.
+        Legacy JSON only as explicit fallback (database_backend=legacy).
+        """
         db_setting = self.config.get("database_backend", "auto")
         db_url = self.config.get("database_url") or os.environ.get("PALAIA_DATABASE_URL")
 
-        # Only create backend if explicitly configured or DB URL provided
-        if db_setting == "sqlite":
-            from palaia.backends.sqlite import SQLiteBackend
+        # Explicit legacy mode — only for debugging/testing
+        if db_setting == "legacy":
+            return None
 
-            return SQLiteBackend(self.root)
-        elif db_url:
+        # PostgreSQL when URL is configured
+        if db_url:
             from palaia.backends import create_backend
 
             return create_backend(self.root, self.config)
 
-        # Default "auto" without DB URL keeps legacy JSON behavior for backward compat
-        return None
+        # Default: SQLite (auto or explicit sqlite)
+        from palaia.backends.sqlite import SQLiteBackend
+
+        return SQLiteBackend(self.root)
 
     def _auto_migrate(self):
         """Auto-migrate flat-file indexes to backend on first use."""

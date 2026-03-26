@@ -142,13 +142,16 @@ class EmbeddingCache:
     def stats(self) -> dict:
         """Return cache statistics."""
         if self._backend:
-            # Use backend health_check or query for stats
             try:
-                health = self._backend.health_check()
-                return {
-                    "cached_entries": health.get("embeddings", 0),
-                    "models": [],
-                }
+                count_row = self._backend.conn.execute(
+                    "SELECT COUNT(*) FROM embeddings"
+                ).fetchone()
+                emb_count = count_row[0] if count_row else 0
+                model_rows = self._backend.conn.execute(
+                    "SELECT DISTINCT model FROM embeddings"
+                ).fetchall()
+                models = sorted(r[0] for r in model_rows if r[0])
+                return {"cached_entries": emb_count, "models": models}
             except Exception:
                 return {"cached_entries": 0, "models": []}
         with self._lock:

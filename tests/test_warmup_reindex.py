@@ -116,7 +116,7 @@ def test_reindex_skips_cached_entries(palaia_root):
 
     # Verify pre-cached entry was NOT overwritten
     vec = store.embedding_cache.get_cached("aaaa-1111")
-    assert vec == [0.5, 0.6, 0.7]
+    assert vec == pytest.approx([0.5, 0.6, 0.7], abs=1e-6)
 
 
 def test_reindex_bm25_only_skips(palaia_root):

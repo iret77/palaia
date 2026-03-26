@@ -256,7 +256,7 @@ class TestStoreEdit:
         store.embedding_cache.set_cached(eid, [0.1, 0.2], model="test")
         cached_before = store.embedding_cache.get_cached(eid)
         assert cached_before is not None
-        assert cached_before == [0.1, 0.2]
+        assert cached_before == pytest.approx([0.1, 0.2], abs=1e-6)
         # Edit content should invalidate the old embedding
         # (may be re-indexed with a new vector if a provider is available)
         store.edit(eid, body="new content")

@@ -1399,7 +1399,11 @@ def _check_index_staleness(palaia_root: Path | None) -> dict[str, Any]:
             "message": "No entries to index",
         }
 
-    cache = EmbeddingCache(palaia_root)
+    # Use Store to get the backend-aware EmbeddingCache
+    from palaia.store import Store
+
+    store = Store(palaia_root)
+    cache = store.embedding_cache
     cache_stats = cache.stats()
     cached_count = cache_stats.get("cached_entries", 0)
     missing = total_entries - cached_count

@@ -10,7 +10,6 @@ import pytest
 
 from palaia import __version__
 from palaia.config import DEFAULT_CONFIG, save_config
-from palaia.index import EmbeddingCache
 from palaia.store import Store
 
 
@@ -64,10 +63,9 @@ def test_no_hint_when_fully_indexed(palaia_root):
     eid1 = store.write("Entry one")
     eid2 = store.write("Entry two")
 
-    # Manually populate the embedding cache
-    cache = EmbeddingCache(palaia_root)
-    cache.set_cached(eid1, [0.1, 0.2, 0.3], model="test")
-    cache.set_cached(eid2, [0.4, 0.5, 0.6], model="test")
+    # Manually populate the embedding cache via store's backend-aware cache
+    store.embedding_cache.set_cached(eid1, [0.1, 0.2, 0.3], model="test")
+    store.embedding_cache.set_cached(eid2, [0.4, 0.5, 0.6], model="test")
 
     stdout, stderr, rc = _run_status(palaia_root)
     assert rc == 0
@@ -97,8 +95,7 @@ def test_json_index_hint_fully_indexed(palaia_root):
     store = Store(palaia_root)
     eid = store.write("Entry one")
 
-    cache = EmbeddingCache(palaia_root)
-    cache.set_cached(eid, [0.1, 0.2], model="test")
+    store.embedding_cache.set_cached(eid, [0.1, 0.2], model="test")
 
     stdout, stderr, rc = _run_status(palaia_root, json_mode=True)
     assert rc == 0
