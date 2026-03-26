@@ -10,3 +10,4 @@ build/
 .pytest_cache/
 palaia-export/
 site/
+WEBSITE-UPDATE-PROMPT.md
