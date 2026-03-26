@@ -140,7 +140,7 @@ StorageBackend Protocol
 ├── SQLiteBackend        — Zero-config, embedded, single file
 │   ├── sqlite3 (stdlib) — Metadata + WAL
 │   ├── sqlite-vec       — Vector KNN search (optional)
-│   └── FTS5             — Full-text search (built-in)
+│   └── BM25             — Full-text keyword search
 │
 └── PostgresBackend      — Production, distributed teams
     ├── psycopg           — Connection (pip install 'palaia[postgres]')

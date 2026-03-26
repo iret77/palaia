@@ -509,7 +509,7 @@ Set in `openclaw.json` under `plugins.entries.palaia.config`:
 
 ## Storage Backends
 
-Palaia v2.2 uses **SQLite by default** — zero-config, single-file database with WAL mode, FTS5 full-text search.
+Palaia v2.2 uses **SQLite by default** — zero-config, single-file database with WAL mode, hybrid BM25 + semantic search.
 
 For distributed agent teams, PostgreSQL + pgvector is available:
 ```bash

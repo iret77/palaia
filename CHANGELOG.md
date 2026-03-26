@@ -8,7 +8,7 @@
 - **OpenClaw plugin**: Requires OpenClaw >=2026.3.22 (new plugin-sdk imports)
 - **Plugin entry point**: Migrated from plain function export to `definePluginEntry` pattern
 - **Python**: Minimum version remains 3.9, but v2.2 adds optional `sqlite-vec`, `psycopg`, and `scikit-learn` (for curate) dependencies
-- **Default install no longer requires `[fastembed]` extra** — `pip install palaia` works out of the box with SQLite FTS5 + BM25. Fastembed is optional for semantic search.
+- **Default install no longer requires `[fastembed]` extra** — `pip install palaia` works out of the box with SQLite + BM25. Fastembed is optional for semantic search.
 
 ### New Features
 - **Injection priorities** (`palaia priorities`) — Per-agent/project control over which memories are injected into context. Block entries, set per-agent `recallMinScore`, adjust `typeWeight` per agent. Config in `.palaia/priorities.json` with layered overrides: global -> per-agent -> per-project.
@@ -22,7 +22,7 @@
 
 ### Storage Backend Architecture (Phase 2)
 - **Pluggable storage backends** — New `StorageBackend` protocol with provider-chain auto-detection, mirroring the embedding provider chain pattern.
-- **SQLite backend** (default when `database_backend=sqlite`) — Single-file database with WAL mode, FTS5 full-text search, optional `sqlite-vec` for native vector KNN. Zero new dependencies (sqlite3 is stdlib).
+- **SQLite backend** (default when `database_backend=sqlite`) — Single-file database with WAL mode, optional `sqlite-vec` for native vector KNN. Zero new dependencies (sqlite3 is stdlib).
 - **PostgreSQL + pgvector backend** — For distributed agent teams. HNSW ANN vector search, MVCC concurrent writes, JSONB tags, tsvector full-text. Activate via `PALAIA_DATABASE_URL` or `palaia config set database_url`.
 - **Automatic migration** — Existing `metadata.json`, `embeddings.json`, and WAL files are automatically migrated to the active backend. Old files renamed to `.migrated`.
 

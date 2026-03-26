@@ -60,7 +60,7 @@ palaia query "what's the rate limit"                # Find it by meaning
 
 ## What's New in v2.2
 
-- **SQLite as default backend** — Zero-config, single-file database with WAL mode, FTS5 full-text search. Replaces flat JSON files. Existing stores migrate automatically.
+- **SQLite as default backend** — Zero-config, single-file database with WAL mode. Replaces flat JSON files. Existing stores migrate automatically.
 - **Injection priorities** — Per-agent/project control over which memories get injected (`palaia priorities`).
 - **Knowledge curation** — `palaia curate analyze/apply` for clustering, dedup, and clean migration.
 - **ContextEngine integration** — New OpenClaw ContextEngine adapter with 7 lifecycle hooks.
