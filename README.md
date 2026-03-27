@@ -18,12 +18,12 @@ Paste this into your OpenClaw agent:
 
 > Install palaia for me. Set up memory so it works across sessions.
 
-The agent handles everything: `pip install palaia`, `palaia init`, plugin setup, and verification.
+The agent handles everything: `pip install "palaia[fastembed]"`, `palaia init`, plugin setup, and verification.
 
 ### Manual / Expert Setup
 
 ```bash
-pip install palaia
+pip install "palaia[fastembed]"
 palaia init
 palaia doctor --fix
 ```
@@ -34,18 +34,12 @@ npm install -g @byte5ai/palaia@latest
 ```
 Then configure `openclaw.json` — see [SKILL.md](palaia/SKILL.md) for details.
 
-For better semantic search (optional — BM25 works out of the box):
-```bash
-pip install palaia[fastembed]
-palaia warmup
-```
-
 For knowledge curation features:
 ```bash
-pip install palaia[curate]
+pip install "palaia[curate]"
 ```
 
-**Upgrading?** `pip install --upgrade palaia && palaia doctor --fix` — migration is automatic.
+**Upgrading?** `pip install --upgrade "palaia[fastembed]" && palaia doctor --fix` — migration is automatic.
 
 ## Quick Start
 

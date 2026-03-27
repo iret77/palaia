@@ -13,17 +13,17 @@ metadata:
     install:
       - id: pip
         kind: pip
-        package: "palaia"
+        package: "palaia[fastembed]"
         bins: ["palaia"]
-        label: "Install Palaia (pip)"
+        label: "Install Palaia with semantic search (pip)"
     postInstall:
       - command: "palaia init"
         label: "Initialize Palaia store"
       - command: "npm install -g @byte5ai/palaia@latest"
         label: "Install OpenClaw plugin (npm)"
     postUpdate:
-      - command: "python3 -m pip install --upgrade palaia && (npm install -g @byte5ai/palaia@latest 2>/dev/null || true) && palaia doctor --fix && palaia warmup"
-        label: "Upgrade Palaia (pip + npm plugin if available) and run health checks"
+      - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && (npm install -g @byte5ai/palaia@latest 2>/dev/null || true) && palaia doctor --fix && palaia warmup"
+        label: "Upgrade Palaia with semantic search (pip + npm plugin) and run health checks"
     postUpdateMessage: >
       Palaia has been updated to v2.2. New: SQLite default backend, injection priorities,
       knowledge curation, ContextEngine integration. Run `palaia doctor --fix` to upgrade.
@@ -41,30 +41,27 @@ Palaia is the memory system for OpenClaw agents. It gives you persistent, search
 When a user asks you to "set up palaia", "enable memory", or "remember things across sessions", run these steps:
 
 ```bash
-pip install palaia
-# For knowledge curation features (optional):
-# pip install palaia[curate]
+pip install "palaia[fastembed]"
 ```
 
 ```bash
 palaia init
 ```
 
-This creates `.palaia/` with SQLite storage and auto-detects embedding providers. No manual configuration needed.
+This creates `.palaia/` with SQLite storage and automatically configures fastembed for semantic search. No manual configuration needed.
 
 Confirm success to the user: "Memory is ready. I'll automatically remember important context from our conversations."
 
 If `pip` is not available, try alternatives in this order:
 ```bash
-python3 -m pip install palaia
-uv tool install palaia
-pipx install palaia
+python3 -m pip install "palaia[fastembed]"
+uv tool install "palaia[fastembed]"
+pipx install "palaia[fastembed]"
 ```
 
-For better semantic search (optional — BM25 works out of the box):
+For knowledge curation features (optional):
 ```bash
-pip install palaia[fastembed]
-palaia warmup
+pip install "palaia[curate]"
 ```
 
 ### OpenClaw Plugin Setup (for Auto-Capture and Auto-Recall)
@@ -110,7 +107,7 @@ palaia init --agent YOUR_AGENT_NAME
 When the user asks to update, or when `palaia status` shows a version mismatch:
 
 ```bash
-pip install --upgrade palaia
+pip install --upgrade "palaia[fastembed]"
 palaia doctor --fix
 ```
 
