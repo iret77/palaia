@@ -4,123 +4,11 @@ version: "2.2.0"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   SQLite-backed by default. Semantic search, projects, scopes, auto-capture.
-  After installing or updating, run: palaia doctor --fix to complete setup.
-metadata:
-  openclaw:
-    emoji: "\U0001F9E0"
-    requires:
-      bins: ["palaia"]
-    install:
-      - id: pip
-        kind: pip
-        package: "palaia"
-        bins: ["palaia"]
-        label: "Install Palaia (pip)"
-    postInstall:
-      - command: "palaia init"
-        label: "Initialize Palaia store"
-      - command: "npm install -g @byte5ai/palaia@latest"
-        label: "Install OpenClaw plugin (npm)"
-    postUpdate:
-      - command: "python3 -m pip install --upgrade palaia && (npm install -g @byte5ai/palaia@latest 2>/dev/null || true) && palaia doctor --fix && palaia warmup"
-        label: "Upgrade Palaia (pip + npm plugin if available) and run health checks"
-    postUpdateMessage: >
-      Palaia has been updated to v2.2. New: SQLite default backend, injection priorities,
-      knowledge curation, ContextEngine integration. Run `palaia doctor --fix` to upgrade.
-    plugin:
-      slot: memory
-      package: "@byte5ai/palaia"
 ---
 
-# Palaia v2.2 — Agent Memory Skill
+# Palaia v2.2 — Agent Memory (Plugin)
 
-Palaia is the memory system for OpenClaw agents. It gives you persistent, searchable, crash-safe memory across sessions. You don't need to understand how it works — just use the commands below.
-
-## First-Time Setup
-
-When a user asks you to "set up palaia", "enable memory", or "remember things across sessions", run these steps:
-
-```bash
-pip install palaia
-# For knowledge curation features (optional):
-# pip install palaia[curate]
-```
-
-```bash
-palaia init
-```
-
-This creates `.palaia/` with SQLite storage and auto-detects embedding providers. No manual configuration needed.
-
-Confirm success to the user: "Memory is ready. I'll automatically remember important context from our conversations."
-
-If `pip` is not available, try alternatives in this order:
-```bash
-python3 -m pip install palaia
-uv tool install palaia
-pipx install palaia
-```
-
-For better semantic search (optional — BM25 works out of the box):
-```bash
-pip install palaia[fastembed]
-palaia warmup
-```
-
-### OpenClaw Plugin Setup (for Auto-Capture and Auto-Recall)
-
-After the CLI is installed, wire it into OpenClaw:
-
-```bash
-npm install -g @byte5ai/palaia@latest
-```
-
-Then activate in OpenClaw config (read existing values first, never overwrite arrays):
-```bash
-PALAIA_PATH="$(npm root -g)/@byte5ai/palaia"
-```
-
-Add to `openclaw.json`:
-```json
-{
-  "plugins": {
-    "load": { "paths": ["<PALAIA_PATH>"] },
-    "allow": ["..existing..", "palaia"],
-    "slots": { "memory": "palaia" },
-    "entries": { "palaia": { "enabled": true } }
-  }
-}
-```
-
-Restart the gateway and verify:
-```bash
-openclaw gateway restart
-palaia doctor
-```
-
-### Agent Identity (optional)
-
-Single-agent systems work with the default name. For multi-agent setups:
-```bash
-palaia init --agent YOUR_AGENT_NAME
-```
-
-## Updating Palaia
-
-When the user asks to update, or when `palaia status` shows a version mismatch:
-
-```bash
-pip install --upgrade palaia
-palaia doctor --fix
-```
-
-Storage migration happens automatically — no manual steps needed. The doctor detects and fixes any issues from the upgrade.
-
-If the OpenClaw plugin is installed:
-```bash
-npm install -g @byte5ai/palaia@latest
-openclaw gateway restart
-```
+Palaia is your memory system. It gives you persistent, searchable, crash-safe memory across sessions. Palaia is already installed and configured via the OpenClaw plugin — just use the commands below.
 
 ## Auto-Check (run every time this skill is loaded)
 
@@ -248,7 +136,7 @@ palaia memo inbox              # Check for messages
 palaia memo ack <memo-id>      # Mark as read
 ```
 
-### `palaia priorities` — Injection priority management (NEW in v2.2)
+### `palaia priorities` — Injection priority management
 
 Control which memories are injected into each agent's context.
 
@@ -268,7 +156,7 @@ palaia priorities set typeWeight.process 0.5 --agent orchestrator
 
 Config stored in `.palaia/priorities.json` with layered overrides: global -> per-agent -> per-project.
 
-### `palaia curate analyze/apply` — Knowledge curation (NEW in v2.2)
+### `palaia curate analyze/apply` — Knowledge curation
 
 For migrating knowledge to a new instance, cleaning up old entries, or reviewing accumulated knowledge.
 
@@ -297,8 +185,6 @@ palaia sync export --project myapp --remote git@github.com:team/knowledge.git
 palaia sync import ./export/ --dry-run   # Preview first
 palaia sync import ./export/
 ```
-
-Note: The old `palaia export`/`palaia import` aliases still work but are deprecated.
 
 ### `palaia package export/import` — Portable knowledge packages
 
@@ -399,7 +285,7 @@ Palaia's CLI output contains contextual hints prefixed with `[palaia]`. These ar
 
 ---
 
-## Multi-Agent Setup
+## Multi-Agent Coordination
 
 ### Scopes across agents
 - `private` entries are only visible to the writing agent
@@ -408,6 +294,34 @@ Palaia's CLI output contains contextual hints prefixed with `[palaia]`. These ar
 
 ### Agent identity
 Set via `--agent` flag, `PALAIA_AGENT` env var, or `palaia init --agent NAME`. Stored in `.palaia/config.json`.
+
+**CRITICAL:** Every agent MUST have a unique `PALAIA_AGENT` value. Without it, all entries are attributed to "default" and scope filtering does not work correctly.
+
+### Setting up additional agents
+
+When new agents join an existing OpenClaw instance that already has palaia, each agent needs palaia awareness:
+
+1. Set the agent's identity:
+   ```bash
+   export PALAIA_AGENT=<agent-name>
+   ```
+2. Add palaia's SKILL.md to the agent's skill set (via ClawHub or manual config)
+3. Join the shared store:
+   ```bash
+   palaia instance set <instance-id>
+   ```
+4. Verify connectivity:
+   ```bash
+   palaia doctor
+   palaia memo inbox
+   ```
+
+If a new agent is added later and does NOT have palaia configured, it will:
+- Not auto-capture conversations
+- Not benefit from shared team knowledge
+- Potentially duplicate work that palaia already tracked
+
+Use `palaia memo broadcast "New agent <name> is online"` to notify the team.
 
 ### Aliases
 When an agent runs under different names (e.g., "default" during init, "HAL" during operation):
@@ -507,44 +421,30 @@ Set in `openclaw.json` under `plugins.entries.palaia.config`:
 
 ---
 
-## Storage Backends
+## Dangerous Operations
 
-Palaia v2.2 uses **SQLite by default** — zero-config, single-file database with WAL mode, hybrid BM25 + semantic search.
+**Be careful with these commands:**
 
-For distributed agent teams, PostgreSQL + pgvector is available:
-```bash
-palaia config set database_url postgresql://user:pass@host/db
-# or: export PALAIA_DATABASE_URL=postgresql://...
-```
-
-Existing flat-file stores are automatically migrated to SQLite on first use.
-
----
+- **`palaia gc --aggressive`** — Permanently deletes COLD-tier entries. Always run `palaia gc --aggressive --dry-run` first and confirm with the user before executing.
+- **Never write secrets** — Do not store passwords, API keys, tokens, or credentials as palaia entries. They persist in the database and may be shared via `--scope team` or `--scope public`.
+- **`--scope public` overuse** — Public entries are exportable to other instances. Only use for genuinely shareable knowledge. Default to `team` scope.
+- **"Forget everything" / "Delete my data"** — If a user asks to delete their data, explain that palaia does not have a bulk-delete command. Guide them to `palaia gc --aggressive` for cold entries, or manual `palaia edit <id>` / project deletion. Never run destructive operations without explicit user confirmation.
 
 ## Error Handling
+
+**NEVER silently ignore palaia errors. Always report them clearly to the user.**
 
 | Problem | What to do |
 |---------|-----------|
 | Something is wrong | `palaia doctor --fix` first, debug second |
-| Search returns no results | `palaia query "..." --all` to include COLD tier |
+| `palaia write` fails | Run `palaia doctor --fix`, then retry. If WAL replay needed, run `palaia recover`. |
+| `palaia query` returns nothing | Try `palaia query "..." --all` to include COLD tier. Check `palaia list` to verify entries exist. |
 | Entries seem missing | `palaia recover` then `palaia list --tier cold` |
 | Slow queries | `palaia warmup` then check `palaia detect` |
 | Provider not available | Chain auto-falls back. Check `palaia status` |
-| `.palaia` missing | `palaia init` |
+| Embedding provider unavailable | BM25 works without embeddings. Check `palaia detect` for available providers. |
 
----
-
-## Configuration Keys
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `default_scope` | `team` | Default visibility for new entries |
-| `embedding_chain` | *(auto)* | Ordered list of search providers |
-| `database_backend` | `sqlite` | Storage backend (`sqlite` or `postgres`) |
-| `hot_threshold_days` | `7` | Days before HOT -> WARM |
-| `warm_threshold_days` | `30` | Days before WARM -> COLD |
-| `hot_max_entries` | `50` | Max entries in HOT tier |
-| `decay_lambda` | `0.1` | Decay rate for memory scores |
+If `palaia doctor --fix` cannot resolve an issue, report the full error output to the user. Do not guess at fixes.
 
 ---
 

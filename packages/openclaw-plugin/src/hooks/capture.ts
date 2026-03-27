@@ -226,6 +226,14 @@ For each piece of knowledge, return a JSON array of objects:
 - "project": which project this belongs to (from known projects list, or null if unclear)
 - "scope": "private" (personal preference, agent-specific), "team" (shared knowledge), or "public" (documentation)
 
+WHAT TO CAPTURE (be thorough — capture anything worth remembering):
+- Decisions and agreements ("we decided to...", "let's go with...", "agreed on...")
+- Technical discoveries and debugging insights ("the root cause was...", "turns out the issue is...")
+- Creative outcomes: naming decisions, design concepts, UX choices, brainstorming results, color schemes, architecture patterns
+- User preferences and feedback ("I prefer...", "I like/don't like...", "always use...")
+- Project context changes: scope changes, timeline shifts, requirement updates, priority changes
+- Workflow patterns the user established ("my process is...", "I always do X before Y")
+
 STRICT TASK CLASSIFICATION RULES — a "task" MUST have ALL three of:
 1. A clear, completable action (not just an observation or idea)
 2. An identifiable responsible party (explicitly named or unambiguously inferable from context)
@@ -278,13 +286,26 @@ export function setCaptureModelFailoverWarned(value: boolean): void {
 }
 
 /**
+ * Known cheap/small models per provider for auto-capture extraction.
+ * These are fast, inexpensive models suitable for structured extraction tasks.
+ * Order within each provider: most preferred first.
+ */
+const CHEAP_MODELS: Record<string, string[]> = {
+  anthropic: ["claude-haiku-4-5", "claude-3-5-haiku-20241022", "claude-3-haiku-20240307"],
+  google: ["gemini-2.0-flash", "gemini-1.5-flash"],
+  openai: ["gpt-4o-mini", "gpt-4.1-mini"],
+  mistral: ["mistral-small-latest"],
+};
+
+/**
  * Resolve the model to use for LLM-based capture extraction.
  *
- * Strategy (no static model mapping — user config is the source of truth):
+ * Strategy (prefer cheapest available model for cost efficiency):
  * 1. If captureModel is set explicitly (e.g. "anthropic/claude-haiku-4-5"): use it directly.
- * 2. If captureModel is unset: use the primary model from user config.
- *    Log a one-time warning recommending to set a cheaper captureModel.
- * 3. Never fall back to static model IDs — model IDs change and not every user has Anthropic.
+ * 2. If captureModel is "cheap" or unset: detect the primary model's provider,
+ *    then pick the cheapest known model for that provider.
+ * 3. If no cheap model is known for the provider, fall back to primary model
+ *    with a one-time warning.
  */
 export function resolveCaptureModel(
   config: any,
@@ -307,7 +328,7 @@ export function resolveCaptureModel(
     }
   }
 
-  // Case 2: "cheap" or unset — use primary model from user config
+  // Case 2: "cheap" or unset — detect provider from primary model, pick cheapest
   const defaultsModel = config?.agents?.defaults?.model;
 
   const primary = typeof defaultsModel === "string"
@@ -319,11 +340,20 @@ export function resolveCaptureModel(
   if (primary) {
     const parts = primary.split("/");
     if (parts.length >= 2) {
+      const provider = parts[0];
+
+      // Try to pick a cheap model for this provider
+      const cheapCandidates = CHEAP_MODELS[provider];
+      if (cheapCandidates && cheapCandidates.length > 0) {
+        return { provider, model: cheapCandidates[0] };
+      }
+
+      // No known cheap model — fall back to primary with warning
       if (!_captureModelFallbackWarned) {
         _captureModelFallbackWarned = true;
-        logger.warn(`[palaia] No captureModel configured — using primary model. Set captureModel in plugin config for cost savings.`);
+        logger.warn(`[palaia] No cheap model known for provider "${provider}" — using primary model for capture. Set captureModel in plugin config for cost savings.`);
       }
-      return { provider: parts[0], model: parts.slice(1).join("/") };
+      return { provider, model: parts.slice(1).join("/") };
     }
   }
 
@@ -539,15 +569,32 @@ const SIGNIFICANCE_RULES: Array<{
   tag: string;
   type: "memory" | "process" | "task";
 }> = [
+  // Decisions and agreements
   { pattern: /(?:we decided|entschieden|decision:|beschlossen|let'?s go with|wir nehmen|agreed on)/i, tag: "decision", type: "memory" },
   { pattern: /(?:will use|werden nutzen|going forward|ab jetzt|from now on)/i, tag: "decision", type: "memory" },
+  // Creative outcomes: naming, design, UX, brainstorming
+  { pattern: /(?:(?:we|i|let'?s)\s+(?:decided to |chose to )?(?:name|call|rename)\s+(?:it|this|the))/i, tag: "decision", type: "memory" },
+  { pattern: /(?:the design should|design concept|color scheme|colour scheme|UX flow|user flow|wireframe|mockup)/i, tag: "decision", type: "memory" },
+  { pattern: /(?:brainstorming results|brainstorm(?:ed)?|ideas?\s+(?:for|are)|naming convention)/i, tag: "decision", type: "memory" },
+  { pattern: /(?:the (?:logo|icon|brand|theme|layout|style)\s+(?:should|will|is))/i, tag: "decision", type: "memory" },
+  // Technical discoveries and debugging insights
+  { pattern: /(?:root cause|the (?:issue|bug|problem) (?:was|is)|figured out|the fix (?:is|was)|debugging showed)/i, tag: "lesson", type: "memory" },
   { pattern: /(?:learned|gelernt|lesson:|erkenntnis|takeaway|insight|turns out|it seems)/i, tag: "lesson", type: "memory" },
   { pattern: /(?:mistake was|fehler war|should have|hätten sollen|next time)/i, tag: "lesson", type: "memory" },
+  // Surprises
   { pattern: /(?:surprising|überraschend|unexpected|unerwartet|didn'?t expect|nicht erwartet|plot twist)/i, tag: "surprise", type: "memory" },
+  // Commitments and tasks
   { pattern: /(?:i will|ich werde|todo:|action item|must do|muss noch|need to|commit to|verspreche)/i, tag: "commitment", type: "task" },
   { pattern: /(?:deadline|frist|due date|bis zum|by end of|spätestens)/i, tag: "commitment", type: "task" },
+  // Processes and workflows
   { pattern: /(?:the process is|der prozess|steps?:|workflow:|how to|anleitung|recipe:|checklist)/i, tag: "process", type: "process" },
   { pattern: /(?:first,?\s.*then|schritt \d|step \d|1\.\s.*2\.\s)/i, tag: "process", type: "process" },
+  // User preferences and feedback
+  { pattern: /(?:(?:i|the user)\s+prefer|i (?:like|don'?t like|always use|never use)|my (?:go-to|default|standard))/i, tag: "preference", type: "memory" },
+  { pattern: /(?:bevorzug|mag ich|immer nutzen|standard(?:mäßig)?(?:\s+ist|\s+nutze))/i, tag: "preference", type: "memory" },
+  // Project context changes
+  { pattern: /(?:scope (?:change|creep|update)|timeline (?:shift|change|update)|requirement(?:s)? (?:change|update)|priority (?:change|shift))/i, tag: "decision", type: "memory" },
+  { pattern: /(?:pivot(?:ed|ing)?|(?:re)?scoped|descoped|deferred|postponed|moved to (?:next|later))/i, tag: "decision", type: "memory" },
 ];
 
 const NOISE_PATTERNS: RegExp[] = [

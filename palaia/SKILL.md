@@ -114,7 +114,7 @@ pip install --upgrade palaia
 palaia doctor --fix
 ```
 
-Storage migration happens automatically — no manual steps needed. The doctor detects and fixes any issues from the upgrade.
+Storage migration happens automatically — no manual steps needed. The doctor detects and fixes any issues from the upgrade. If you see "storage upgraded" or "migrated to SQLite" messages, this is normal and expected — do not treat it as an error.
 
 If the OpenClaw plugin is installed:
 ```bash
@@ -409,6 +409,34 @@ Palaia's CLI output contains contextual hints prefixed with `[palaia]`. These ar
 ### Agent identity
 Set via `--agent` flag, `PALAIA_AGENT` env var, or `palaia init --agent NAME`. Stored in `.palaia/config.json`.
 
+**CRITICAL:** Every agent MUST have a unique `PALAIA_AGENT` value. Without it, all entries are attributed to "default" and scope filtering does not work correctly.
+
+### Setting up additional agents
+
+When new agents join an existing OpenClaw instance that already has palaia, each agent needs palaia awareness:
+
+1. Set the agent's identity:
+   ```bash
+   export PALAIA_AGENT=<agent-name>
+   ```
+2. Add palaia's SKILL.md to the agent's skill set (via ClawHub or manual config)
+3. Join the shared store:
+   ```bash
+   palaia instance set <instance-id>
+   ```
+4. Verify connectivity:
+   ```bash
+   palaia doctor
+   palaia memo inbox
+   ```
+
+If a new agent is added later and does NOT have palaia configured, it will:
+- Not auto-capture conversations
+- Not benefit from shared team knowledge
+- Potentially duplicate work that palaia already tracked
+
+Use `palaia memo broadcast "New agent <name> is online"` to notify the team.
+
 ### Aliases
 When an agent runs under different names (e.g., "default" during init, "HAL" during operation):
 ```bash
@@ -521,16 +549,32 @@ Existing flat-file stores are automatically migrated to SQLite on first use.
 
 ---
 
+## Dangerous Operations
+
+**Be careful with these commands:**
+
+- **`palaia gc --aggressive`** — Permanently deletes COLD-tier entries. Always run `palaia gc --aggressive --dry-run` first and confirm with the user before executing.
+- **Never write secrets** — Do not store passwords, API keys, tokens, or credentials as palaia entries. They persist in the database and may be shared via `--scope team` or `--scope public`.
+- **`--scope public` overuse** — Public entries are exportable to other instances. Only use for genuinely shareable knowledge. Default to `team` scope.
+- **"Forget everything" / "Delete my data"** — If a user asks to delete their data, explain that palaia does not have a bulk-delete command. Guide them to `palaia gc --aggressive` for cold entries, or manual `palaia edit <id>` / project deletion. Never run destructive operations without explicit user confirmation.
+
 ## Error Handling
+
+**NEVER silently ignore palaia errors. Always report them clearly to the user.**
 
 | Problem | What to do |
 |---------|-----------|
 | Something is wrong | `palaia doctor --fix` first, debug second |
-| Search returns no results | `palaia query "..." --all` to include COLD tier |
+| `palaia init` fails | Check permissions on the directory, disk space, and Python version. Report the exact error to the user. |
+| `palaia write` fails | Run `palaia doctor --fix`, then retry. If WAL replay needed, run `palaia recover`. |
+| `palaia query` returns nothing | Try `palaia query "..." --all` to include COLD tier. Check `palaia list` to verify entries exist. |
 | Entries seem missing | `palaia recover` then `palaia list --tier cold` |
 | Slow queries | `palaia warmup` then check `palaia detect` |
 | Provider not available | Chain auto-falls back. Check `palaia status` |
 | `.palaia` missing | `palaia init` |
+| Embedding provider unavailable | BM25 works without embeddings. Check `palaia detect` for available providers. |
+
+If `palaia doctor --fix` cannot resolve an issue, report the full error output to the user. Do not guess at fixes.
 
 ---
 
