@@ -8,10 +8,14 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Show progress every N items during migration (stderr, agent-friendly)
+_PROGRESS_INTERVAL = 500
 
 # Maximum error rate (fraction) before we refuse to rename source files.
 # Below this threshold we treat the migration as successful enough to proceed.
@@ -100,6 +104,8 @@ def migrate_to_backend(palaia_root: Path, backend: object) -> MigrationResult:
             result.status,
             result.entries_migrated, result.embeddings_migrated, result.wal_entries_migrated,
         )
+        if result.total >= _PROGRESS_INTERVAL:
+            print(f"[palaia] Migration complete: {result.total} items migrated.", file=sys.stderr)
 
     return result
 
@@ -128,12 +134,17 @@ def _migrate_metadata(path: Path, backend: object, errors: list[str]) -> int:
         except Exception:
             use_batch = False
 
+    if total_items >= _PROGRESS_INTERVAL:
+        print(f"[palaia] Migrating {total_items} entries to SQLite...", file=sys.stderr)
+
     try:
         for entry_id, meta in data.items():
             try:
                 tier = meta.pop("tier", "hot")
                 backend.upsert_entry(entry_id, meta, tier)
                 count += 1
+                if count % _PROGRESS_INTERVAL == 0 and total_items >= _PROGRESS_INTERVAL:
+                    print(f"[palaia] ...{count}/{total_items} entries migrated", file=sys.stderr)
             except Exception as e:
                 errors.append(f"entry {entry_id}: {e}")
 
@@ -175,6 +186,9 @@ def _migrate_embeddings(path: Path, backend: object, errors: list[str]) -> int:
     errors_before = len(errors)
     count = 0
 
+    if total_items >= _PROGRESS_INTERVAL:
+        print(f"[palaia] Migrating {total_items} embeddings...", file=sys.stderr)
+
     for entry_id, info in data.items():
         try:
             vector = info.get("vector", [])
@@ -183,6 +197,8 @@ def _migrate_embeddings(path: Path, backend: object, errors: list[str]) -> int:
             if vector:
                 backend.set_embedding(entry_id, vector, model, dim)
                 count += 1
+                if count % _PROGRESS_INTERVAL == 0 and total_items >= _PROGRESS_INTERVAL:
+                    print(f"[palaia] ...{count}/{total_items} embeddings migrated", file=sys.stderr)
         except Exception as e:
             errors.append(f"embedding {entry_id}: {e}")
 
