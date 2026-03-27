@@ -394,63 +394,56 @@ describe("resolveCaptureModel", () => {
     expect(result).toEqual({ provider: "anthropic", model: "claude-haiku-4" });
   });
 
-  it("resolves 'cheap' to cheapest known model for provider (anthropic)", () => {
-    const config = {
-      agents: {
-        defaults: {
-          model: {
-            primary: "anthropic/claude-sonnet-4-6",
-            fallbacks: ["anthropic/claude-opus-4-6", "anthropic/claude-haiku-4-5"],
-          },
-        },
-      },
-    };
+  it("uses primary model if already cheap (haiku pattern)", () => {
+    const config = { agents: { defaults: { model: "anthropic/claude-haiku-4-5" } } };
     const result = resolveCaptureModel(config, "cheap");
-    // Picks cheapest known model for anthropic provider
+    // Primary IS cheap — use it directly
     expect(result).toEqual({ provider: "anthropic", model: "claude-haiku-4-5" });
   });
 
-  it("resolves 'cheap' to cheapest known model (openai)", () => {
-    const config = { agents: { defaults: { model: "openai/gpt-4.1" } } };
-    const result = resolveCaptureModel(config, "cheap");
-    expect(result).toEqual({ provider: "openai", model: "gpt-4o-mini" });
-  });
-
-  it("resolves 'cheap' to cheapest known model (google)", () => {
-    const config = { agents: { defaults: { model: "google/gemini-2.5-pro" } } };
+  it("uses primary model if already cheap (flash pattern)", () => {
+    const config = { agents: { defaults: { model: "google/gemini-2.0-flash" } } };
     const result = resolveCaptureModel(config, "cheap");
     expect(result).toEqual({ provider: "google", model: "gemini-2.0-flash" });
   });
 
-  it("resolves 'cheap' to primary for unknown provider (no cheap model known)", () => {
+  it("uses primary model if already cheap (mini pattern)", () => {
+    const config = { agents: { defaults: { model: "openai/gpt-4.1-mini" } } };
+    const result = resolveCaptureModel(config, "cheap");
+    expect(result).toEqual({ provider: "openai", model: "gpt-4.1-mini" });
+  });
+
+  it("picks cheap model from runtime.availableModels when primary is expensive", () => {
+    const config = {
+      agents: { defaults: { model: "anthropic/claude-sonnet-4-6" } },
+      runtime: { availableModels: ["anthropic/claude-sonnet-4-6", "anthropic/claude-haiku-4-5"] },
+    };
+    const result = resolveCaptureModel(config, "cheap");
+    // Found a cheap model in runtime list
+    expect(result).toEqual({ provider: "anthropic", model: "claude-haiku-4-5" });
+  });
+
+  it("falls back to primary when no cheap alternative found", () => {
     const config = {
       agents: {
         defaults: {
           model: {
             primary: "custom-provider/big-model",
-            fallbacks: ["custom-provider/small-model"],
           },
         },
       },
     };
     const result = resolveCaptureModel(config, "cheap");
-    // No known cheap model for custom-provider → falls back to primary
+    // No cheap pattern match, no runtime models — falls back to primary
     expect(result).toEqual({ provider: "custom-provider", model: "big-model" });
   });
 
-  it("resolves undefined captureModel to cheapest known model for provider", () => {
+  it("resolves undefined captureModel same as 'cheap'", () => {
     const config = {
-      agents: {
-        defaults: {
-          model: {
-            primary: "anthropic/claude-sonnet-4-6",
-            fallbacks: ["anthropic/claude-haiku-4-5"],
-          },
-        },
-      },
+      agents: { defaults: { model: "anthropic/claude-haiku-4-5" } },
     };
     const result = resolveCaptureModel(config, undefined);
-    // Picks cheapest known model for anthropic, not primary
+    // Haiku is cheap, use it directly
     expect(result).toEqual({ provider: "anthropic", model: "claude-haiku-4-5" });
   });
 
@@ -459,10 +452,13 @@ describe("resolveCaptureModel", () => {
     expect(result).toBeUndefined();
   });
 
-  it("handles model as primary object without fallbacks", () => {
-    const config = { agents: { defaults: { model: { primary: "google/gemini-2.5-pro" } } } };
+  it("handles model as primary object", () => {
+    const config = {
+      agents: { defaults: { model: { primary: "google/gemini-2.5-pro" } } },
+      runtime: { availableModels: ["google/gemini-2.5-pro", "google/gemini-2.0-flash"] },
+    };
     const result = resolveCaptureModel(config, "cheap");
-    // Picks cheapest known model for google provider
+    // Primary is expensive, but flash is available in runtime
     expect(result).toEqual({ provider: "google", model: "gemini-2.0-flash" });
   });
 });

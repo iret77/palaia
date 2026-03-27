@@ -286,16 +286,30 @@ export function setCaptureModelFailoverWarned(value: boolean): void {
 }
 
 /**
- * Known cheap/small models per provider for auto-capture extraction.
- * These are fast, inexpensive models suitable for structured extraction tasks.
- * Order within each provider: most preferred first.
+ * Heuristic patterns to identify cheap/small models from their name.
+ * Avoids hardcoded model IDs that go stale — instead matches naming
+ * conventions that providers consistently use for their smaller tiers.
+ *
+ * Patterns are matched as word boundaries (separated by `-`, `.`, `/`,
+ * or string edges) to avoid false positives like "ge*mini*" matching "mini".
  */
-const CHEAP_MODELS: Record<string, string[]> = {
-  anthropic: ["claude-haiku-4-5", "claude-3-5-haiku-20241022", "claude-3-haiku-20240307"],
-  google: ["gemini-2.0-flash", "gemini-1.5-flash"],
-  openai: ["gpt-4o-mini", "gpt-4.1-mini"],
-  mistral: ["mistral-small-latest"],
-};
+const CHEAP_MODEL_PATTERNS = [
+  "haiku",     // Anthropic's smallest tier
+  "flash",     // Google's smallest tier
+  "mini",      // OpenAI's smallest tier (gpt-4o-mini, gpt-4.1-mini, ...)
+  "small",     // Mistral's smallest tier
+  "nano",      // Future small models
+  "lite",      // Various providers
+  "instant",   // Anthropic legacy
+];
+
+/** Check if a model name matches any cheap pattern (word-boundary aware). */
+function isCheapModel(modelName: string): boolean {
+  const lower = modelName.toLowerCase();
+  // Split on common separators: dash, dot, slash, underscore
+  const parts = lower.split(/[-./_ ]/);
+  return CHEAP_MODEL_PATTERNS.some((p) => parts.includes(p));
+}
 
 /**
  * Resolve the model to use for LLM-based capture extraction.
@@ -328,7 +342,7 @@ export function resolveCaptureModel(
     }
   }
 
-  // Case 2: "cheap" or unset — detect provider from primary model, pick cheapest
+  // Case 2: "cheap" or unset — use primary model, but check if it's already cheap
   const defaultsModel = config?.agents?.defaults?.model;
 
   const primary = typeof defaultsModel === "string"
@@ -341,19 +355,33 @@ export function resolveCaptureModel(
     const parts = primary.split("/");
     if (parts.length >= 2) {
       const provider = parts[0];
+      const modelName = parts.slice(1).join("/");
 
-      // Try to pick a cheap model for this provider
-      const cheapCandidates = CHEAP_MODELS[provider];
-      if (cheapCandidates && cheapCandidates.length > 0) {
-        return { provider, model: cheapCandidates[0] };
+      // Check if the primary model is already cheap (e.g., user runs haiku as main)
+      if (isCheapModel(modelName)) {
+        return { provider, model: modelName };
       }
 
-      // No known cheap model — fall back to primary with warning
+      // Primary is expensive — check if the runtime exposes available models
+      // so we can pick a cheap one from the same provider dynamically.
+      const runtimeModels: string[] = config?.runtime?.availableModels
+        ?? config?.models
+        ?? [];
+      const cheapFromRuntime = runtimeModels.find((m: string) => {
+        const lower = m.toLowerCase();
+        return lower.startsWith(provider + "/") && isCheapModel(m);
+      });
+      if (cheapFromRuntime) {
+        const rParts = cheapFromRuntime.split("/");
+        return { provider: rParts[0], model: rParts.slice(1).join("/") };
+      }
+
+      // No cheap alternative found — use primary model with one-time hint
       if (!_captureModelFallbackWarned) {
         _captureModelFallbackWarned = true;
-        logger.warn(`[palaia] No cheap model known for provider "${provider}" — using primary model for capture. Set captureModel in plugin config for cost savings.`);
+        logger.warn(`[palaia] Using primary model for capture extraction. Set captureModel in plugin config (e.g. "anthropic/claude-haiku-4-5") for cost savings.`);
       }
-      return { provider, model: parts.slice(1).join("/") };
+      return { provider, model: modelName };
     }
   }
 
