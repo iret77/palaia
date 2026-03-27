@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "2.2.0"
+version: "2.2.2"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   SQLite-backed by default. Semantic search, projects, scopes, auto-capture.
@@ -106,14 +106,41 @@ palaia init --agent YOUR_AGENT_NAME
 
 When the user asks to update, or when `palaia status` shows a version mismatch:
 
+**Step 1: Find how palaia was installed and upgrade using the SAME method:**
 ```bash
+# Check which palaia binary is active
+which palaia
+```
+
+Then upgrade accordingly:
+```bash
+# If installed via pip (most common — path contains site-packages or .local):
 pip install --upgrade "palaia[fastembed]"
+
+# If installed via uv tool (path contains uv or .local/bin → uv):
+uv tool install "palaia[fastembed]"
+
+# If installed via pipx (path contains pipx):
+pipx install "palaia[fastembed]" --force
+
+# If installed via Homebrew/Linuxbrew (path contains brew/Cellar):
+pip install --upgrade "palaia[fastembed]" --break-system-packages
+```
+
+**Step 2: Verify the correct binary is active:**
+```bash
+palaia --version
+```
+If the version still shows the old number, there may be a stale binary in another location shadowing the new one. Check `which -a palaia` and remove or update the old one.
+
+**Step 3: Run health checks:**
+```bash
 palaia doctor --fix
 ```
 
-Storage migration happens automatically — no manual steps needed. The doctor detects and fixes any issues from the upgrade. If you see "storage upgraded" or "migrated to SQLite" messages, this is normal and expected — do not treat it as an error.
+Storage migration happens automatically — no manual steps needed. If you see "storage upgraded" or "migrated to SQLite" messages, this is normal and expected — do not treat it as an error.
 
-If the OpenClaw plugin is installed:
+**Step 4: Update the OpenClaw plugin (if installed):**
 ```bash
 npm install -g @byte5ai/palaia@latest
 openclaw gateway restart

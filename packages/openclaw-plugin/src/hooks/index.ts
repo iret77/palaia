@@ -241,6 +241,17 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
       // Non-fatal — status check failed, skip warning (avoid false positive)
     }
 
+    // Pre-start embed server so first query is fast (~0.3s instead of ~3s)
+    if (config.embeddingServer) {
+      try {
+        const mgr = getEmbedServerManager(opts);
+        await mgr.start();
+        logger.info("[palaia] Embed server started (pre-warmed for fast queries)");
+      } catch (err) {
+        logger.info(`[palaia] Embed server pre-start skipped: ${err}`);
+      }
+    }
+
     // Validate captureModel auth at plugin startup via modelAuth API
     if (config.captureModel && api.runtime?.modelAuth) {
       try {

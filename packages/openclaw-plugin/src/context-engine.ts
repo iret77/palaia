@@ -106,12 +106,14 @@ export function createPalaiaContextEngine(
         logger.warn(`[palaia] Bootstrap WAL recovery failed: ${error}`);
       }
 
-      // Start embed server if configured (lazy — first query will start it)
+      // Pre-start embed server so first query is fast (~0.3s instead of ~3s)
       if (config.embeddingServer) {
         try {
-          getEmbedServerManager(opts);
-        } catch {
-          // Non-fatal — embed server start is lazy
+          const mgr = getEmbedServerManager(opts);
+          await mgr.start();
+          logger.info("[palaia] Embed server started (pre-warmed for fast queries)");
+        } catch (err) {
+          logger.info(`[palaia] Embed server pre-start skipped: ${err}`);
         }
       }
     },
