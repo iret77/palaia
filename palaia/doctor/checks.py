@@ -595,6 +595,57 @@ def _check_wal_health(palaia_root: Path | None) -> dict[str, Any]:
     }
 
 
+def _check_binary_path(palaia_root: Path | None) -> dict[str, Any]:
+    """Check if the palaia binary in PATH matches the installed version."""
+    import shutil
+    import subprocess
+    from palaia import __version__
+
+    binary = shutil.which("palaia")
+    if not binary:
+        return {
+            "name": "binary_path",
+            "label": "Binary path",
+            "status": "info",
+            "message": "palaia not found in PATH (running as python -m palaia)",
+        }
+
+    try:
+        result = subprocess.run(
+            [binary, "--version"],
+            capture_output=True, text=True, timeout=5,
+        )
+        cli_version = result.stdout.strip().replace("palaia ", "")
+    except Exception:
+        cli_version = "unknown"
+
+    if cli_version == __version__:
+        return {
+            "name": "binary_path",
+            "label": "Binary path",
+            "status": "ok",
+            "message": f"v{cli_version} at {binary}",
+            "details": {"binary": binary, "version": cli_version},
+        }
+
+    return {
+        "name": "binary_path",
+        "label": "Binary path",
+        "status": "warning",
+        "message": (
+            f"Version mismatch: CLI at {binary} reports v{cli_version}, "
+            f"but installed library is v{__version__}. "
+            f"A stale binary may be shadowing the new version. "
+            f"Check `which -a palaia` and update or remove the old one."
+        ),
+        "details": {
+            "binary": binary,
+            "cli_version": cli_version,
+            "lib_version": __version__,
+        },
+    }
+
+
 def _check_store_version(palaia_root: Path | None) -> dict[str, Any]:
     """Check if store version matches installed version."""
     if palaia_root is None:

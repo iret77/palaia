@@ -8,6 +8,7 @@ from typing import Any
 from palaia.doctor.checks import (
     LOOP_ARTIFACT_PATTERNS,
     _check_agent_identity,
+    _check_binary_path,
     _check_capture_level,
     _check_capture_model,
     _check_default_agent_alias,
@@ -48,6 +49,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_palaia_init(palaia_root),
         _check_agent_identity(palaia_root),
         _check_multi_agent_static(palaia_root),
+        _check_binary_path(palaia_root),
         _check_store_version(palaia_root),
         _check_version_available(palaia_root),
         _check_embedding_chain(palaia_root),

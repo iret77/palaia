@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "palaia"
-version = "2.2.1"
+version = "2.2.2"
 description = "Local, cloud-free memory for OpenClaw agents."
 readme = "README.md"
 license = {text = "MIT"}
