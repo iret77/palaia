@@ -313,11 +313,28 @@ def config_list_all(root: Path) -> dict:
 def reindex_entries(root: Path, config: dict) -> dict:
     """Build embedding index for all HOT+WARM entries missing from cache.
 
+    Uses embed-server if running (fast, model already in RAM). Falls back to
+    direct provider loading only if no server is available (explicit warmup
+    is the one case where direct loading is acceptable — user asked for it).
+
     Returns dict with keys: indexed, new, cached.
     """
-    from palaia.embeddings import BM25Provider, auto_detect_provider
-
     store = Store(root)
+
+    # Fast path: delegate to embed-server warmup if running
+    try:
+        from palaia.embed_client import EmbedServerClient, is_server_running
+        from palaia.embed_server import get_socket_path
+
+        if is_server_running(root):
+            with EmbedServerClient(get_socket_path(root)) as client:
+                result = client.warmup(timeout=120.0)
+                return result
+    except Exception:
+        pass
+
+    # Slow path: load provider directly (user explicitly asked for warmup)
+    from palaia.embeddings import BM25Provider, auto_detect_provider
 
     try:
         provider = auto_detect_provider(config)
