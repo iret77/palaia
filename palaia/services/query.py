@@ -51,10 +51,14 @@ def search_entries(
     """
     # Fast path: delegate to embed-server (auto-start if needed)
     try:
+        import logging as _log
+
         from palaia.embed_client import EmbedServerClient, auto_start_server, is_server_running, should_auto_start
         from palaia.embed_server import get_socket_path
 
-        if not is_server_running(root) and should_auto_start(load_config(root)):
+        _config = load_config(root)
+        if not is_server_running(root) and should_auto_start(_config):
+            _log.getLogger(__name__).info("Auto-starting embed server...")
             auto_start_server(root)
 
         if is_server_running(root):
@@ -77,15 +81,17 @@ def search_entries(
                 if cross_project:
                     params["cross_project"] = True
                 result = client.query(params, timeout=5.0)
-                config = load_config(root)
-                chain_cfg = config.get("embedding_chain", [])
+                chain_cfg = _config.get("embedding_chain", [])
                 bm25_only = not chain_cfg or chain_cfg == ["bm25"]
                 return {
                     "results": result.get("results", []),
                     "has_embeddings": True,
                     "bm25_only": bm25_only,
                 }
-    except Exception:
+    except Exception as e:
+        import logging as _log
+
+        _log.getLogger(__name__).debug("Embed server delegation failed: %s", e)
         pass  # Fall through to direct search
 
     # Direct path: load model in-process

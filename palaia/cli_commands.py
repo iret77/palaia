@@ -391,7 +391,12 @@ def cmd_status(args):
             budget_rows.append(("  Usage", budget_info.get("chars_usage", "?")))
         print(table_kv(budget_rows))
 
-    embed_server_status = "running" if info.get("embed_server_running") else "not running"
+    if info.get("embed_server_running"):
+        embed_server_status = "running"
+    elif info.get("backend", {}).get("vector_search", "").startswith("sqlite-vec"):
+        embed_server_status = "not running (auto-starts on next query)"
+    else:
+        embed_server_status = "not running"
     plugin_status = "active" if info["plugin_detected"] else "not detected"
     upgrade_spec = info.get("upgrade_spec", "palaia[fastembed]")
     print(f"\nEmbed server: {embed_server_status}")
