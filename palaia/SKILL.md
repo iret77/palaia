@@ -114,12 +114,18 @@ When the user asks to update, or when `palaia status` shows a version mismatch:
 which palaia
 ```
 
-Then upgrade accordingly (include all extras the user has installed):
+**Step 1b: Get the correct upgrade command** (preserves installed extras like mcp, sqlite-vec):
+```bash
+palaia status
+```
+The output includes an `Upgrade command:` line with the correct package specifier. Use that command.
+
+If `palaia status` is unavailable, use `pip install --upgrade "palaia[fastembed]"` as a fallback.
+
+Then upgrade accordingly:
 ```bash
 # If installed via pip (most common — path contains site-packages or .local):
-pip install --upgrade "palaia[fastembed]"
-# If user also has MCP or sqlite-vec, include those extras:
-# pip install --upgrade "palaia[fastembed,mcp,sqlite-vec]"
+pip install --upgrade "palaia[fastembed]"  # ← replace with upgrade command from palaia status
 
 # If installed via uv tool (path contains uv or .local/bin → uv):
 uv tool install "palaia[fastembed]"
@@ -130,8 +136,6 @@ pipx install "palaia[fastembed]" --force
 # If installed via Homebrew/Linuxbrew (path contains brew/Cellar):
 pip install --upgrade "palaia[fastembed]" --break-system-packages
 ```
-
-**Important:** Check which extras are installed before upgrading. If the user has `palaia[mcp]` or `palaia[sqlite-vec]`, include them in the upgrade command to avoid losing those features.
 
 **Step 2: Verify the correct binary is active:**
 ```bash

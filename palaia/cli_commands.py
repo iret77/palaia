@@ -396,8 +396,10 @@ def cmd_status(args):
 
     embed_server_status = "running" if info.get("embed_server_running") else "not running"
     plugin_status = "active" if info["plugin_detected"] else "not detected"
+    upgrade_spec = info.get("upgrade_spec", "palaia[fastembed]")
     print(f"\nEmbed server: {embed_server_status}")
     print(f"OpenClaw Plugin: {plugin_status}")
+    print(f"Upgrade command: pip install --upgrade \"{upgrade_spec}\"")
 
     # --- curate_reminder nudge (v2.2) ---
     try:

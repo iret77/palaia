@@ -164,6 +164,21 @@ def collect_status(root: Path) -> dict:
     except Exception:
         info["embed_server_running"] = False
 
+    # Installed extras detection (for upgrade commands)
+    installed_extras = ["fastembed"]  # always assumed as base
+    try:
+        import fastembed  # noqa: F401
+    except ImportError:
+        installed_extras = []
+    for mod, extra in [("mcp", "mcp"), ("sqlite_vec", "sqlite-vec"), ("sklearn", "curate")]:
+        try:
+            __import__(mod)
+            installed_extras.append(extra)
+        except ImportError:
+            pass
+    info["installed_extras"] = installed_extras
+    info["upgrade_spec"] = f"palaia[{','.join(installed_extras)}]" if installed_extras else "palaia"
+
     # WAL recovery
     info["recovered"] = recovered
 
