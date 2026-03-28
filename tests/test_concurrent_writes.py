@@ -22,6 +22,7 @@ def palaia_root(tmp_path):
     config = dict(DEFAULT_CONFIG)
     config["agent"] = "test"
     config["embedding_chain"] = ["bm25"]
+    config["lock_timeout_seconds"] = 30  # Higher timeout for slow CI runners
     save_config(root, config)
     return root
 
