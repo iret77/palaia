@@ -350,9 +350,19 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
         // If a session briefing is pending (from session_start or model switch),
         // prepend it to the recall context for seamless session continuity.
         let briefingText = "";
+        let briefingSummary: string | null = null; // Kept for smart query fallback
         const sessionKey = resolveSessionKeyFromCtx(ctx);
         if (sessionKey) {
           const sessState = getOrCreateSessionState(sessionKey);
+          // Wait for session_start briefing load (max 3s to avoid blocking)
+          if (sessState.briefingReady) {
+            await Promise.race([
+              sessState.briefingReady,
+              new Promise<void>(r => setTimeout(r, 3000)),
+            ]);
+          }
+          // Capture summary BEFORE clearing, for smart query fallback below
+          briefingSummary = sessState.pendingBriefing?.summary ?? null;
           if (sessState.pendingBriefing && !sessState.briefingDelivered) {
             briefingText = formatBriefing(sessState.pendingBriefing, config.sessionBriefingMaxChars);
             sessState.briefingDelivered = true;
@@ -388,13 +398,9 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
           // If query is too short or matches a continuation pattern,
           // use the session summary as query for better recall results.
           const CONTINUATION_PATTERN = /^(ja|ok|weiter|mach|genau|do it|yes|continue|go|proceed|sure|klar|passt|yep|yup|exactly|right)\b/i;
-          if (sessionKey) {
-            const sessState = getOrCreateSessionState(sessionKey);
-            const summaryText = sessState.pendingBriefing?.summary;
-            if (summaryText && userMessage && (userMessage.length < 10 || CONTINUATION_PATTERN.test(userMessage.trim()))) {
-              userMessage = summaryText.slice(0, 500);
-              logger.info("[palaia] Smart query fallback: using session summary as recall query");
-            }
+          if (briefingSummary && userMessage && (userMessage.length < 10 || CONTINUATION_PATTERN.test(userMessage.trim()))) {
+            userMessage = briefingSummary.slice(0, 500);
+            logger.info("[palaia] Smart query fallback: using session summary as recall query");
           }
 
           if (userMessage && userMessage.length >= 5) {
@@ -458,11 +464,21 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
               entries = result.results;
             }
           } catch {
+            // Still deliver briefing even if recall fails completely
+            if (briefingText) {
+              return { prependContext: briefingText };
+            }
             return;
           }
         }
 
-        if (entries.length === 0) return;
+        // If no recall entries but briefing exists, deliver briefing alone
+        if (entries.length === 0) {
+          if (briefingText) {
+            return { prependContext: briefingText };
+          }
+          return;
+        }
 
         // Apply type-weighted reranking and blocked filtering (Issue #121)
         const rankedRaw = rerankByTypeWeight(entries, resolvedPrio.recallTypeWeight, config.recallRecencyBoost);
@@ -537,7 +553,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
 
         // Return prependContext + appendSystemContext for recall emoji
         return {
-          prependContext: briefingText + text + nudgeContext,
+          prependContext: briefingText + text,
           appendSystemContext: config.showMemorySources
             ? "You used Palaia memory in this turn. Add \u{1f9e0} at the very end of your response (after everything else, on its own line)."
             : undefined,
