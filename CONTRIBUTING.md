@@ -42,22 +42,46 @@ Open a [GitHub Issue](https://github.com/iret77/palaia/issues). Include:
 - Steps to reproduce
 - Expected vs actual behavior
 
+## Branch Policy
+
+**`main` is protected.** Direct pushes are not allowed. All changes go through pull requests.
+
+| Rule | Setting |
+|------|---------|
+| Direct push to main | Blocked |
+| Pull request required | Yes |
+| CI must pass | Yes (test 3.11) |
+| Force push | Blocked |
+| Owner bypass | Yes (emergencies only) |
+
+**Workflow:**
+1. Create a feature branch: `git checkout -b feat/my-feature`
+2. Develop, commit, push to your branch
+3. Open a PR against `main`
+4. CI runs automatically
+5. Merge after CI passes
+
+**Branch naming:**
+- `feat/...` — new features
+- `fix/...` — bug fixes
+- `docs/...` — documentation only
+- `chore/...` — maintenance, cleanup
+
 ## Submitting Pull Requests
 
-1. **Fork** the repository
-2. **Create a branch** from `main`: `git checkout -b feat/my-feature`
-3. **Write tests** for new functionality
-4. **Run the test suite**: `pytest tests/ -v && cd packages/openclaw-plugin && npx vitest run`
-5. **Lint your code**: `ruff check palaia/ tests/`
-6. **Commit** with a clear message (see Commit Convention below)
-7. **Open a PR** against `main`
+1. **Create a branch** from `main`: `git checkout -b feat/my-feature`
+2. **Write tests** for new functionality
+3. **Run the test suite**: `pytest tests/ -v && cd packages/openclaw-plugin && npx vitest run`
+4. **Lint your code**: `ruff check palaia/ tests/`
+5. **Commit** with a clear message (see Commit Convention below)
+6. **Open a PR** against `main`
 
 ### PR Requirements
 
 - All tests must pass (Python 3.9-3.12 + TypeScript)
 - Ruff lint clean
 - New features need tests
-- No force pushes to `main`
+- No force pushes
 
 ## Commit Convention
 
