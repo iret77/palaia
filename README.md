@@ -116,6 +116,8 @@ palaia status                                        # Check health
 | [Migration Guide](docs/migration-guide.md) | Import from other systems, flat-file migration |
 | [Architecture](ARCHITECTURE.md) | Module map, data flows, design decisions |
 | [SKILL.md](palaia/SKILL.md) | Agent-facing documentation (what agents read) |
+| [Contributing](CONTRIBUTING.md) | Versioning, release process, development setup |
+| [Changelog](CHANGELOG.md) | Release history |
 
 ---
 
