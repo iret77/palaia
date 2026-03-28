@@ -12,11 +12,10 @@
 
 import type { OpenClawPluginApi } from "../types.js";
 import type { PalaiaPluginConfig } from "../config.js";
-import { run, type RunnerOpts, getEmbedServerManager } from "../runner.js";
+import { run, type RunnerOpts } from "../runner.js";
 import {
   getOrCreateSessionState,
   deleteSessionState,
-  resolveSessionKeyFromCtx,
   type PendingBriefing,
   type ToolObservation,
 } from "./state.js";
@@ -24,7 +23,6 @@ import {
   stripPalaiaInjectedContext,
   trimToRecentExchanges,
   extractWithLLM,
-  extractSignificance,
 } from "./capture.js";
 import { extractMessageTexts } from "./recall.js";
 
@@ -48,46 +46,46 @@ export async function loadSessionBriefing(
 ): Promise<PendingBriefing> {
   const opts = buildRunnerOpts(config);
   let summary: string | null = null;
+  let summaryCreated: number = Date.now();
   const openTasks: string[] = [];
 
-  // Load last session summary
-  try {
-    const { runJson } = await import("../runner.js");
-    const result = await runJson<{ results: Array<{ title: string; body: string; created: string }> }>(
+  // Load last session summary and open tasks in parallel
+  const { runJson } = await import("../runner.js");
+  const [summaryResult, tasksResult] = await Promise.allSettled([
+    runJson<{ results: Array<{ title: string; body: string; created?: string }> }>(
       ["query", "session-summary", "--limit", "1", "--tags", "session-summary"],
       { ...opts, timeoutMs: 5000 },
-    );
-    if (result?.results?.[0]) {
-      summary = result.results[0].body;
-    }
-  } catch {
-    // Non-fatal — no summary available
-  }
-
-  // Load open tasks
-  try {
-    const { runJson } = await import("../runner.js");
-    const result = await runJson<{ results: Array<{ title: string; body: string; priority?: string }> }>(
+    ),
+    runJson<{ results: Array<{ title: string; body: string; priority?: string }> }>(
       ["list", "--type", "task", "--status", "open", "--limit", "5"],
       { ...opts, timeoutMs: 5000 },
-    );
-    if (result?.results) {
-      for (const task of result.results) {
-        const prio = task.priority ? ` (${task.priority})` : "";
-        openTasks.push(`${task.title}${prio}`);
-      }
+    ),
+  ]);
+
+  if (summaryResult.status === "fulfilled" && summaryResult.value?.results?.[0]) {
+    summary = summaryResult.value.results[0].body;
+    const created = summaryResult.value.results[0].created;
+    if (created) {
+      const parsed = new Date(created).getTime();
+      if (!isNaN(parsed)) summaryCreated = parsed;
     }
-  } catch {
-    // Non-fatal
   }
 
-  return { summary, openTasks, timestamp: Date.now() };
+  if (tasksResult.status === "fulfilled" && tasksResult.value?.results) {
+    for (const task of tasksResult.value.results) {
+      const prio = task.priority ? ` (${task.priority})` : "";
+      openTasks.push(`${task.title}${prio}`);
+    }
+  }
+
+  return { summary, openTasks, timestamp: summaryCreated };
 }
 
 /**
  * Format a pending briefing into injectable text.
  */
 export function formatBriefing(briefing: PendingBriefing, maxChars: number): string {
+  if (maxChars <= 0) return "";
   if (!briefing.summary && briefing.openTasks.length === 0) return "";
 
   const parts: string[] = ["## Session Briefing (Palaia)\n"];
@@ -95,16 +93,16 @@ export function formatBriefing(briefing: PendingBriefing, maxChars: number): str
   if (briefing.summary) {
     const agoMs = Date.now() - briefing.timestamp;
     const agoMin = Math.round(agoMs / 60_000);
-    const agoStr = agoMin < 1 ? "gerade eben" :
-      agoMin < 60 ? `vor ${agoMin} Min.` :
-      `vor ${Math.round(agoMin / 60)} Std.`;
-    parts.push(`Letzte Session (${agoStr}):`);
+    const agoStr = agoMin < 1 ? "just now" :
+      agoMin < 60 ? `${agoMin}m ago` :
+      `${Math.round(agoMin / 60)}h ago`;
+    parts.push(`Last session (${agoStr}):`);
     parts.push(briefing.summary);
     parts.push("");
   }
 
   if (briefing.openTasks.length > 0) {
-    parts.push("Offene Aufgaben:");
+    parts.push("Open tasks:");
     for (const task of briefing.openTasks) {
       parts.push(`- ${task}`);
     }
@@ -130,6 +128,10 @@ export async function captureSessionSummary(
 ): Promise<void> {
   const opts = buildRunnerOpts(config);
   const state = getOrCreateSessionState(sessionKey);
+
+  // Guard: prevent double-save (before_reset + session_end race)
+  if (state.summarySaved) return;
+  state.summarySaved = true;
   let summaryText: string | null = null;
 
   if (messages && messages.length > 0) {
@@ -223,16 +225,20 @@ export function processToolCall(
     return null;
   }
 
-  // Skip errored tool calls
-  if (!result) return null;
+  // Skip errored tool calls (only null/undefined, not falsy 0/"")
+  if (result === undefined || result === null) return null;
 
   // Summarize params (keep it short)
   const paramKeys = Object.keys(params).slice(0, 3);
   const paramsSummary = paramKeys
     .map(k => {
       const v = params[k];
-      const s = typeof v === "string" ? v.slice(0, 80) : JSON.stringify(v)?.slice(0, 80);
-      return `${k}=${s}`;
+      try {
+        const s = typeof v === "string" ? v.slice(0, 80) : JSON.stringify(v)?.slice(0, 80) ?? "";
+        return `${k}=${s}`;
+      } catch {
+        return `${k}=[object]`;
+      }
     })
     .join(", ");
 
@@ -270,8 +276,14 @@ export function registerSessionHooks(
   // ── session_start: Load briefing for context restoration ──────────
   if (config.sessionBriefing) {
     api.on("session_start", async (event: any, ctx: any) => {
-      const sessionKey = ctx?.sessionKey || ctx?.sessionId || "unknown";
+      const sessionKey = ctx?.sessionKey || ctx?.sessionId;
+      if (!sessionKey) return;
       const state = getOrCreateSessionState(sessionKey);
+
+      // Create a promise that before_prompt_build can await
+      let resolve: () => void;
+      state.briefingReady = new Promise<void>(r => { resolve = r; });
+      state.briefingReadyResolve = resolve!;
 
       try {
         state.pendingBriefing = await loadSessionBriefing(config, logger);
@@ -280,6 +292,8 @@ export function registerSessionHooks(
         }
       } catch (error) {
         logger.warn(`[palaia] Failed to load session briefing: ${error}`);
+      } finally {
+        state.briefingReadyResolve?.();
       }
     });
   }
@@ -287,8 +301,8 @@ export function registerSessionHooks(
   // ── session_end: Save session summary ─────────────────────────────
   if (config.sessionSummary) {
     api.on("session_end", async (event: any, ctx: any) => {
-      const sessionKey = ctx?.sessionKey || ctx?.sessionId || "unknown";
-      const state = getOrCreateSessionState(sessionKey);
+      const sessionKey = ctx?.sessionKey || ctx?.sessionId;
+      if (!sessionKey) return;
 
       try {
         // Only save summary if session had meaningful interaction
@@ -307,7 +321,8 @@ export function registerSessionHooks(
   // ── before_reset: Save session summary with messages (priority) ───
   if (config.sessionSummary) {
     api.on("before_reset", async (event: any, ctx: any) => {
-      const sessionKey = ctx?.sessionKey || ctx?.sessionId || "unknown";
+      const sessionKey = ctx?.sessionKey || ctx?.sessionId;
+      if (!sessionKey) return;
 
       try {
         const messages = (event as any)?.messages;
@@ -381,18 +396,12 @@ export function registerSessionHooks(
     });
   }
 
-  // ── subagent_spawning: Pass session context to sub-agent ──────
+  // ── subagent_spawning: Log sub-agent spawn for context tracking ─
   api.on("subagent_spawning", async (event: any, _ctx: any) => {
     try {
       const childKey = (event as any)?.childSessionKey;
       if (!childKey) return;
-
-      // Set PALAIA_INSTANCE so sub-agent shares the session scope
-      const parentKey = _ctx?.requesterSessionKey;
-      if (parentKey) {
-        const parentState = getOrCreateSessionState(parentKey);
-        process.env.PALAIA_INSTANCE = parentState.autoSessionId;
-      }
+      logger.info(`[palaia] Sub-agent spawning: ${childKey}`);
     } catch {
       // Non-fatal
     }

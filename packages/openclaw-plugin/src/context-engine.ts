@@ -42,16 +42,13 @@ import {
   trimToRecentExchanges,
   parsePalaiaHints,
   loadProjects,
-  resolveCaptureModel,
   type ExtractionResult,
 } from "./hooks/capture.js";
 
 import {
   loadPluginState,
   savePluginState,
-  resolvePerAgentContext,
   sanitizeScope,
-  isValidScope,
 } from "./hooks/state.js";
 
 import {
@@ -75,9 +72,7 @@ function estimateTokens(text: string): number {
 
 /**
  * Build the memory context string from recall results.
- *
- * Shared between assemble() and the legacy hooks path,
- * so the logic lives here as a pure function.
+ * Used by the ContextEngine assemble() method.
  */
 export async function buildMemoryContext(
   config: PalaiaPluginConfig,
@@ -212,8 +207,7 @@ export async function buildMemoryContext(
 
 /**
  * Run auto-capture logic on a set of messages.
- *
- * Shared between ingest() and the legacy agent_end hook.
+ * Used by the ContextEngine afterTurn() method.
  */
 export async function runAutoCapture(
   messages: unknown[],
@@ -470,34 +464,20 @@ export function createPalaiaContextEngine(
       try {
         await run(["gc"], { ...opts, timeoutMs: 30_000 });
         logger.info("[palaia] GC compaction completed");
+        return { ok: true, compacted: true };
       } catch (error) {
         logger.warn(`[palaia] GC compaction failed: ${error}`);
+        return { ok: false, compacted: false, reason: String(error) };
       }
-      return { ok: true, compacted: true };
     },
 
     /**
      * PrepareSubagentSpawn: load session summary for sub-agent context.
      */
-    async prepareSubagentSpawn(params) {
-      try {
-        // Load latest session summary for sub-agent context injection
-        const { runJson } = await import("./runner.js");
-        const result = await runJson<{ results: Array<{ body: string }> }>(
-          ["query", "session-summary", "--limit", "1", "--tags", "session-summary"],
-          { ...opts, timeoutMs: 5000 },
-        );
-        const summary = result?.results?.[0]?.body;
-        if (summary) {
-          // Set PALAIA_INSTANCE env so sub-agent writes to same session scope
-          const { getOrCreateSessionState } = await import("./hooks/state.js");
-          const parentState = getOrCreateSessionState(params?.parentSessionKey || "unknown");
-          process.env.PALAIA_INSTANCE = parentState.autoSessionId;
-          logger.info(`[palaia] Sub-agent context prepared (${summary.length} chars summary)`);
-        }
-      } catch {
-        // Non-fatal — sub-agent will still work, just without parent context
-      }
+    async prepareSubagentSpawn(_params) {
+      // Sub-agents share the same palaia store via workspace,
+      // so no explicit context passing is needed.
+      // Future: use OpenClaw's extraSystemPrompt to pass session summary.
       return undefined;
     },
 
@@ -506,6 +486,8 @@ export function createPalaiaContextEngine(
      */
     async onSubagentEnded(params) {
       if (!config.autoCapture) return;
+      // Only capture results for successfully completed sub-agents
+      if (params?.reason !== "completed") return;
       try {
         // Try to get sub-agent's last messages for summary
         if (api.runtime?.subagent?.getSessionMessages && params?.childSessionKey) {

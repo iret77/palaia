@@ -184,7 +184,7 @@ export interface SessionState {
   modelSwitchDetected: boolean;
   /** Pending briefing to inject on next before_prompt_build. */
   pendingBriefing: PendingBriefing | null;
-  /** Accumulated tool observations for the current turn. */
+  /** Accumulated tool observations for the session (used in session summary). */
   toolObservations: ToolObservation[];
   /** Accumulated token usage for the session. */
   tokenUsage: { input: number; output: number };
@@ -192,6 +192,12 @@ export interface SessionState {
   startedAt: number;
   /** Whether the first turn briefing has been delivered. */
   briefingDelivered: boolean;
+  /** Whether a session summary has already been saved (prevents double-save). */
+  summarySaved: boolean;
+  /** Promise that resolves when session_start briefing load is complete. */
+  briefingReady: Promise<void> | null;
+  /** Resolver for briefingReady promise. */
+  briefingReadyResolve: (() => void) | null;
 }
 
 /** Session state map. Keyed by sessionKey. */
@@ -220,6 +226,9 @@ export function getOrCreateSessionState(sessionKey: string): SessionState {
       tokenUsage: { input: 0, output: 0 },
       startedAt: Date.now(),
       briefingDelivered: false,
+      summarySaved: false,
+      briefingReady: null,
+      briefingReadyResolve: null,
     };
     sessionStateByKey.set(sessionKey, state);
   }
