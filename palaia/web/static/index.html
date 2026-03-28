@@ -54,19 +54,7 @@
         <div class="loading">Loading entries...</div>
     </div>
 
-    <!-- Detail panel -->
-    <div class="detail-panel" id="detail-panel">
-        <div class="detail-toolbar">
-            <h2 id="detail-title"></h2>
-            <div class="detail-actions">
-                <button class="btn-edit" onclick="editCurrentEntry()" title="Edit">✏️ Edit</button>
-                <button class="btn-delete" onclick="deleteCurrentEntry()" title="Delete">🗑️ Delete</button>
-                <button class="btn-close" onclick="closeDetail()" title="Close">✕</button>
-            </div>
-        </div>
-        <dl class="detail-meta" id="detail-meta"></dl>
-        <div class="detail-body" id="detail-body"></div>
-    </div>
+    <!-- Detail panel rendered inline below cards -->
 
     <!-- Create/Edit modal -->
     <div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">

@@ -81,7 +81,7 @@ function doSearch() {
         renderEntries(entries, d.count, true, d.timed_out ? ' (BM25 only)' : '');
     }).catch(e => { document.getElementById('entry-list').innerHTML = '<div class="loading">Search error</div>'; });
 }
-function clearSearch() { searchMode = false; document.getElementById('detail-panel').classList.remove('visible'); loadEntries(); }
+function clearSearch() { searchMode = false; closeDetail(); loadEntries(); }
 function applyFilters() { if (searchMode) doSearch(); else loadEntries(); }
 
 function renderEntries(entries, total, isSearch, extra) {
@@ -106,15 +106,17 @@ function renderEntries(entries, total, isSearch, extra) {
 }
 
 async function showDetail(id) {
-    document.querySelectorAll('.entry-card').forEach(c => c.classList.remove('active'));
+    var existing = document.getElementById('inline-detail-'+id);
+    if (existing) { existing.remove(); currentEntryId = null; currentEntryData = null;
+        document.getElementById('card-'+id).classList.remove('active'); return; }
+    document.querySelectorAll('.inline-detail').forEach(function(el) { el.remove(); });
+    document.querySelectorAll('.entry-card').forEach(function(c) { c.classList.remove('active'); });
     var card = document.getElementById('card-'+id);
     if (card) card.classList.add('active');
     try {
-        const d = await api('/api/entries/'+id);
+        var d = await api('/api/entries/'+id);
         currentEntryId = id; currentEntryData = d;
-        const panel = document.getElementById('detail-panel');
-        const m = d.meta || {};
-        document.getElementById('detail-title').textContent = m.title || '(untitled)';
+        var m = d.meta || {};
         var fields = [
             ['Type', m.type||'memory'],['Scope', m.scope||'team'],['Tier', m.tier||'unknown'],
             ['Created', fmtDate(m.created)],['Accessed', fmtDate(m.accessed)],
@@ -126,15 +128,25 @@ async function showDetail(id) {
         if (m.assignee) fields.push(['Assignee', m.assignee]);
         if (m.due_date) fields.push(['Due', m.due_date]);
         if (m.project) fields.push(['Project', m.project]);
-        document.getElementById('detail-meta').innerHTML = fields.map(f => '<dt>'+f[0]+'</dt><dd>'+f[1]+'</dd>').join('');
-        document.getElementById('detail-body').textContent = d.content || '';
-        panel.classList.add('visible');
-        panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+        var metaHtml = fields.map(function(f) { return '<dt>'+f[0]+'</dt><dd>'+f[1]+'</dd>'; }).join('');
+        var det = document.createElement('div');
+        det.id = 'inline-detail-'+id;
+        det.className = 'inline-detail';
+        det.innerHTML = '<div class="detail-toolbar"><h2>'+esc(m.title||'(untitled)')+'</h2>'
+            +'<div class="detail-actions">'
+            +'<button class="btn-edit" onclick="editCurrentEntry()">\u270f\ufe0f Edit</button>'
+            +'<button class="btn-delete" onclick="deleteCurrentEntry()">\ud83d\uddd1\ufe0f Delete</button>'
+            +'<button class="btn-close" onclick="showDetail(\x27'+id+'\x27)">\u2715</button>'
+            +'</div></div>'
+            +'<dl class="detail-meta">'+metaHtml+'</dl>'
+            +'<pre class="detail-body">'+esc(d.content||'')+'</pre>';
+        card.after(det);
+        det.scrollIntoView({behavior:'smooth', block:'nearest'});
     } catch(e) { console.error('showDetail:', e); }
 }
 function closeDetail() {
-    document.getElementById('detail-panel').classList.remove('visible');
-    document.querySelectorAll('.entry-card').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.inline-detail').forEach(function(el) { el.remove(); });
+    document.querySelectorAll('.entry-card').forEach(function(c) { c.classList.remove('active'); });
     currentEntryId = null; currentEntryData = null;
 }
 
