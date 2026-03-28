@@ -134,7 +134,7 @@ header h1 span { color: var(--accent); }
 @keyframes slideDown { from { opacity: 0; max-height: 0; padding: 0 20px; } to { opacity: 1; max-height: 2000px; } }
 .inline-detail .detail-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .inline-detail h2 { font-size: 1em; color: var(--text-bright); }
-.inline-detail .detail-meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; margin-bottom: 12px; font-size: 0.82em; }
-.inline-detail .detail-meta dt { color: var(--text-dim); }
-.inline-detail .detail-meta dd { color: var(--text); }
+.inline-detail .detail-meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 2px 16px; margin-bottom: 12px; font-size: 0.82em; }
+.inline-detail .detail-meta dt { color: var(--text-dim); font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 8px; }
+.inline-detail .detail-meta dd { color: var(--text-bright); font-weight: 500; margin: 0; }
 .inline-detail .detail-body { background: var(--bg); padding: 14px; border-radius: var(--radius); font-family: var(--mono); font-size: 0.82em; white-space: pre-wrap; word-wrap: break-word; line-height: 1.5; max-height: 400px; overflow-y: auto; margin: 0; }
