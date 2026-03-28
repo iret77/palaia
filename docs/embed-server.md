@@ -1,6 +1,6 @@
 # Embed Server
 
-The embed-server is a background process that keeps the embedding model loaded in memory. Without it, every CLI call loads the model from scratch (~2-5s). With it: **<500ms per query**.
+The embed-server is a background process that keeps the embedding model loaded in memory. Without it, every CLI call loads the model from scratch (~3-5s). With it: **~1.5s per CLI query** (Python startup overhead) or **<500ms via MCP/Plugin** (no CLI overhead).
 
 ## How It Works
 
@@ -76,12 +76,14 @@ Each `.palaia/` directory gets its own embed-server instance (separate socket, s
 
 ## Performance Budget
 
-| Scenario | Without server | With server |
-|----------|---------------|-------------|
-| `palaia query` (fastembed) | ~5s | <500ms |
-| `palaia write` (embedding) | ~3s | <500ms |
-| First query after start | ~3s (model load) | <500ms (pre-warmed) |
-| Memory overhead | 0 | ~200MB (one model instance) |
+| Scenario | Without server | With server (CLI) | With server (MCP/Plugin) |
+|----------|---------------|-------------------|-------------------------|
+| `palaia query` (fastembed) | ~3-5s | ~1.5s | <500ms |
+| `palaia write` (embedding) | ~3s | ~1.5s | <500ms |
+| First query after start | ~3s (model load) | ~1.5s (pre-warmed) | <500ms |
+| Memory overhead | 0 | ~200MB | ~200MB |
+
+Note: CLI overhead (~0.8-1.0s) is Python interpreter startup + argument parsing + module imports. MCP and Plugin calls skip this entirely.
 
 ## Troubleshooting
 

@@ -81,7 +81,7 @@ palaia status                                        # Check health
 | **Structured Types** | memory, process, task — with status, priority, assignee, due date. |
 | **Multi-Agent** | Shared store, scopes (private/team/public), agent aliases, per-agent injection priorities. |
 | **Smart Tiering** | HOT/WARM/COLD rotation based on decay scores and access patterns. |
-| **Embed Server** | Background process holds model in RAM. CLI queries: <500ms (was ~5s). |
+| **Embed Server** | Background process holds model in RAM. CLI queries: ~1.5s (was ~3-5s). MCP/Plugin: <500ms. |
 | **Zero-Cloud** | Everything local. No API keys needed for core functionality. |
 
 ---

@@ -207,7 +207,7 @@ palaia embed-server --socket --daemon   # Start background server
 palaia embed-server --status            # Check if running
 palaia embed-server --stop              # Stop server
 ```
-Without the server, each CLI call loads the model fresh (~2-5s). With it: **<500ms per query**.
+Without the server, each CLI call loads the model fresh (~3-5s). With the embed-server: **~1.5s per CLI query** (Python startup + server call) or **<500ms via MCP/Plugin** (no CLI overhead).
 
 The OpenClaw plugin starts the embed-server automatically. For CLI-only usage, it auto-starts on first query when a local provider (fastembed, sentence-transformers) is configured.
 
