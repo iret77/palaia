@@ -1588,6 +1588,47 @@ def _check_storage_backend(palaia_root: Path | None) -> dict[str, Any]:
     }
 
 
+def _check_native_vector_search(palaia_root: Path | None) -> dict[str, Any]:
+    """Check if native vector search (sqlite-vec) is available for faster queries."""
+    try:
+        import sqlite_vec  # noqa: F401
+
+        return {
+            "name": "native_vector_search",
+            "label": "Native vector search",
+            "status": "ok",
+            "message": "sqlite-vec installed — SIMD-accelerated KNN active",
+        }
+    except ImportError:
+        return {
+            "name": "native_vector_search",
+            "label": "Native vector search",
+            "status": "info",
+            "message": "sqlite-vec not installed. Install for ~30x faster vector search: pip install 'palaia[sqlite-vec]'",
+            "fix": "pip install 'palaia[sqlite-vec]'",
+        }
+
+
+def _check_mcp_server(palaia_root: Path | None) -> dict[str, Any]:
+    """Check if MCP server is available for Claude Desktop / Cursor integration."""
+    try:
+        import mcp  # noqa: F401
+
+        return {
+            "name": "mcp_server",
+            "label": "MCP server",
+            "status": "ok",
+            "message": "MCP SDK installed — palaia-mcp available for Claude Desktop, Cursor",
+        }
+    except ImportError:
+        return {
+            "name": "mcp_server",
+            "label": "MCP server",
+            "status": "info",
+            "message": "MCP SDK not installed. For Claude Desktop / Cursor: pip install 'palaia[mcp]'",
+        }
+
+
 def _check_stale_unassigned_tasks(palaia_root: Path | None) -> dict[str, Any]:
     """Check for auto-captured tasks without assignee/due_date older than 7 days."""
     if palaia_root is None:

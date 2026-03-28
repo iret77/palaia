@@ -477,7 +477,23 @@ def cmd_detect(args):
             else:
                 provider_rows.append((name, "n/a", "no key"))
 
+    # embed-server and sqlite-vec status
+    for p in result["providers"]:
+        if p["name"] == "embed-server":
+            if p["available"]:
+                provider_rows.append(("embed-server", "ok", "running (fast queries)"))
+            else:
+                provider_rows.append(("embed-server", "n/a", p.get("install_hint", "not running")))
+
     provider_rows.append(("bm25", "ok", "always available"))
+
+    # sqlite-vec (native vector search acceleration)
+    try:
+        import sqlite_vec  # noqa: F401
+
+        provider_rows.append(("sqlite-vec", "ok", "SIMD-accelerated KNN"))
+    except ImportError:
+        provider_rows.append(("sqlite-vec", "n/a", "pip install 'palaia[sqlite-vec]'"))
 
     print(section("Providers"))
     print(

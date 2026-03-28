@@ -59,9 +59,11 @@ uv tool install "palaia[fastembed]"
 pipx install "palaia[fastembed]"
 ```
 
-For knowledge curation features (optional):
+Optional extras (install as needed):
 ```bash
-pip install "palaia[curate]"
+pip install "palaia[sqlite-vec]"   # Native SIMD vector search (~30x faster)
+pip install "palaia[mcp]"          # MCP server for Claude Desktop, Cursor
+pip install "palaia[curate]"       # Knowledge curation
 ```
 
 ### OpenClaw Plugin Setup (for Auto-Capture and Auto-Recall)
@@ -220,9 +222,10 @@ Without the server, each CLI call loads the model fresh (~2-5s). With it: **<500
 
 The OpenClaw plugin starts the embed-server automatically. For CLI-only usage, it auto-starts on first query when a local provider (fastembed, sentence-transformers) is configured.
 
-### MCP Server (Claude Desktop, Cursor)
+### MCP Server (Claude Desktop, Cursor, any MCP host)
 
-Palaia works as an MCP memory server — no OpenClaw required:
+Palaia works as a standalone MCP memory server — **no OpenClaw required**. Any AI tool that supports MCP can use palaia as persistent local memory.
+
 ```bash
 pip install 'palaia[mcp]'
 palaia-mcp                              # Start MCP server (stdio)
@@ -230,7 +233,7 @@ palaia-mcp --root /path/to/.palaia      # Explicit store
 palaia-mcp --read-only                  # No writes (untrusted hosts)
 ```
 
-Claude Desktop config (`~/.config/claude/claude_desktop_config.json`):
+**Claude Desktop** (`~/.config/claude/claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
@@ -242,7 +245,23 @@ Claude Desktop config (`~/.config/claude/claude_desktop_config.json`):
 }
 ```
 
-Available MCP tools: `palaia_search`, `palaia_read`, `palaia_list`, `palaia_status`, `palaia_store`, `palaia_edit`, `palaia_gc`.
+**Cursor** (Settings → MCP Servers → Add):
+- Command: `palaia-mcp`
+- Arguments: (none, or `--root /path/to/.palaia`)
+
+**MCP Tools:**
+
+| Tool | Purpose |
+|------|---------|
+| `palaia_search` | Semantic + keyword search across all memories |
+| `palaia_store` | Save new memory (fact, process, task) |
+| `palaia_read` | Read a specific entry by ID |
+| `palaia_edit` | Update an existing entry |
+| `palaia_list` | List entries by tier, type, or project |
+| `palaia_status` | Show store health, entry counts, provider info |
+| `palaia_gc` | Run garbage collection (tier rotation) |
+
+**Read-only mode** (`--read-only`): Disables `palaia_store`, `palaia_edit`, `palaia_gc`. Use this when connecting untrusted AI tools that should only read memories, not modify them.
 
 ---
 
@@ -651,7 +670,7 @@ Set in `openclaw.json` under `plugins.entries.palaia.config`:
 | `palaia write` fails | Run `palaia doctor --fix`, then retry. If WAL replay needed, run `palaia recover`. |
 | `palaia query` returns nothing | Try `palaia query "..." --all` to include COLD tier. Check `palaia list` to verify entries exist. |
 | Entries seem missing | `palaia recover` then `palaia list --tier cold` |
-| Slow queries | `palaia warmup` then check `palaia detect` |
+| Slow queries | `pip install 'palaia[sqlite-vec]'` for native vector search, then `palaia warmup`. Check `palaia detect` and `palaia status` |
 | Provider not available | Chain auto-falls back. Check `palaia status` |
 | `.palaia` missing | `palaia init` |
 | Embedding provider unavailable | BM25 works without embeddings. Check `palaia detect` for available providers. |
@@ -671,6 +690,8 @@ If `palaia doctor --fix` cannot resolve an issue, report the full error output t
 | `warm_threshold_days` | `30` | Days before WARM -> COLD |
 | `hot_max_entries` | `50` | Max entries in HOT tier |
 | `decay_lambda` | `0.1` | Decay rate for memory scores |
+| `embed_server_auto_start` | `true` | Auto-start embed-server daemon on first CLI query |
+| `embed_server_idle_timeout` | `1800` | Daemon auto-shutdown after N seconds idle |
 
 ---
 

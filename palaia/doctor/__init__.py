@@ -20,7 +20,9 @@ from palaia.doctor.checks import (
     _check_index_staleness,
     _check_legacy_memory_files,
     _check_loop_artifacts,
+    _check_mcp_server,
     _check_multi_agent_static,
+    _check_native_vector_search,
     _check_openclaw_plugin,
     _check_palaia_init,
     _check_plugin_defaults_upgrade,
@@ -71,6 +73,8 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_loop_artifacts(palaia_root),
         _check_stale_unassigned_tasks(palaia_root),
         _check_storage_backend(palaia_root),
+        _check_native_vector_search(palaia_root),
+        _check_mcp_server(palaia_root),
     ]
     return results
 
@@ -94,7 +98,9 @@ __all__ = [
     "_check_index_staleness",
     "_check_legacy_memory_files",
     "_check_loop_artifacts",
+    "_check_mcp_server",
     "_check_multi_agent_static",
+    "_check_native_vector_search",
     "_check_openclaw_plugin",
     "_check_palaia_init",
     "_check_plugin_defaults_upgrade",
