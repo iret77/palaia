@@ -14,11 +14,11 @@
 
 ### Recommended: Tell your agent
 
-Paste this into your OpenClaw agent:
+Paste this into your OpenClaw agent (works for install AND update):
 
-> Install palaia for me. Set up memory so it works across sessions.
+> Install or update the Palaia memory skill from ClawHub to the latest version (even if already present). Read the SKILL.md completely and follow it step by step. Run palaia init, then palaia doctor --fix and resolve all warnings — don't stop until the doctor report is clean. Set up completely.
 
-The agent handles everything: `pip install "palaia[fastembed]"`, `palaia init`, plugin setup, and verification.
+The agent handles everything: ClawHub skill install, pip setup, plugin config, and verification.
 
 ### Manual / Expert Setup
 
