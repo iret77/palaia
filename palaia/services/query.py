@@ -49,10 +49,13 @@ def search_entries(
     When an embed-server is running, delegates the full search to it for speed.
     Falls back to direct SearchEngine if the server is unavailable.
     """
-    # Fast path: delegate to embed-server if running
+    # Fast path: delegate to embed-server (auto-start if needed)
     try:
-        from palaia.embed_client import EmbedServerClient, is_server_running
+        from palaia.embed_client import EmbedServerClient, auto_start_server, is_server_running, should_auto_start
         from palaia.embed_server import get_socket_path
+
+        if not is_server_running(root) and should_auto_start(load_config(root)):
+            auto_start_server(root)
 
         if is_server_running(root):
             with EmbedServerClient(get_socket_path(root)) as client:
