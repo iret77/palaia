@@ -30,11 +30,12 @@ palaia doctor --fix
 
 Optional extras:
 ```bash
-pip install "palaia[sqlite-vec]"   # Native SIMD vector search (~30x faster)
 pip install "palaia[mcp]"          # MCP server for Claude Desktop, Cursor
 pip install "palaia[curate]"       # Knowledge curation
 pip install "palaia[postgres]"     # PostgreSQL + pgvector backend
 ```
+
+Note: `palaia[fastembed]` already includes sqlite-vec for native vector search and the embed-server auto-starts on first query. No manual optimization needed.
 
 **Upgrading?** `palaia upgrade` — auto-detects install method, preserves extras, runs doctor.
 

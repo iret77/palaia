@@ -61,10 +61,11 @@ pipx install "palaia[fastembed]"
 
 Optional extras (install as needed):
 ```bash
-pip install "palaia[sqlite-vec]"   # Native SIMD vector search (~30x faster)
 pip install "palaia[mcp]"          # MCP server for Claude Desktop, Cursor
 pip install "palaia[curate]"       # Knowledge curation
 ```
+
+Note: `palaia[fastembed]` already includes sqlite-vec for native SIMD vector search. No separate install needed.
 
 ### OpenClaw Plugin Setup (for Auto-Capture and Auto-Recall)
 
