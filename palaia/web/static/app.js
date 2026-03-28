@@ -95,7 +95,7 @@ function renderEntries(entries, total, isSearch, extra) {
         var sc = e.score != null ? 'score: '+e.score : 'decay: '+(e.decay_score||0).toFixed(2);
         var tags = (e.tags||[]).slice(0,3).map(function(t){return '<span class="tag">'+esc(t)+'</span>';}).join('');
         var pri = e.priority ? '<span class="badge badge-priority-'+e.priority+'">'+e.priority+'</span>' : '';
-        return '<div class="entry-card" onclick="showDetail(''+e.id+'')" id="card-'+e.id+'">'
+        return '<div class="entry-card" onclick="showDetail(\x27'+e.id+'\x27)" id="card-'+e.id+'">' 
           +'<div class="entry-header"><span class="entry-title">'+esc(e.title||'(untitled)')+'</span><span class="entry-score">'+sc+'</span></div>'
           +'<div class="entry-meta"><span class="badge badge-'+(e.tier||'hot')+'">'+(e.tier||'hot')+'</span>'
           +'<span class="badge badge-'+(e.type||'memory')+'">'+(e.type||'memory')+'</span>'+pri
