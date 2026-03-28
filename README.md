@@ -20,7 +20,7 @@ Paste this into your OpenClaw agent (works for install AND update):
 
 The agent handles everything: ClawHub skill install, pip setup, plugin config, and verification.
 
-### Manual / Expert Setup
+### Manual Setup
 
 ```bash
 pip install "palaia[fastembed]"
@@ -36,21 +36,33 @@ pip install "palaia[curate]"       # Knowledge curation
 pip install "palaia[postgres]"     # PostgreSQL + pgvector backend
 ```
 
-For the OpenClaw plugin (Auto-Capture + Auto-Recall):
-```bash
-npm install -g @byte5ai/palaia@latest
-```
-Then configure `openclaw.json` — see [SKILL.md](palaia/SKILL.md) for details.
-
 **Upgrading?** `palaia upgrade` — auto-detects install method, preserves extras, runs doctor.
+
+### MCP Setup (Claude Desktop, Cursor — no OpenClaw needed)
+
+```bash
+pip install "palaia[mcp,fastembed]"
+palaia init
+```
+
+Add to `~/.config/claude/claude_desktop_config.json` (Claude Desktop) or `.cursor/mcp.json` (Cursor):
+```json
+{
+  "mcpServers": {
+    "palaia": {
+      "command": "palaia-mcp"
+    }
+  }
+}
+```
 
 ## Quick Start
 
 ```bash
-palaia init                                         # Initialize (SQLite store)
 palaia write "API rate limit is 100 req/min" \
   --type memory --tags api,limits                   # Save knowledge
 palaia query "what's the rate limit"                # Find it by meaning
+palaia status                                        # Check health
 ```
 
 ---
@@ -59,144 +71,50 @@ palaia query "what's the rate limit"                # Find it by meaning
 
 | Feature | Details |
 |---------|---------|
-| **SQLite + sqlite-vec** | Single-file database with WAL mode. Optional SIMD-accelerated vector KNN via sqlite-vec. |
-| **PostgreSQL + pgvector** | Distributed teams: ANN search with HNSW index. `palaia config set database_url postgresql://...` |
-| **Semantic Search** | Hybrid BM25 + embeddings. Providers: fastembed, sentence-transformers, OpenAI, Gemini, Ollama |
+| **Semantic Search** | Hybrid BM25 + vector embeddings. 6 providers: fastembed, sentence-transformers, Ollama, OpenAI, Gemini, BM25. |
+| **Native Vector Search** | sqlite-vec (SIMD KNN) or pgvector (ANN/HNSW). Not Python cosine — real database-level acceleration. |
 | **MCP Server** | `palaia-mcp` — standalone memory for Claude Desktop, Cursor, any MCP host. No OpenClaw required. |
-| **Embed Server** | Background process holds model in RAM. CLI queries drop from ~5s to <500ms. |
-| **Crash-Safe Writes** | WAL-backed — survives power loss, kills, OOM |
-| **Auto-Capture** | OpenClaw plugin captures significant exchanges automatically |
-| **Structured Types** | memory, process, task — with status, priority, assignee fields |
-| **Multi-Agent** | Shared store, scopes (private/team/public), agent aliases, per-agent priorities |
-| **Smart Tiering** | HOT -> WARM -> COLD rotation based on access patterns |
-| **Knowledge Curation** | Cluster, deduplicate, and clean up accumulated knowledge for migration |
-| **Zero-Cloud** | Everything runs locally. No API keys required for core functionality |
-
----
-
-## Storage & Search
-
-### Backends
-
-| Backend | Vector Search | Use Case | Install |
-|---------|---------------|----------|---------|
-| **SQLite** (default) | sqlite-vec (SIMD KNN) or Python fallback | Local, single-agent or small team | Included |
-| **PostgreSQL** | pgvector (ANN, HNSW) | Distributed teams, multiple hosts | `pip install 'palaia[postgres]'` |
-
-SQLite is zero-config. For PostgreSQL:
-```bash
-pip install "palaia[postgres]"
-palaia config set database_url postgresql://user:pass@host/db
-```
-
-### Embedding Providers
-
-| Provider | Type | Install |
-|----------|------|---------|
-| fastembed | Local (CPU) | `pip install 'palaia[fastembed]'` (default) |
-| sentence-transformers | Local (CPU/GPU) | `pip install 'palaia[sentence-transformers]'` |
-| Ollama | Local (server) | `ollama pull nomic-embed-text` |
-| OpenAI | API | Set `OPENAI_API_KEY` |
-| Gemini | API | Set `GEMINI_API_KEY` |
-| BM25 | Built-in | Always available (keyword only) |
-
-### Embed Server (Performance)
-
-The embed-server keeps the embedding model loaded in memory for fast CLI queries:
-```bash
-palaia embed-server --socket --daemon   # Start background server
-palaia embed-server --status            # Check if running
-```
-Without server: ~5s per query. With server: **<500ms**. Auto-starts on first CLI query when a local provider is configured.
-
-### MCP Server (Claude Desktop, Cursor)
-
-Palaia works as a standalone MCP memory server — **no OpenClaw required**:
-```bash
-pip install "palaia[mcp]"
-palaia-mcp                              # Start MCP server (stdio)
-palaia-mcp --read-only                  # No writes (untrusted hosts)
-```
-
-Claude Desktop config (`~/.config/claude/claude_desktop_config.json`):
-```json
-{
-  "mcpServers": {
-    "palaia": {
-      "command": "palaia-mcp",
-      "args": []
-    }
-  }
-}
-```
-
-7 MCP tools: `palaia_search`, `palaia_store`, `palaia_read`, `palaia_edit`, `palaia_list`, `palaia_status`, `palaia_gc`.
-
----
-
-## Architecture
-
-```
-palaia/
-  backends/        Storage backends (SQLite, PostgreSQL)
-  services/        Business logic (write, query, status, admin)
-  doctor/          Diagnostics (checks, fixes, detection)
-  mcp/             MCP server (Claude Desktop, Cursor)
-  hooks/           OpenClaw hook handlers (recall, capture, state, reactions)
-  context-engine   ContextEngine adapter (7 lifecycle hooks)
-```
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full module map and data flows.
-
----
-
-## CLI Reference
-
-```
-palaia init                                          Initialize store (SQLite)
-palaia write "text" [--type TYPE] [--tags a,b]       Save knowledge
-palaia query "search" [--type TYPE] [--project P]    Search by meaning
-palaia get <id>                                       Read specific entry
-palaia list [--tier T] [--type T] [--status S]       List entries
-palaia edit <id> [--status done]                      Edit entry
-palaia status                                         System health + upgrade command
-palaia doctor [--fix]                                 Diagnose + fix
-palaia upgrade                                        Update to latest (preserves extras)
-palaia project create|list|show|query|delete          Manage projects
-palaia memo send|inbox|ack|broadcast                  Inter-agent messaging
-palaia priorities [block|set]                         Injection priorities
-palaia curate analyze|apply                           Knowledge curation
-palaia sync export|import                             Git-based exchange
-palaia package export|import|info                     Portable packages
-palaia process list|run                               Process tracking
-palaia gc [--aggressive] [--budget N]                 Garbage collection
-palaia config list|set|set-chain                      Configuration
-palaia ingest <source> [--project P]                  Index documents (RAG)
-palaia detect                                         Available providers + sqlite-vec
-palaia warmup                                         Pre-build search index
-palaia embed-server [--socket] [--daemon]             Background embedding server
-palaia mcp-server [--read-only]                       MCP server for AI tools
-```
-
-All commands support `--json` for machine-readable output.
+| **Multi-Backend** | SQLite (default, zero-config) or PostgreSQL + pgvector for distributed teams. |
+| **Crash-Safe** | SQLite WAL mode — survives power loss, kills, OOM. |
+| **Auto-Capture** | OpenClaw plugin captures significant exchanges automatically. |
+| **Structured Types** | memory, process, task — with status, priority, assignee, due date. |
+| **Multi-Agent** | Shared store, scopes (private/team/public), agent aliases, per-agent injection priorities. |
+| **Smart Tiering** | HOT/WARM/COLD rotation based on decay scores and access patterns. |
+| **Embed Server** | Background process holds model in RAM. CLI queries: <500ms (was ~5s). |
+| **Zero-Cloud** | Everything local. No API keys needed for core functionality. |
 
 ---
 
 ## Comparison
 
-| Feature | Palaia | Stock Memory | Mem0 | Engram |
-|---------|--------|-------------|------|--------|
+| Feature | Palaia | claude-mem | Mem0 | Stock Memory |
+|---------|--------|-----------|------|--------------|
 | Local-first | Yes | Yes | No (cloud) | Yes |
-| Crash-safe (WAL) | Yes | No | N/A | No |
-| Native Vector Search | Yes (sqlite-vec/pgvector) | No | No | No |
-| MCP Server | Yes | No | No | No |
-| Auto-Capture | Yes (plugin) | No | Yes | No |
-| Structured Types | Yes (memory/process/task) | No | No | No |
-| Multi-Agent Scopes | Yes (private/team/public) | No | Per-user | No |
-| Smart Tiering | Yes (HOT/WARM/COLD) | No | No | No |
-| Knowledge Curation | Yes | No | No | No |
-| Semantic Search | Hybrid (embedding + BM25) | None | Embedding | Embedding |
-| Zero-Cloud | Yes | Yes | No | Yes |
+| Cross-tool (MCP) | Yes (any MCP client) | No (Claude Code only) | No | No |
+| Native Vector Search | sqlite-vec / pgvector | ChromaDB (separate) | Cloud | No |
+| Structured Types | memory/process/task | decisions/bugfixes | No | No |
+| Multi-Agent Scopes | private/team/public | No | Per-user | No |
+| Smart Tiering | HOT/WARM/COLD | No | No | No |
+| Embedding Providers | 6 (configurable) | 1 (fixed) | Cloud | None |
+| Open Source | MIT | AGPL-3.0 | Partial | N/A |
+| Crash-safe (WAL) | Yes | Partial | N/A | No |
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Getting Started](docs/getting-started.md) | Installation, first steps, quick tour |
+| [Storage & Search](docs/backends.md) | SQLite, PostgreSQL, sqlite-vec, pgvector, embedding providers |
+| [MCP Server](docs/mcp.md) | Setup for Claude Desktop, Cursor, tool reference, read-only mode |
+| [Embed Server](docs/embed-server.md) | Performance optimization, socket transport, daemon mode |
+| [Multi-Agent](docs/multi-agent.md) | Scopes, agent identity, team setup, aliases |
+| [Configuration](docs/configuration.md) | All config keys, embedding chain, tuning |
+| [CLI Reference](docs/cli-reference.md) | All commands with flags and examples |
+| [Migration Guide](docs/migration-guide.md) | Import from other systems, flat-file migration |
+| [Architecture](ARCHITECTURE.md) | Module map, data flows, design decisions |
+| [SKILL.md](palaia/SKILL.md) | Agent-facing documentation (what agents read) |
 
 ---
 
@@ -211,7 +129,7 @@ pytest
 
 ## Links
 
-- [GitHub](https://github.com/iret77/palaia) — Source + Issues
+- [palaia.ai](https://palaia.ai) — Homepage
 - [PyPI](https://pypi.org/project/palaia/) — Package registry
 - [ClawHub](https://clawhub.com/skills/palaia) — Install via agent skill
 - [OpenClaw](https://openclaw.ai) — The agent platform Palaia is built for

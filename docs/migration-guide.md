@@ -2,6 +2,12 @@
 
 How to move your agent's memory into Palaia — from flat files, other memory systems, or a fresh start.
 
+## Automatic Migration
+
+Existing flat-file stores (pre-v2.0) are migrated to SQLite automatically on first use. No manual steps — `palaia doctor --fix` handles edge cases.
+
+For knowledge curation of large stores (500+ entries), see `palaia curate analyze` in the [CLI Reference](cli-reference.md).
+
 ## 5-Step Migration
 
 ### 1. Inventory

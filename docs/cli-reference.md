@@ -1,171 +1,275 @@
 # CLI Reference
 
-## Global Options
+All commands support `--json` for machine-readable output.
+
+## Quick Reference
 
 ```
-palaia --version    Show version
-palaia --help       Show help
+palaia init                                          Initialize store
+palaia write "text" [--type TYPE] [--tags a,b]       Save knowledge
+palaia query "search" [--type TYPE] [--project P]    Search by meaning
+palaia get <id>                                       Read entry
+palaia list [--tier T] [--type T] [--status S]       List entries
+palaia edit <id> [--status done]                      Edit entry
+palaia status                                         System health
+palaia doctor [--fix]                                 Diagnose + fix
+palaia upgrade                                        Update palaia
+palaia project create|list|show|query|delete          Projects
+palaia memo send|inbox|ack|broadcast                  Messaging
+palaia priorities [block|set]                         Injection control
+palaia curate analyze|apply                           Knowledge curation
+palaia gc [--aggressive] [--budget N]                 Garbage collection
+palaia config list|set|set-chain                      Configuration
+palaia detect                                         Provider detection
+palaia warmup                                         Pre-build index
+palaia embed-server [--socket] [--daemon]             Embedding server
+palaia mcp-server [--read-only]                       MCP server
+palaia ingest <source> [--project P]                  Document indexing
+palaia sync export|import                             Git-based exchange
+palaia package export|import|info                     Portable packages
+palaia process list|run                               Process tracking
 ```
 
 ---
 
-## `palaia init`
+## Core Commands
 
-Initialize a `.palaia` directory.
+### `palaia init`
+
+Initialize a `.palaia` store in the current directory.
 
 ```bash
-palaia init [--path <directory>]
+palaia init                    # Default setup
+palaia init --agent alice      # With agent identity
+```
+
+### `palaia write`
+
+Save structured knowledge.
+
+```bash
+palaia write "text" [flags]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--path` | `.` | Target directory |
+| `--type` | `memory` | Entry type: `memory`, `process`, `task` |
+| `--scope` | `team` | Visibility: `private`, `team`, `public` |
+| `--tags` | — | Comma-separated tags |
+| `--title` | — | Short title (auto-extracted if omitted) |
+| `--project` | — | Project name |
+| `--agent` | — | Agent name |
+| `--status` | — | Task status: `open`, `in-progress`, `done`, `wontfix` |
+| `--priority` | — | Task priority: `critical`, `high`, `medium`, `low` |
+| `--assignee` | — | Task assignee |
+| `--due-date` | — | Task due date |
 
----
+### `palaia query`
 
-## `palaia write`
-
-Write a memory entry.
-
-```bash
-palaia write <text> [--scope <scope>] [--agent <name>] [--tags <tags>] [--title <title>]
-```
-
-| Argument/Flag | Default | Description |
-|--------------|---------|-------------|
-| `text` | (required) | Memory content |
-| `--scope` | `team` | Scope tag: `private`, `team`, `shared:<name>`, `public` |
-| `--agent` | `None` | Agent name (required for `private` scope) |
-| `--tags` | `None` | Comma-separated tags |
-| `--title` | `None` | Entry title |
-
-Entries are automatically deduplicated by content hash.
-
-**Examples:**
+Search memories using hybrid BM25 + semantic ranking.
 
 ```bash
-palaia write "Docker containers share the host kernel" --title "Docker basics" --tags "docker,containers"
-palaia write "Secret rotation every 90 days" --scope private --agent security-bot
-palaia write "Team standup at 10am" --scope team --title "Standup"
-```
-
----
-
-## `palaia query`
-
-Search memories using BM25 (keyword search).
-
-```bash
-palaia query <query> [--limit <n>] [--all]
+palaia query "search text" [flags]
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--limit` | `10` | Maximum number of results |
-| `--all` | `false` | Include COLD tier in search |
+| `--limit` | `10` | Max results |
+| `--all` | — | Include COLD tier |
+| `--type` | — | Filter by type |
+| `--project` | — | Filter by project |
+| `--status` | — | Filter by status |
+| `--priority` | — | Filter by priority |
+| `--assignee` | — | Filter by assignee |
+| `--cross-project` | — | Search all projects |
+| `--before` | — | Created before (ISO date) |
+| `--after` | — | Created after (ISO date) |
 
-**Examples:**
+### `palaia get`
+
+Read a specific entry by ID.
 
 ```bash
-palaia query "docker networking"
-palaia query "deployment" --limit 5
-palaia query "legacy system" --all
+palaia get <id>                    # Full UUID or short prefix
+palaia get <id> --from-line 10     # Start at line 10
+palaia get <id> --num-lines 5      # Limit lines
+```
+
+### `palaia list`
+
+List entries in a tier.
+
+```bash
+palaia list                        # HOT tier (default)
+palaia list --tier warm            # WARM tier
+palaia list --all                  # All tiers
+palaia list --type task --status open  # Filter
+```
+
+### `palaia edit`
+
+Edit an existing entry.
+
+```bash
+palaia edit <id> --status done
+palaia edit <id> --title "New title"
+palaia edit <id> --tags new,tags
+```
+
+### `palaia status`
+
+Show system health, entry counts, backend info, and upgrade command.
+
+```bash
+palaia status          # Human-readable
+palaia status --json   # Machine-readable
+```
+
+### `palaia doctor`
+
+Run diagnostics and auto-fix issues.
+
+```bash
+palaia doctor           # Check only
+palaia doctor --fix     # Check and fix
+palaia doctor --json    # Machine-readable
+```
+
+### `palaia upgrade`
+
+Update palaia to the latest version.
+
+```bash
+palaia upgrade
+```
+
+Auto-detects install method (pip/uv/pipx/brew), preserves all installed extras, runs `palaia doctor --fix`, upgrades OpenClaw plugin if present.
+
+---
+
+## Project Management
+
+### `palaia project`
+
+```bash
+palaia project create myapp                # Create project
+palaia project list                        # List all
+palaia project show myapp                  # Project details
+palaia project query myapp "search text"   # Search within project
+palaia project delete myapp                # Delete project
 ```
 
 ---
 
-## `palaia list`
+## Knowledge Management
 
-List entries in a specific tier.
+### `palaia gc`
+
+Garbage collection — rotate entries between tiers.
 
 ```bash
-palaia list [--tier <hot|warm|cold>]
+palaia gc                      # Normal rotation
+palaia gc --dry-run            # Preview
+palaia gc --aggressive         # Also clear COLD tier
+palaia gc --budget 200         # Keep max N entries
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--tier` | `hot` | Tier to list |
+### `palaia curate`
 
----
-
-## `palaia status`
-
-Show system status: entry counts per tier, WAL state, search tier.
+Knowledge curation for large stores.
 
 ```bash
-palaia status
+palaia curate analyze                      # Generate curation report
+palaia curate analyze --project myapp      # Project-scoped
+palaia curate apply report.md              # Apply curation decisions
 ```
 
----
+### `palaia ingest`
 
-## `palaia gc`
-
-Run garbage collection. Rotates entries between tiers based on decay scores and cleans up old WAL entries and stale embedding cache entries.
+Index external documents for RAG.
 
 ```bash
-palaia gc
-```
-
-Tier rotation rules:
-
-- **HOT → WARM**: Entry older than 7 days AND decay score < 0.5
-- **WARM → COLD**: Entry older than 30 days AND decay score < 0.1
-- **COLD → WARM / HOT**: If accessed recently, score rises above thresholds
-
----
-
-## `palaia export`
-
-Export all `scope: public` entries.
-
-```bash
-palaia export [--remote <git-url>] [--branch <name>] [--output <dir>]
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--remote` | `None` | Git remote URL to push to |
-| `--branch` | `palaia/export/<timestamp>` | Branch name (with `--remote`) |
-| `--output` | `./palaia-export/` | Local output directory |
-
-**Examples:**
-
-```bash
-# Local export
-palaia export
-palaia export --output /tmp/my-export
-
-# Git export
-palaia export --remote git@github.com:org/knowledge.git
-palaia export --remote git@github.com:org/knowledge.git --branch palaia/shared
+palaia ingest ./docs/ --project myapp      # Index directory
+palaia ingest file.pdf --project myapp     # Index PDF
 ```
 
 ---
 
-## `palaia import`
+## Communication
 
-Import entries from an export directory or git URL.
+### `palaia memo`
+
+Inter-agent messaging.
 
 ```bash
-palaia import <source> [--dry-run]
+palaia memo send bob "Deploy ready"        # Send to agent
+palaia memo inbox                          # Check messages
+palaia memo ack <id>                       # Acknowledge
+palaia memo broadcast "Release v2.3"       # Notify all
 ```
 
-| Argument/Flag | Default | Description |
-|--------------|---------|-------------|
-| `source` | (required) | Path to export directory or git URL |
-| `--dry-run` | `false` | Preview without writing |
+---
 
-Import rules:
+## Infrastructure
 
-- Only `scope: public` entries are accepted
-- `scope: team` entries from foreign workspaces are **rejected** with an error
-- Duplicate entries (same content hash) are skipped
-- Entry IDs are regenerated on import
-
-**Examples:**
+### `palaia config`
 
 ```bash
-palaia import ./palaia-export/
-palaia import ./palaia-export/ --dry-run
-palaia import https://github.com/org/knowledge.git
+palaia config list                         # Show all
+palaia config set <key> <value>            # Set value
+palaia config set-chain openai fastembed bm25  # Provider chain
+palaia config get <key>                    # Get value
+```
+
+### `palaia detect`
+
+Show available embedding providers and sqlite-vec status.
+
+### `palaia warmup`
+
+Pre-compute embeddings for all entries. Run after provider changes or on first setup.
+
+### `palaia embed-server`
+
+Background embedding server for fast queries.
+
+```bash
+palaia embed-server --socket --daemon      # Start daemon
+palaia embed-server --status               # Check status
+palaia embed-server --stop                 # Stop daemon
+palaia embed-server --idle-timeout 3600    # Custom timeout
+```
+
+### `palaia mcp-server`
+
+MCP server for Claude Desktop, Cursor, etc.
+
+```bash
+palaia mcp-server                          # Start (stdio)
+palaia mcp-server --read-only              # No writes
+palaia mcp-server --root /path/to/.palaia  # Explicit store
+```
+
+---
+
+## Data Exchange
+
+### `palaia sync`
+
+Git-based knowledge exchange (public entries only).
+
+```bash
+palaia sync export                         # Export to local dir
+palaia sync export --remote git@...        # Push to git
+palaia sync import ./export/               # Import from dir
+```
+
+### `palaia package`
+
+Portable packages (all scopes).
+
+```bash
+palaia package export --project myapp      # Create package
+palaia package import package.json         # Import package
+palaia package info package.json           # Show metadata
 ```
