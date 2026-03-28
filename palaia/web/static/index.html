@@ -16,9 +16,12 @@
         </div>
     </header>
 
-    <div class="search-box">
-        <input type="text" id="search-input" placeholder="Search memories..." autofocus>
-        <button onclick="doSearch()">Search</button>
+    <div class="toolbar">
+        <div class="search-box">
+            <input type="text" id="search-input" placeholder="Search memories..." autofocus>
+            <button onclick="doSearch()">Search</button>
+        </div>
+        <button class="btn-create" onclick="showCreateForm()">+ New Entry</button>
     </div>
 
     <div class="filters">
@@ -51,11 +54,107 @@
         <div class="loading">Loading entries...</div>
     </div>
 
+    <!-- Detail panel -->
     <div class="detail-panel" id="detail-panel">
-        <h2 id="detail-title"></h2>
+        <div class="detail-toolbar">
+            <h2 id="detail-title"></h2>
+            <div class="detail-actions">
+                <button class="btn-edit" onclick="editCurrentEntry()" title="Edit">✏️ Edit</button>
+                <button class="btn-delete" onclick="deleteCurrentEntry()" title="Delete">🗑️ Delete</button>
+                <button class="btn-close" onclick="closeDetail()" title="Close">✕</button>
+            </div>
+        </div>
         <dl class="detail-meta" id="detail-meta"></dl>
         <div class="detail-body" id="detail-body"></div>
     </div>
+
+    <!-- Create/Edit modal -->
+    <div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+        <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2 id="modal-title">New Entry</h2>
+                <button class="btn-close" onclick="closeModal()">✕</button>
+            </div>
+            <form id="entry-form" onsubmit="return submitEntryForm(event)">
+                <input type="hidden" id="form-id" value="">
+
+                <label for="form-body">Content *</label>
+                <textarea id="form-body" rows="6" required placeholder="Write your memory..."></textarea>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="form-title">Title</label>
+                        <input type="text" id="form-title" placeholder="Auto-generated if empty">
+                    </div>
+                    <div class="form-group">
+                        <label for="form-type">Type</label>
+                        <select id="form-type" onchange="toggleTaskFields()">
+                            <option value="memory">Memory</option>
+                            <option value="task">Task</option>
+                            <option value="process">Process</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="form-scope">Scope</label>
+                        <select id="form-scope">
+                            <option value="team">Team</option>
+                            <option value="private">Private</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="form-tags">Tags</label>
+                        <input type="text" id="form-tags" placeholder="comma,separated">
+                    </div>
+                </div>
+
+                <div class="task-fields" id="task-fields">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="form-priority">Priority</label>
+                            <select id="form-priority">
+                                <option value="">None</option>
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                                <option value="critical">Critical</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-status">Status</label>
+                            <select id="form-status">
+                                <option value="">None</option>
+                                <option value="open">Open</option>
+                                <option value="in-progress">In Progress</option>
+                                <option value="done">Done</option>
+                                <option value="blocked">Blocked</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="form-assignee">Assignee</label>
+                            <input type="text" id="form-assignee" placeholder="agent name">
+                        </div>
+                        <div class="form-group">
+                            <label for="form-due">Due Date</label>
+                            <input type="date" id="form-due">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn-cancel" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn-submit" id="form-submit-btn">Create Entry</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast notification -->
+    <div class="toast" id="toast"></div>
 </div>
 <script src="/app.js"></script>
 </body>
