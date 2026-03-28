@@ -231,28 +231,36 @@ class Store:
         """Compute and cache embedding for a single entry.
 
         Returns True if embedding was computed, False if skipped/failed.
-        Only indexes when a semantic embedding provider is available (not BM25-only).
+        Uses embed-server if running (fast). Never loads the model directly
+        from a CLI write — that would add ~3s to every write operation.
         """
-        from palaia.embeddings import BM25Provider, build_embedding_chain
-
-        chain = build_embedding_chain(self.config)
-        # Skip if no semantic providers available (BM25-only)
-        if not chain.providers:
-            return False
-
-        provider = chain.providers[0]
-        if isinstance(provider, BM25Provider):
-            return False
-
         title = meta.get("title", "")
         tags = " ".join(meta.get("tags", []))
         full_text = f"{title} {tags} {body}"
 
-        vectors, provider_name = chain.embed([full_text])
-        if vectors and provider_name != "bm25":
-            model_name = getattr(provider, "model_name", None) or getattr(provider, "model", provider_name)
-            self.embedding_cache.set_cached(entry_id, vectors[0], model=model_name)
-            return True
+        # Fast path: use embed-server if running
+        try:
+            from palaia.embed_client import EmbedServerClient, is_server_running
+            from palaia.embed_server import get_socket_path
+
+            if is_server_running(self.root):
+                with EmbedServerClient(get_socket_path(self.root)) as client:
+                    result = client.embed([full_text], timeout=5.0)
+                    if result:
+                        # Get model name from server status
+                        try:
+                            status = client.status(timeout=2.0)
+                            model_name = status.get("model", "unknown")
+                        except Exception:
+                            model_name = "unknown"
+                        self.embedding_cache.set_cached(entry_id, result[0], model=model_name)
+                        return True
+        except Exception:
+            pass
+
+        # No embed-server: skip incremental indexing.
+        # The entry will be indexed on next warmup or next query.
+        # Loading the model for a single write is not worth ~3s.
         return False
 
     def edit(

@@ -67,18 +67,19 @@ class TestIncrementalIndexing:
         # No embedding should be cached (BM25 doesn't produce vectors)
         assert store.embedding_cache.get_cached(entry_id) is None
 
-    def test_write_indexes_entry_when_provider_available(self, palaia_root_with_embeddings):
-        """After write, the new entry should have an embedding in cache."""
-        # Mock the embedding chain to avoid needing real sentence-transformers
+    def test_write_indexes_entry_when_embed_server_available(self, palaia_root_with_embeddings):
+        """After write with embed-server running, the new entry should have an embedding in cache."""
         mock_vector = [0.1] * 384
 
-        with patch("palaia.embeddings.build_embedding_chain") as mock_chain_fn:
-            mock_chain = MagicMock()
-            mock_provider = MagicMock()
-            mock_provider.model_name = "test-model"
-            mock_chain.providers = [mock_provider]
-            mock_chain.embed.return_value = ([mock_vector], "sentence-transformers")
-            mock_chain_fn.return_value = mock_chain
+        # Mock embed-server as running and returning vectors
+        with patch("palaia.embed_client.is_server_running", return_value=True), \
+             patch("palaia.embed_client.EmbedServerClient") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.embed.return_value = [mock_vector]
+            mock_client.status.return_value = {"model": "test-model"}
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client_cls.return_value = mock_client
 
             store = Store(palaia_root_with_embeddings)
             entry_id = store.write("Test content for embedding", agent="test-agent", title="Test")
@@ -87,6 +88,15 @@ class TestIncrementalIndexing:
         cached = store.embedding_cache.get_cached(entry_id)
         assert cached is not None
         assert len(cached) == 384
+
+    def test_write_skips_indexing_without_embed_server(self, palaia_root_with_embeddings):
+        """Without embed-server, write should skip indexing (no model loading for writes)."""
+        store = Store(palaia_root_with_embeddings)
+        entry_id = store.write("Test content", agent="test-agent", title="Test")
+        assert entry_id
+        # No embedding cached — will be indexed on next warmup or query
+        cached = store.embedding_cache.get_cached(entry_id)
+        assert cached is None
 
     def test_write_succeeds_when_embedding_fails(self, palaia_root_with_embeddings):
         """Write must not fail if embedding computation raises an exception."""

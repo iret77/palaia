@@ -561,44 +561,63 @@ def start_daemon(palaia_root: Path, idle_timeout: float = DEFAULT_IDLE_TIMEOUT) 
 
     sock_path = get_socket_path(palaia_root)
     pid_path = get_pid_path(palaia_root)
+    lock_path = palaia_root / "embed-server.startup.lock"
 
     # Already running?
     if is_server_running(palaia_root):
         pid = _read_pid_file(pid_path)
         return pid or 0
 
-    # Clean stale files
-    _remove_file(sock_path)
-    _remove_file(pid_path)
+    # Atomic lock to prevent concurrent startup race condition.
+    # Two CLI processes calling start_daemon simultaneously would both
+    # pass is_server_running() and both spawn daemons.
+    try:
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+    except FileExistsError:
+        # Another process is starting the daemon — wait for it
+        for _ in range(100):
+            time.sleep(0.1)
+            if is_server_running(palaia_root):
+                pid = _read_pid_file(pid_path)
+                return pid or 0
+        return 0  # Give up
 
-    # Spawn detached subprocess
-    cmd = [
-        sys.executable, "-m", "palaia", "embed-server",
-        "--socket",
-        "--idle-timeout", str(int(idle_timeout)),
-    ]
-    env = {**os.environ, "PALAIA_HOME": str(palaia_root)}
+    try:
+        # Clean stale files
+        _remove_file(sock_path)
+        _remove_file(pid_path)
 
-    proc = subprocess.Popen(
-        cmd,
-        env=env,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+        # Spawn detached subprocess
+        cmd = [
+            sys.executable, "-m", "palaia", "embed-server",
+            "--socket",
+            "--idle-timeout", str(int(idle_timeout)),
+        ]
+        env = {**os.environ, "PALAIA_HOME": str(palaia_root)}
 
-    # Wait for socket to appear (up to 10s for model loading)
-    for _ in range(100):
-        time.sleep(0.1)
-        if sock_path.exists():
-            return proc.pid
+        proc = subprocess.Popen(
+            cmd,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
 
-    # Check if process died
-    if proc.poll() is not None:
-        raise RuntimeError(f"Embed server exited with code {proc.returncode}")
+        # Wait for socket to appear (up to 10s for model loading)
+        for _ in range(100):
+            time.sleep(0.1)
+            if sock_path.exists():
+                return proc.pid
 
-    return proc.pid
+        # Check if process died
+        if proc.poll() is not None:
+            raise RuntimeError(f"Embed server exited with code {proc.returncode}")
+
+        return proc.pid
+    finally:
+        _remove_file(lock_path)
 
 
 # ── Entry point ─────────────────────────────────────────────────

@@ -1420,13 +1420,16 @@ def _check_index_staleness(palaia_root: Path | None) -> dict[str, Any]:
         }
 
     from palaia.config import load_config
-    from palaia.embeddings import BM25Provider, build_embedding_chain
 
     config = load_config(palaia_root)
-    chain = build_embedding_chain(config)
 
-    # Skip check if BM25-only (no semantic embeddings configured)
-    has_semantic = any(not isinstance(p, BM25Provider) for p in chain.providers)
+    # Check config directly — don't instantiate providers (avoids ~3s model load)
+    chain_cfg = config.get("embedding_chain", [])
+    has_semantic = bool(chain_cfg and any(p != "bm25" for p in chain_cfg))
+    if not has_semantic:
+        # Also check legacy embedding_provider
+        provider_cfg = config.get("embedding_provider", "auto")
+        has_semantic = provider_cfg not in ("bm25", "none", "")
     if not has_semantic:
         return {
             "name": "index_staleness",
