@@ -113,6 +113,29 @@ palaia upgrade
 ```
 This auto-detects the install method (pip/uv/pipx), preserves all installed extras (fastembed, mcp, sqlite-vec, curate), runs `palaia doctor --fix`, and upgrades the OpenClaw plugin if installed. No manual steps needed.
 
+**If `palaia upgrade` is not recognized** (versions before v2.3.0), update manually:
+
+```bash
+# Step 1: Find install method
+which palaia
+
+# Step 2: Upgrade (use the method matching the path from Step 1)
+# pip (path contains site-packages or .local):
+pip install --upgrade "palaia[fastembed]"
+# uv (path contains uv):
+uv tool install "palaia[fastembed]"
+# pipx (path contains pipx):
+pipx install "palaia[fastembed]" --force
+
+# Step 3: Health check + migration
+palaia doctor --fix
+
+# Step 4: Update OpenClaw plugin (if installed)
+npm install -g @byte5ai/palaia@latest
+```
+
+After the manual update, `palaia upgrade` will be available for future updates.
+
 ## Auto-Check (run every time this skill is loaded)
 
 Before doing anything else with Palaia, run `palaia doctor` silently. If it reports ANY warnings, address them immediately by following `palaia doctor --fix` recommendations. Do not proceed with other Palaia tasks until doctor reports no issues.
