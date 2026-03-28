@@ -53,13 +53,17 @@ def search(
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(_run_search)
             result = future.result(timeout=timeout)
-    except concurrent.futures.TimeoutError:
+    except (concurrent.futures.TimeoutError, TimeoutError):
         # Embedding search hung (probably cold-starting embed server).
         # Fall back to BM25-only search.
         logger.warning("Search timed out after %.1fs, falling back to BM25-only", timeout)
         timed_out = True
-        result = _bm25_fallback(root, q, limit=limit, entry_type=type, project=project,
-                                 status=status, priority=priority, include_cold=include_cold)
+        try:
+            result = _bm25_fallback(root, q, limit=limit, entry_type=type, project=project,
+                                     status=status, priority=priority, include_cold=include_cold)
+        except Exception as fallback_err:
+            logger.error("BM25 fallback also failed: %s", fallback_err)
+            result = {"results": [], "has_embeddings": False, "bm25_only": True}
 
     return {
         "query": q,
