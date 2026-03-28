@@ -207,3 +207,159 @@ class TestStaticFiles:
     def test_css_served(self, webui_client):
         r = webui_client.get("/style.css")
         assert r.status_code == 200
+
+
+# --- POST /api/entries (create) ---
+
+class TestCreateEntry:
+    def test_create_memory(self, webui_client):
+        r = webui_client.post("/api/entries", json={
+            "body": "New test memory from WebUI",
+            "title": "WebUI Created",
+            "type": "memory",
+            "tags": ["webui", "test"],
+        })
+        assert r.status_code == 201
+        data = r.json()
+        assert "id" in data
+        assert data["status"] == "created"
+
+        # Verify it appears in listing
+        entries = webui_client.get("/api/entries").json()
+        ids = [e["id"] for e in entries["entries"]]
+        assert data["id"] in ids
+
+    def test_create_task_with_priority(self, webui_client):
+        r = webui_client.post("/api/entries", json={
+            "body": "Fix the search timeout",
+            "type": "task",
+            "priority": "high",
+            "status": "open",
+        })
+        assert r.status_code == 201
+        data = r.json()
+
+        # Verify fields
+        detail = webui_client.get(f"/api/entries/{data['id']}").json()
+        assert detail["meta"]["priority"] == "high"
+        assert detail["meta"]["status"] == "open"
+
+    def test_create_empty_body_fails(self, webui_client):
+        r = webui_client.post("/api/entries", json={"body": ""})
+        assert r.status_code == 500 or r.status_code == 422  # ValueError from store
+
+    def test_create_missing_body_fails(self, webui_client):
+        r = webui_client.post("/api/entries", json={"title": "No body"})
+        assert r.status_code == 422
+
+
+# --- PATCH /api/entries/{id} ---
+
+class TestPatchEntry:
+    def test_patch_priority(self, webui_client):
+        # Create a task first
+        create_r = webui_client.post("/api/entries", json={
+            "body": "Task to reprioritize",
+            "type": "task",
+            "priority": "low",
+        })
+        entry_id = create_r.json()["id"]
+
+        # Patch priority
+        r = webui_client.patch(f"/api/entries/{entry_id}", json={"priority": "critical"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "updated"
+        assert "priority" in data["updated_fields"]
+
+        # Verify
+        detail = webui_client.get(f"/api/entries/{entry_id}").json()
+        assert detail["meta"]["priority"] == "critical"
+
+    def test_patch_status(self, webui_client):
+        create_r = webui_client.post("/api/entries", json={
+            "body": "Task to close",
+            "type": "task",
+            "status": "open",
+        })
+        entry_id = create_r.json()["id"]
+
+        r = webui_client.patch(f"/api/entries/{entry_id}", json={"status": "done"})
+        assert r.status_code == 200
+
+        detail = webui_client.get(f"/api/entries/{entry_id}").json()
+        assert detail["meta"]["status"] == "done"
+
+    def test_patch_body(self, webui_client):
+        create_r = webui_client.post("/api/entries", json={
+            "body": "Original content",
+        })
+        entry_id = create_r.json()["id"]
+
+        r = webui_client.patch(f"/api/entries/{entry_id}", json={"body": "Updated content"})
+        assert r.status_code == 200
+
+        detail = webui_client.get(f"/api/entries/{entry_id}").json()
+        assert "Updated content" in detail["content"]
+
+    def test_patch_tags(self, webui_client):
+        create_r = webui_client.post("/api/entries", json={
+            "body": "Tagged entry",
+            "tags": ["old-tag"],
+        })
+        entry_id = create_r.json()["id"]
+
+        r = webui_client.patch(f"/api/entries/{entry_id}", json={"tags": ["new-tag", "another"]})
+        assert r.status_code == 200
+
+        detail = webui_client.get(f"/api/entries/{entry_id}").json()
+        assert "new-tag" in detail["meta"]["tags"]
+        assert "old-tag" not in detail["meta"]["tags"]
+
+    def test_patch_not_found(self, webui_client):
+        r = webui_client.patch(
+            "/api/entries/00000000-0000-0000-0000-000000000000",
+            json={"priority": "high"},
+        )
+        assert r.status_code == 404
+
+    def test_patch_empty_body_rejected(self, webui_client):
+        r = webui_client.patch("/api/entries/some-id", json={})
+        assert r.status_code == 400
+
+
+# --- DELETE /api/entries/{id} ---
+
+class TestDeleteEntry:
+    def test_delete_entry(self, webui_client):
+        # Create then delete
+        create_r = webui_client.post("/api/entries", json={
+            "body": "Entry to delete",
+        })
+        entry_id = create_r.json()["id"]
+
+        r = webui_client.delete(f"/api/entries/{entry_id}")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "deleted"
+        assert data["id"] == entry_id
+
+        # Verify it's gone
+        r = webui_client.get(f"/api/entries/{entry_id}")
+        assert r.status_code == 404
+
+    def test_delete_not_found(self, webui_client):
+        r = webui_client.delete("/api/entries/00000000-0000-0000-0000-000000000000")
+        assert r.status_code == 404
+
+
+# --- Search timeout ---
+
+class TestSearchTimeout:
+    def test_search_returns_timed_out_field(self, webui_client):
+        """Search response includes timed_out flag."""
+        r = webui_client.get("/api/search?q=test")
+        assert r.status_code == 200
+        data = r.json()
+        assert "timed_out" in data
+        assert isinstance(data["timed_out"], bool)

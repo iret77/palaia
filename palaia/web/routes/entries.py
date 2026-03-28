@@ -1,11 +1,40 @@
-"""Entry listing and detail API routes."""
+"""Entry listing, detail, create, edit, and delete API routes."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Query, Request
+from pydantic import BaseModel
 
 router = APIRouter(tags=["entries"])
 
+
+# --- Models ---
+
+class EntryCreate(BaseModel):
+    body: str
+    title: str | None = None
+    type: str = "memory"
+    scope: str = "team"
+    tags: list[str] = []
+    project: str | None = None
+    status: str | None = None
+    priority: str | None = None
+    assignee: str | None = None
+    due_date: str | None = None
+
+
+class EntryPatch(BaseModel):
+    body: str | None = None
+    title: str | None = None
+    type: str | None = None
+    tags: list[str] | None = None
+    status: str | None = None
+    priority: str | None = None
+    assignee: str | None = None
+    due_date: str | None = None
+
+
+# --- Routes ---
 
 @router.get("/entries")
 def list_entries(
@@ -84,3 +113,114 @@ def get_entry(request: Request, entry_id: str) -> dict:
         return JSONResponse(status_code=404, content=result)
 
     return result
+
+
+@router.post("/entries", status_code=201)
+def create_entry(request: Request, payload: EntryCreate) -> dict:
+    """Create a new memory entry."""
+    from palaia.store import Store
+
+    root = request.app.state.palaia_root
+    store = Store(root)
+    store.recover()
+
+    try:
+        entry_id = store.write(
+            body=payload.body,
+        title=payload.title,
+        entry_type=payload.type,
+        scope=payload.scope,
+        tags=payload.tags or None,
+        project=payload.project,
+        status=payload.status,
+        priority=payload.priority,
+        assignee=payload.assignee,
+            due_date=payload.due_date,
+        )
+    except ValueError as e:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=422, content={"error": str(e)})
+
+    return {"id": entry_id, "status": "created"}
+
+
+@router.patch("/entries/{entry_id}")
+def patch_entry(request: Request, entry_id: str, payload: EntryPatch) -> dict:
+    """Update fields on an existing entry (partial update)."""
+    from palaia.store import Store
+    from fastapi.responses import JSONResponse
+
+    root = request.app.state.palaia_root
+    store = Store(root)
+    store.recover()
+
+    # Build kwargs from non-None fields
+    kwargs = {}
+    if payload.body is not None:
+        kwargs["body"] = payload.body
+    if payload.title is not None:
+        kwargs["title"] = payload.title
+    if payload.type is not None:
+        kwargs["entry_type"] = payload.type
+    if payload.tags is not None:
+        kwargs["tags"] = payload.tags
+    if payload.status is not None:
+        kwargs["status"] = payload.status
+    if payload.priority is not None:
+        kwargs["priority"] = payload.priority
+    if payload.assignee is not None:
+        kwargs["assignee"] = payload.assignee
+    if payload.due_date is not None:
+        kwargs["due_date"] = payload.due_date
+
+    if not kwargs:
+        return JSONResponse(status_code=400, content={"error": "No fields to update"})
+
+    try:
+        meta = store.edit(entry_id, **kwargs)
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+    except PermissionError as e:
+        return JSONResponse(status_code=403, content={"error": str(e)})
+
+    return {
+        "id": meta.get("id", entry_id),
+        "status": "updated",
+        "updated_fields": list(kwargs.keys()),
+    }
+
+
+@router.delete("/entries/{entry_id}")
+def delete_entry(request: Request, entry_id: str) -> dict:
+    """Delete an entry by ID."""
+    from palaia.store import Store
+    from fastapi.responses import JSONResponse
+
+    root = request.app.state.palaia_root
+    store = Store(root)
+    store.recover()
+
+    # Find the entry across tiers
+    path = store._find_entry(entry_id)
+    if path is None:
+        return JSONResponse(status_code=404, content={"error": f"Entry not found: {entry_id}"})
+
+    relative = str(path.relative_to(root))
+
+    # WAL-backed delete
+    from palaia.wal import WALEntry
+    with store.lock:
+        wal_entry = WALEntry(
+            operation="delete",
+            target=relative,
+            payload_hash="",
+            payload="",
+        )
+        store.wal.log(wal_entry)
+        store.delete_raw(relative)
+        store.wal.commit(wal_entry)
+
+    # Clean up metadata index
+    store.metadata_index.remove(entry_id)
+
+    return {"id": entry_id, "status": "deleted"}
