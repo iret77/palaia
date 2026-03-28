@@ -10,11 +10,15 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .protocol import StorageBackend
 
 logger = logging.getLogger(__name__)
 
 
-def create_backend(palaia_root: Path, config: dict) -> "StorageBackend":
+def create_backend(palaia_root: Path, config: dict) -> StorageBackend:
     """Create the appropriate storage backend.
 
     Detection order:
@@ -23,7 +27,6 @@ def create_backend(palaia_root: Path, config: dict) -> "StorageBackend":
     3. Config key ``database_backend`` forced to ``"sqlite"`` → SQLite
     4. Default → SQLite + sqlite-vec (zero-config)
     """
-    from .protocol import StorageBackend  # noqa: F811
 
     forced = config.get("database_backend", "auto")
     database_url = config.get("database_url") or os.environ.get("PALAIA_DATABASE_URL")

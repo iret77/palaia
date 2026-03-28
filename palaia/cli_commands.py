@@ -6,16 +6,13 @@ Helpers are imported from cli_helpers to avoid circular dependencies.
 
 from __future__ import annotations
 
-import json
 import sys
 
 from palaia.cli_helpers import (
     check_version_nag,
-    detect_current_agent,
     json_out,
     resolve_agent,
     resolve_agent_names,
-    resolve_instance_for_write,
 )
 from palaia.config import get_aliases, get_root, load_config
 from palaia.store import Store
@@ -410,7 +407,6 @@ def cmd_status(args):
             tracker = NudgeTracker(root)
             agent_for_nudge = info.get("config", {}).get("agent", "default")
             if tracker.should_nudge("curate_reminder", agent_for_nudge):
-                store = Store(root)
                 oldest_days = 0
                 for tier in ("hot", "warm", "cold"):
                     tier_dir = root / tier

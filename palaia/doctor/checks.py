@@ -599,6 +599,7 @@ def _check_binary_path(palaia_root: Path | None) -> dict[str, Any]:
     """Check if the palaia binary in PATH matches the installed version."""
     import shutil
     import subprocess
+
     from palaia import __version__
 
     binary = shutil.which("palaia")
@@ -1420,7 +1421,6 @@ def _check_index_staleness(palaia_root: Path | None) -> dict[str, Any]:
 
     from palaia.config import load_config
     from palaia.embeddings import BM25Provider, build_embedding_chain
-    from palaia.index import EmbeddingCache
 
     config = load_config(palaia_root)
     chain = build_embedding_chain(config)

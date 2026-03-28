@@ -32,12 +32,12 @@ import time
 import traceback
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 from palaia.config import get_root
 from palaia.embeddings import BM25Provider
 from palaia.search import SearchEngine
 from palaia.store import Store
+
+logger = logging.getLogger(__name__)
 
 # Defaults
 DEFAULT_IDLE_TIMEOUT = 1800  # 30 minutes

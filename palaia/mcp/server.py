@@ -243,7 +243,7 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
             """Edit an existing memory entry. Only provided fields are updated."""
             store = _get_store()
             try:
-                result = store.edit(
+                store.edit(
                     entry_id=entry_id,
                     body=content,
                     title=title,
@@ -253,7 +253,7 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
                     assignee=assignee,
                 )
                 return f"Updated entry {entry_id[:8]}"
-            except (FileNotFoundError, ValueError) as e:
+            except (FileNotFoundError, ValueError):
                 return f"Entry not found: {entry_id}"
             except PermissionError as e:
                 return f"Permission denied: {e}"

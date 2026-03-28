@@ -219,6 +219,7 @@ class TestGC:
 class TestServerCreation:
     def test_create_server_returns_fastmcp(self, palaia_root):
         from mcp.server.fastmcp import FastMCP
+
         from palaia.mcp.server import create_server
 
         server = create_server(palaia_root)

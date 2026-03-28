@@ -14,6 +14,7 @@ when unavailable. To run locally:
 from __future__ import annotations
 
 import os
+
 import pytest
 
 PG_URL = os.environ.get("PALAIA_TEST_PG_URL")

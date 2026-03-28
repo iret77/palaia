@@ -15,7 +15,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
-from palaia.config import load_config
 from palaia.store import Store
 
 logger = logging.getLogger(__name__)

@@ -1,6 +1,5 @@
 """Tests for WAL module."""
 
-import pytest
 
 from palaia.store import Store
 from palaia.wal import WAL, WALEntry

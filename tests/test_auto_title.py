@@ -1,10 +1,8 @@
 """Tests for auto-title extraction from content (Issue #41)."""
 
-import pytest
 
 from palaia.entry import create_entry, extract_title_from_content, parse_entry
 from palaia.store import Store
-
 
 # --- Unit tests for extract_title_from_content ---
 

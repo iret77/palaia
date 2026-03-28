@@ -1,6 +1,5 @@
 """Tests for the memory store."""
 
-import pytest
 
 from palaia.store import Store
 

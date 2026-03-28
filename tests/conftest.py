@@ -1,7 +1,7 @@
 """Shared test fixtures for palaia."""
 
+
 import pytest
-from pathlib import Path
 
 from palaia.config import DEFAULT_CONFIG, save_config
 from palaia.store import Store

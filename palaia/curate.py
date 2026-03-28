@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from palaia.bm25 import cosine_similarity as _cosine_similarity
 from palaia.decay import days_since, decay_score
-from palaia.significance import SIGNIFICANCE_TAGS, detect_significance
+from palaia.significance import detect_significance
 
 logger = logging.getLogger(__name__)
 
@@ -156,8 +156,8 @@ def cluster_entries(entries: list[ClusterEntry]) -> tuple[list[Cluster], list[Cl
         return [], list(entries)
 
     try:
-        from sklearn.cluster import AgglomerativeClustering
         import numpy as np
+        from sklearn.cluster import AgglomerativeClustering
 
         X = np.array([e.embedding for e in with_emb])
         # Normalise rows for cosine distance

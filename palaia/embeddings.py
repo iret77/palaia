@@ -23,7 +23,6 @@ import math
 import os
 import re
 import warnings
-from collections import Counter
 from typing import Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
@@ -460,8 +459,8 @@ def detect_providers() -> list[dict]:
     # 6. embed-server (running locally via Unix socket)
     embed_server_available = False
     try:
-        from palaia.embed_client import is_server_running as _is_es_running
         from palaia.config import get_root as _get_root
+        from palaia.embed_client import is_server_running as _is_es_running
 
         _root = _get_root()
         embed_server_available = _is_es_running(_root)
@@ -734,9 +733,9 @@ def _create_provider(name: str, model: str | None = None) -> EmbeddingProvider |
     elif name == "gemini":
         return GeminiProvider(model=model)
     elif name == "embed-server":
+        from palaia.config import get_root
         from palaia.embed_client import EmbedServerProvider
         from palaia.embed_server import get_socket_path
-        from palaia.config import get_root
 
         try:
             root = get_root()

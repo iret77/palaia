@@ -2,11 +2,8 @@
 
 import json
 
-import pytest
-
 from palaia.store import Store
 from palaia.wal import WAL, WALEntry
-
 
 # ── Corrupt JSON in WAL files ─────────────────────────────────
 

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import sys
-from pathlib import Path
+from pathlib import Path  # noqa: F401 — re-exported, tests patch palaia.cli.Path
 
 # Suppress noisy HuggingFace / tokenizers / safetensors warnings before any ML imports.
 # Must run before palaia.* imports which may trigger sentence_transformers loading.
@@ -24,14 +23,21 @@ _warnings.filterwarnings("ignore", module="sentence_transformers")
 for _name in ("sentence_transformers", "transformers", "huggingface_hub", "torch", "safetensors"):
     _logging.getLogger(_name).setLevel(_logging.ERROR)
 
-from palaia import __version__  # noqa: E402
-from palaia.cli_helpers import (  # noqa: E402
+
+from palaia.cli_commands import (  # noqa: E402
+    cmd_config,
+    cmd_detect,
+    cmd_list,
+    cmd_priorities,
+    cmd_project,
+    cmd_query,
+    cmd_status,
+)
+from palaia.cli_helpers import (  # noqa: E402, I001
     check_version_nag,
     detect_current_agent as _detect_current_agent,
     json_out as _json_out,
-    nudge_hint as _nudge_hint,
     resolve_agent as _resolve_agent,
-    resolve_agent_names as _resolve_agent_names,
     resolve_instance_for_write as _resolve_instance_for_write,
 )
 from palaia.config import (  # noqa: E402
@@ -43,24 +49,7 @@ from palaia.config import (  # noqa: E402
 from palaia.doctor import apply_fixes, format_doctor_report, run_doctor  # noqa: E402
 from palaia.migrate import format_result, migrate  # noqa: E402
 from palaia.store import Store  # noqa: E402
-from palaia.ui import (  # noqa: E402
-    print_header,
-    relative_time,
-    section,
-    table_kv,
-    table_multi,
-)
-# Import large cmd_* functions from cli_commands
-from palaia.cli_commands import (  # noqa: E402
-    cmd_config,
-    cmd_detect,
-    cmd_list,
-    cmd_priorities,
-    cmd_project,
-    cmd_query,
-    cmd_status,
-)
-
+from palaia.ui import print_header, section, table_multi  # noqa: E402
 
 # Commands that require a valid init (agent identity set)
 GATED_COMMANDS = frozenset(
@@ -140,8 +129,9 @@ def _process_nudge(context_text: str, context_tags: list[str] | None, args) -> N
     process_nudge(context_text, context_tags, args, get_root_fn=get_root)
 
 
-# Backward-compat: agent detection moved to services.admin
-from palaia.services.admin import (  # noqa: E402
+# Backward-compat re-exports: agent detection moved to services.admin
+# Tests and external code import these from palaia.cli
+from palaia.services.admin import (  # noqa: F401
     _AgentDetectResult,
     _detect_agents,
     _detect_agent_from_openclaw_config,
@@ -784,7 +774,7 @@ def cmd_setup(args):
 
 def cmd_instance(args):
     """Manage session instance identity."""
-    from palaia.services.admin import instance_set, instance_get, instance_clear
+    from palaia.services.admin import instance_clear, instance_get, instance_set
 
     root = get_root()
     action = args.instance_action
@@ -1212,8 +1202,10 @@ def cmd_embed_server(args):
     """Start long-lived embedding server for fast queries."""
     from palaia.embed_server import (
         DEFAULT_IDLE_TIMEOUT,
-        main as embed_server_main,
         start_daemon,
+    )
+    from palaia.embed_server import (
+        main as embed_server_main,
     )
 
     stop = getattr(args, "stop", False)

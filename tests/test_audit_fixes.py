@@ -2,7 +2,6 @@
 
 import json
 import time
-import warnings
 
 import pytest
 
@@ -15,7 +14,6 @@ from palaia.entry import (
 )
 from palaia.lock import STALE_LOCK_SECONDS, PalaiaLock
 from palaia.store import Store
-
 
 # --- Audit Fix 1: Empty content raises ValueError ---
 

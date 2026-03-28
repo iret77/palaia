@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from palaia import __version__
-from palaia.config import load_config
 from palaia.store import Store
 
 

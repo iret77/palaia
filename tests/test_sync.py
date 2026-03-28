@@ -7,7 +7,6 @@ import json
 import pytest
 
 from palaia.config import DEFAULT_CONFIG, save_config
-from palaia.store import Store
 from palaia.sync import MANIFEST_NAME, export_entries, import_entries
 
 

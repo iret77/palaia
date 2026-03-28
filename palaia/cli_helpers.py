@@ -9,23 +9,11 @@ from pathlib import Path
 
 from palaia.config import (
     find_palaia_root,
-    get_agent,
     get_aliases,
     get_instance,
     get_root,
-    is_initialized,
     load_config,
     resolve_agent_with_aliases,
-)
-from palaia.ui import (
-    format_size,
-    print_header,
-    relative_time,
-    score_display,
-    section,
-    table_kv,
-    table_multi,
-    truncate,
 )
 
 

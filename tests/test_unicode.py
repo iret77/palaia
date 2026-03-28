@@ -1,9 +1,7 @@
 """Tests for Unicode and special character handling."""
 
-import pytest
 
 from palaia.store import Store
-
 
 # ── Emoji content ─────────────────────────────────────────────
 

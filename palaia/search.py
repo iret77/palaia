@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import logging
 
-logger = logging.getLogger(__name__)
-
-from palaia.bm25 import BM25, tokenize  # noqa: E402 — re-exported for backward compat
+from palaia.bm25 import BM25, tokenize  # noqa: F401 — re-exported for backward compat
 from palaia.embeddings import (
     BM25Provider,
     _create_provider,
@@ -16,6 +14,8 @@ from palaia.embeddings import (
     detect_providers,
     get_provider_display_info,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def detect_search_tier() -> int:

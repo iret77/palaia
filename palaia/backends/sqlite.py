@@ -11,7 +11,7 @@ import json
 import logging
 import sqlite3
 import struct
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from palaia.bm25 import cosine_similarity as _cosine_similarity

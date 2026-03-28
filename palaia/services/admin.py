@@ -10,16 +10,15 @@ from palaia import __version__
 from palaia.config import (
     DEFAULT_CONFIG,
     clear_instance,
+    get_aliases,
     get_instance,
     load_config,
     remove_alias,
     save_config,
     set_alias,
     set_instance,
-    get_aliases,
 )
 from palaia.store import Store
-
 
 # ---------------------------------------------------------------------------
 # Agent detection helpers (moved from cli.py)
@@ -404,6 +403,7 @@ def detect_embedding_providers() -> dict:
     Returns dict with system, python, providers.
     """
     import platform
+
     from palaia.embeddings import detect_providers
 
     sys_info = f"{platform.system()} {platform.machine()}"

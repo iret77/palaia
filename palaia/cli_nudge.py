@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
 
 
 def memo_nudge(args, *, resolve_agent_fn, get_root_fn, get_aliases_fn) -> None:

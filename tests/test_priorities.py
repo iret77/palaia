@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from palaia.priorities import (
@@ -11,8 +9,8 @@ from palaia.priorities import (
     block_entry,
     is_blocked,
     load_priorities,
-    resolve_priorities,
     reset_priorities,
+    resolve_priorities,
     save_priorities,
     set_priority_value,
     unblock_entry,

@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from palaia.config import DEFAULT_CONFIG, save_config
 from palaia.curate import (
     Cluster,
     ClusterEntry,
@@ -27,7 +26,6 @@ from palaia.curate import (
     parse_report,
 )
 from palaia.store import Store
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -83,7 +81,7 @@ def _make_embedding(seed: int, dim: int = 8) -> list[float]:
 def populated_store(palaia_root):
     """Store with 10+ entries for curation testing."""
     store = Store(palaia_root)
-    now = datetime.now(timezone.utc)
+    _ = datetime.now(timezone.utc)
     entries = [
         ("API endpoint documentation — we decided to use REST", {"scope": "team", "tags": ["decision"], "entry_type": "process"}),
         ("Deploy checklist v2 — process for deployment", {"scope": "team", "tags": ["process"], "entry_type": "process"}),
@@ -566,10 +564,9 @@ class TestOutputCompatibility:
         (palaia_root / "test-report.md").write_text(md, encoding="utf-8")
 
         output_path = str(palaia_root / "test-output.palaia-pkg.json")
-        result = apply_svc(palaia_root, report_path, output=output_path)
+        apply_svc(palaia_root, report_path, output=output_path)
 
         # Verify the output is valid JSON
-        import json
         pkg = json.loads((palaia_root / "test-output.palaia-pkg.json").read_text())
         assert "palaia_package" in pkg
         assert "entries" in pkg

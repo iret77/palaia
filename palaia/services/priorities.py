@@ -102,7 +102,7 @@ def block_entry_svc(
     root: Path, entry_id: str, *, agent: str | None = None, project: str | None = None
 ) -> dict:
     """Block an entry from injection."""
-    prio = block_entry(root, entry_id, agent=agent, project=project)
+    block_entry(root, entry_id, agent=agent, project=project)
     level = "agent" if agent else ("project" if project else "global")
     return {"blocked": entry_id, "level": level, "scope": agent or project or "global"}
 
@@ -111,7 +111,7 @@ def unblock_entry_svc(
     root: Path, entry_id: str, *, agent: str | None = None, project: str | None = None
 ) -> dict:
     """Unblock an entry."""
-    prio = unblock_entry(root, entry_id, agent=agent, project=project)
+    unblock_entry(root, entry_id, agent=agent, project=project)
     level = "agent" if agent else ("project" if project else "global")
     return {"unblocked": entry_id, "level": level, "scope": agent or project or "global"}
 
@@ -136,7 +136,7 @@ def list_blocked_svc(
     # Show where each blocked entry comes from
     global_blocked = set(prio.get("blocked", []))
     agent_blocked = set(prio.get("agents", {}).get(agent, {}).get("blocked", [])) if agent else set()
-    project_blocked = set(prio.get("projects", {}).get(project, {}).get("blocked", [])) if project else set()
+    _ = set(prio.get("projects", {}).get(project, {}).get("blocked", [])) if project else set()
 
     entries = []
     for bid in sorted(resolved.blocked):

@@ -51,7 +51,7 @@ def main(argv: list[str] | None = None) -> None:
 
     from pathlib import Path
 
-    from palaia.config import find_palaia_root, get_root
+    from palaia.config import find_palaia_root
 
     # Resolve store root
     if args.root:

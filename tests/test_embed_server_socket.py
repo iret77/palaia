@@ -12,9 +12,9 @@ import pytest
 
 from palaia.config import DEFAULT_CONFIG, save_config
 from palaia.embed_server import (
-    EmbedServer,
     PID_FILENAME,
     SOCKET_FILENAME,
+    EmbedServer,
     _cleanup_stale_socket,
     _is_pid_alive,
     _read_pid_file,
@@ -22,7 +22,6 @@ from palaia.embed_server import (
     get_pid_path,
     get_socket_path,
     is_server_running,
-    stop_server,
 )
 from palaia.store import Store
 
