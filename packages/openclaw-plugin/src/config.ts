@@ -62,6 +62,18 @@ export interface PalaiaPluginConfig {
   // ── Embedding Server (v2.0.8) ──────────────────────────────
   /** Enable long-lived embedding server subprocess for fast queries (default: true) */
   embeddingServer: boolean;
+
+  // ── Session Continuity (v3.0) ─────────────────────────────
+  /** Enable automatic session summaries on session end/reset (default: true) */
+  sessionSummary: boolean;
+  /** Enable session briefing injection on session start (default: true) */
+  sessionBriefing: boolean;
+  /** Max characters for session briefing (default: 1500) */
+  sessionBriefingMaxChars: number;
+  /** Enable tool observation tracking via after_tool_call hook (default: true) */
+  captureToolObservations: boolean;
+  /** Recency boost factor for recall (0 = off, 0.3 = 30% boost for <24h entries) */
+  recallRecencyBoost: number;
 }
 
 export const DEFAULT_RECALL_TYPE_WEIGHTS: RecallTypeWeights = {
@@ -86,6 +98,11 @@ export const DEFAULT_CONFIG: PalaiaPluginConfig = {
   recallTypeWeight: { ...DEFAULT_RECALL_TYPE_WEIGHTS },
   recallMinScore: 0.7,
   embeddingServer: true,
+  sessionSummary: true,
+  sessionBriefing: true,
+  sessionBriefingMaxChars: 1500,
+  captureToolObservations: true,
+  recallRecencyBoost: 0.3,
 };
 
 /**

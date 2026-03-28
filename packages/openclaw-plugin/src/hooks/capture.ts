@@ -469,11 +469,11 @@ export async function extractWithLLM(
   }
 
   const allTexts = extractMessageTexts(messages);
-  // Strip Palaia-injected recall context from user messages to prevent feedback loop
+  // Strip Palaia-injected recall context and private blocks from user messages
   const cleanedTexts = allTexts.map(t =>
     t.role === "user"
-      ? { ...t, text: stripPalaiaInjectedContext(t.text) }
-      : t
+      ? { ...t, text: stripPrivateBlocks(stripPalaiaInjectedContext(t.text)) }
+      : { ...t, text: stripPrivateBlocks(t.text) }
   );
   // Only extract from recent exchanges — full history causes LLM timeouts
   // and dilutes extraction quality
@@ -736,5 +736,19 @@ export function stripPalaiaInjectedContext(text: string): string {
   // Pattern: "## Active Memory (Palaia)" ... "[palaia] auto-capture=on..." + optional trailing newlines
   // The nudge line is always present and marks the end of the injected block
   const PALAIA_BLOCK_RE = /## Active Memory \(Palaia\)[\s\S]*?\[palaia\][^\n]*\n*/;
-  return text.replace(PALAIA_BLOCK_RE, '').trim();
+  // Also strip Session Briefing blocks
+  const BRIEFING_BLOCK_RE = /## Session Briefing \(Palaia\)[\s\S]*?(?=\n##|\n\n\n|$)/;
+  return text
+    .replace(PALAIA_BLOCK_RE, '')
+    .replace(BRIEFING_BLOCK_RE, '')
+    .trim();
+}
+
+/**
+ * Strip <private>...</private> blocks from text.
+ * Content inside private tags is excluded from memory capture.
+ * Inspired by claude-mem's privacy marker system.
+ */
+export function stripPrivateBlocks(text: string): string {
+  return text.replace(/<private>[\s\S]*?<\/private>/gi, '').trim();
 }

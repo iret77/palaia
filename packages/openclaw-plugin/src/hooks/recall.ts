@@ -26,6 +26,7 @@ export interface QueryResult {
     title?: string;
     type?: string;
     tags?: string[];
+    created?: string;
   }>;
 }
 
@@ -342,16 +343,35 @@ export interface RankedEntry {
   bm25Score?: number;
   embedScore?: number;
   weightedScore: number;
+  created?: string;
+}
+
+/**
+ * Calculate recency boost factor.
+ * Returns a multiplier: 1.0 (no boost) to 1.0 + boostFactor (max boost for very recent).
+ * Formula: 1 + boostFactor * exp(-hoursAgo / 24)
+ */
+function calcRecencyBoost(created: string | undefined, boostFactor: number): number {
+  if (!boostFactor || !created) return 1.0;
+  try {
+    const hoursAgo = (Date.now() - new Date(created).getTime()) / (1000 * 60 * 60);
+    if (hoursAgo < 0 || isNaN(hoursAgo)) return 1.0;
+    return 1.0 + boostFactor * Math.exp(-hoursAgo / 24);
+  } catch {
+    return 1.0;
+  }
 }
 
 export function rerankByTypeWeight(
   results: QueryResult["results"],
   weights: RecallTypeWeights,
+  recencyBoost = 0,
 ): RankedEntry[] {
   return results
     .map((r) => {
       const type = r.type || "memory";
       const weight = weights[type] ?? 1.0;
+      const recency = calcRecencyBoost(r.created, recencyBoost);
       return {
         id: r.id,
         body: r.content || r.body || "",
@@ -362,8 +382,49 @@ export function rerankByTypeWeight(
         score: r.score,
         bm25Score: r.bm25_score,
         embedScore: r.embed_score,
-        weightedScore: r.score * weight,
+        weightedScore: r.score * weight * recency,
+        created: r.created,
       };
     })
     .sort((a, b) => b.weightedScore - a.weightedScore);
+}
+
+// ── Context Formatting ──────────────────────────────────────────────────
+
+const SCOPE_SHORT: Record<string, string> = { team: "t", private: "p", public: "pub" };
+const TYPE_SHORT: Record<string, string> = { memory: "m", process: "pr", task: "tk" };
+
+/**
+ * Format a ranked entry as an injectable context line.
+ *
+ * In compact mode (progressive disclosure), only title + first line + ID are shown.
+ * The agent can use `memory_get <id>` for the full entry.
+ */
+export function formatEntryLine(entry: RankedEntry, compact: boolean): string {
+  const scopeKey = SCOPE_SHORT[entry.scope] || entry.scope;
+  const typeKey = TYPE_SHORT[entry.type] || entry.type;
+  const prefix = `[${scopeKey}/${typeKey}]`;
+
+  if (compact) {
+    // Compact: title + first line of body + ID reference
+    const firstLine = entry.body.split("\n")[0]?.slice(0, 120) || "";
+    const titlePart = entry.body.toLowerCase().startsWith(entry.title.toLowerCase())
+      ? firstLine
+      : `${entry.title} — ${firstLine}`;
+    return `${prefix} ${titlePart} [id:${entry.id}]\n`;
+  }
+
+  // Full: title + complete body
+  if (entry.body.toLowerCase().startsWith(entry.title.toLowerCase())) {
+    return `${prefix} ${entry.body}\n\n`;
+  }
+  return `${prefix} ${entry.title}\n${entry.body}\n\n`;
+}
+
+/**
+ * Determine if compact mode should be used based on result count.
+ * Above threshold, use compact mode to fit more entries in budget.
+ */
+export function shouldUseCompactMode(totalResults: number, threshold = 100): boolean {
+  return totalResults > threshold;
 }
