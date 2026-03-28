@@ -423,7 +423,6 @@ export function registerSessionHooks(
         });
         if (!result?.messages?.length) return;
 
-        const { extractMessageTexts } = await import("./recall.js");
         const texts = extractMessageTexts(result.messages);
         const summaryParts = texts.slice(-4).map(
           (t: { role: string; text: string }) => `[${t.role}]: ${t.text.slice(0, 200)}`
