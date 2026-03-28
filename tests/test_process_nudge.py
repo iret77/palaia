@@ -262,18 +262,23 @@ class TestProcessNudgeEmbeddingSimilarity:
         if hints_file.exists():
             hints_file.unlink()
 
+        # Pre-cache embedding for the process entry so nudge finds it via cache
+        # (process_nudge skips uncached entries when embed-server is not running)
+        entries = store.list_entries("hot")
+        for meta, _ in entries:
+            if meta.get("type") == "process":
+                store.embedding_cache.set_cached(meta["id"], [1.0, 0.0, 0.0], model="mock")
+
         # Mock the embedding provider to return high similarity
         class MockProvider:
             name = "mock"
 
             def embed_query(self, text):
-                # Return a fixed vector; different texts get same vector = similarity 1.0
                 return [1.0, 0.0, 0.0]
 
             def embed(self, texts):
                 return [[1.0, 0.0, 0.0]] * len(texts)
 
-        # Patch at the source module where _process_nudge imports it from
         monkeypatch.setattr(
             "palaia.embeddings.auto_detect_provider",
             lambda config=None: MockProvider(),
