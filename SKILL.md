@@ -108,53 +108,10 @@ palaia init --agent YOUR_AGENT_NAME
 
 When the user asks to update, or when `palaia status` shows a version mismatch:
 
-**Step 1: Find how palaia was installed and upgrade using the SAME method:**
 ```bash
-# Check which palaia binary is active
-which palaia
+palaia upgrade
 ```
-
-**Step 1b: Get the correct upgrade command** (preserves installed extras like mcp, sqlite-vec):
-```bash
-palaia status
-```
-The output includes an `Upgrade command:` line with the correct package specifier. Use that command.
-
-If `palaia status` is unavailable, use `pip install --upgrade "palaia[fastembed]"` as a fallback.
-
-Then upgrade accordingly:
-```bash
-# If installed via pip (most common — path contains site-packages or .local):
-pip install --upgrade "palaia[fastembed]"  # ← replace with upgrade command from palaia status
-
-# If installed via uv tool (path contains uv or .local/bin → uv):
-uv tool install "palaia[fastembed]"
-
-# If installed via pipx (path contains pipx):
-pipx install "palaia[fastembed]" --force
-
-# If installed via Homebrew/Linuxbrew (path contains brew/Cellar):
-pip install --upgrade "palaia[fastembed]" --break-system-packages
-```
-
-**Step 2: Verify the correct binary is active:**
-```bash
-palaia --version
-```
-If the version still shows the old number, there may be a stale binary in another location shadowing the new one. Check `which -a palaia` and remove or update the old one.
-
-**Step 3: Run health checks:**
-```bash
-palaia doctor --fix
-```
-
-Storage migration happens automatically — no manual steps needed. If you see "storage upgraded" or "migrated to SQLite" messages, this is normal and expected — do not treat it as an error.
-
-**Step 4: Update the OpenClaw plugin (if installed):**
-```bash
-npm install -g @byte5ai/palaia@latest
-openclaw gateway restart
-```
+This auto-detects the install method (pip/uv/pipx), preserves all installed extras (fastembed, mcp, sqlite-vec, curate), runs `palaia doctor --fix`, and upgrades the OpenClaw plugin if installed. No manual steps needed.
 
 ## Auto-Check (run every time this skill is loaded)
 

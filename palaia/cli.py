@@ -102,6 +102,7 @@ UNGATED_COMMANDS = frozenset(
         "instance",
         "skill",
         "mcp-server",
+        "upgrade",
     }
 )
 
@@ -1258,6 +1259,75 @@ def cmd_mcp_server(args):
     return 0
 
 
+def cmd_upgrade(args):
+    """Upgrade palaia to latest version, preserving installed extras."""
+    import shutil
+    import subprocess
+
+    # Detect installed extras
+    extras = []
+    for mod, extra in [
+        ("fastembed", "fastembed"),
+        ("mcp", "mcp"),
+        ("sqlite_vec", "sqlite-vec"),
+        ("sklearn", "curate"),
+    ]:
+        try:
+            __import__(mod)
+            extras.append(extra)
+        except ImportError:
+            pass
+    if not extras:
+        extras = ["fastembed"]
+
+    spec = f"palaia[{','.join(extras)}]"
+
+    # Detect install method from binary path
+    palaia_bin = shutil.which("palaia") or ""
+    if "pipx" in palaia_bin:
+        cmd = ["pipx", "install", spec, "--force"]
+    elif "uv" in palaia_bin:
+        cmd = ["uv", "tool", "install", spec]
+    else:
+        # Default: pip
+        pip_cmd = "pip"
+        if shutil.which("pip3") and not shutil.which("pip"):
+            pip_cmd = "pip3"
+        cmd = [pip_cmd, "install", "--upgrade", spec]
+        # Homebrew/Linuxbrew: may need --break-system-packages
+        if "brew" in palaia_bin or "Cellar" in palaia_bin:
+            cmd.append("--break-system-packages")
+
+    print(f"Upgrading: {' '.join(cmd)}")
+    result = subprocess.run(cmd)
+
+    if result.returncode != 0:
+        print(f"\nUpgrade failed (exit {result.returncode}). Try running manually:", file=sys.stderr)
+        print(f"  {' '.join(cmd)}", file=sys.stderr)
+        return 1
+
+    # Post-upgrade: doctor
+    print("\nRunning health checks...")
+    subprocess.run([sys.executable, "-m", "palaia", "doctor", "--fix"])
+
+    # Check for OpenClaw plugin
+    npm_bin = shutil.which("npm")
+    if npm_bin:
+        try:
+            npm_check = subprocess.run(
+                ["npm", "list", "-g", "@byte5ai/palaia"],
+                capture_output=True, text=True,
+            )
+            if "@byte5ai/palaia" in npm_check.stdout:
+                print("\nUpgrading OpenClaw plugin...")
+                subprocess.run(["npm", "install", "-g", "@byte5ai/palaia@latest"])
+        except Exception:
+            pass
+
+    print("\nUpgrade complete.")
+    return 0
+
+
 def cmd_skill(args):
     """Print the embedded SKILL.md documentation."""
     from palaia.services.misc import get_skill_content
@@ -1325,6 +1395,7 @@ def main():
         "instance": cmd_instance,
         "embed-server": cmd_embed_server,
         "mcp-server": cmd_mcp_server,
+        "upgrade": cmd_upgrade,
         "skill": cmd_skill,
         "priorities": cmd_priorities,
         "curate": cmd_curate,

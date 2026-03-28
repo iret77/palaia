@@ -266,6 +266,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_pkg_info.add_argument("file", help="Package file path")
     p_pkg_info.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # upgrade
+    sub.add_parser("upgrade", help="Upgrade palaia to latest version (auto-detects install method and extras)")
+
     # embed-server
     p_embed = sub.add_parser("embed-server", help="Start long-lived embedding server (JSON-RPC)")
     p_embed.add_argument("--socket", action="store_true", help="Use Unix socket transport instead of stdio")
