@@ -243,10 +243,15 @@ class TestProcessNudgeFrequencyLimiting:
 class TestProcessNudgeEmbeddingSimilarity:
     """Test process nudge with embedding similarity (mocked)."""
 
-    def test_nudge_with_embedding_similarity(self, palaia_root, monkeypatch, capsys):
-        """Nudge should appear when embedding similarity exceeds threshold."""
+    def test_nudge_with_cached_embedding_similarity(self, palaia_root, monkeypatch, capsys):
+        """Nudge should appear when cached embedding similarity exceeds threshold.
+
+        process_nudge only uses embeddings via embed-server or cache — it never
+        loads the model directly (too slow for a nudge). This test verifies the
+        cache-based path works.
+        """
         store = Store(palaia_root)
-        store.write(
+        entry_id = store.write(
             body="Run pytest and check coverage before every release",
             title="Release testing process",
             tags=["release"],
@@ -262,26 +267,30 @@ class TestProcessNudgeEmbeddingSimilarity:
         if hints_file.exists():
             hints_file.unlink()
 
-        # Pre-cache embedding for the process entry so nudge finds it via cache
-        # (process_nudge skips uncached entries when embed-server is not running)
-        entries = store.list_entries("hot")
-        for meta, _ in entries:
-            if meta.get("type") == "process":
-                store.embedding_cache.set_cached(meta["id"], [1.0, 0.0, 0.0], model="mock")
+        # Pre-cache embedding for the process entry
+        store.embedding_cache.set_cached(entry_id, [1.0, 0.0, 0.0], model="mock")
 
-        # Mock the embedding provider to return high similarity
-        class MockProvider:
-            name = "mock"
+        # Mock embed-server as running and returning matching vector
+        monkeypatch.setattr(
+            "palaia.embed_client.is_server_running",
+            lambda root: True,
+        )
 
-            def embed_query(self, text):
-                return [1.0, 0.0, 0.0]
-
-            def embed(self, texts):
+        class MockEmbedClient:
+            def __init__(self, path):
+                pass
+            def embed(self, texts, timeout=10.0):
                 return [[1.0, 0.0, 0.0]] * len(texts)
+            def close(self):
+                pass
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                pass
 
         monkeypatch.setattr(
-            "palaia.embeddings.auto_detect_provider",
-            lambda config=None: MockProvider(),
+            "palaia.embed_client.EmbedServerClient",
+            MockEmbedClient,
         )
 
         _run_palaia(

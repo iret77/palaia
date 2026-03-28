@@ -96,36 +96,24 @@ def process_nudge(context_text: str, context_tags: list[str] | None, args,
         # Tag matching
         context_tag_set = set(context_tags) if context_tags else set()
 
-        # Try embedding similarity (prefer embed-server, fall back to direct)
+        # Try embedding similarity via embed-server (never load model for a nudge)
         has_embeddings = False
         context_vec: list[float] | None = None
         try:
-            from palaia.embeddings import BM25Provider, cosine_similarity
+            from palaia.embeddings import cosine_similarity
 
-            # Fast path: use embed-server if running
-            try:
-                from palaia.embed_client import EmbedServerClient, is_server_running
-                from palaia.embed_server import get_socket_path
+            from palaia.embed_client import EmbedServerClient, is_server_running
+            from palaia.embed_server import get_socket_path
 
-                if is_server_running(root):
-                    with EmbedServerClient(get_socket_path(root)) as client:
-                        vecs = client.embed([context_text], timeout=3.0)
-                        if vecs:
-                            context_vec = vecs[0]
-                            has_embeddings = True
-            except Exception:
-                pass
-
-            # Slow fallback: load provider directly (only if embed-server unavailable)
-            if context_vec is None:
-                from palaia.embeddings import auto_detect_provider
-
-                provider = auto_detect_provider(store.config)
-                if not isinstance(provider, BM25Provider):
-                    has_embeddings = True
-                    context_vec = provider.embed_query(context_text)
+            if is_server_running(root):
+                with EmbedServerClient(get_socket_path(root)) as client:
+                    vecs = client.embed([context_text], timeout=3.0)
+                    if vecs:
+                        context_vec = vecs[0]
+                        has_embeddings = True
         except Exception:
             pass
+        # No fallback to direct provider — loading a model for a nudge is not worth ~3s
 
         for meta, body, _tier in processes:
             proc_id = meta.get("id", "")
