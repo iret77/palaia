@@ -90,9 +90,10 @@ def search_entries(
                 }
     except Exception as e:
         import logging as _log
+        import traceback as _tb
 
-        _log.getLogger(__name__).debug("Embed server delegation failed: %s", e)
-        pass  # Fall through to direct search
+        _log.getLogger(__name__).warning("Embed server delegation failed: %s\n%s", e, _tb.format_exc())
+        # Fall through to direct search
 
     # Direct path: load model in-process
     store = Store(root)
