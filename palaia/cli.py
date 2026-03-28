@@ -1339,6 +1339,32 @@ def cmd_skill(args):
     return 0
 
 
+def cmd_ui(args):
+    """Launch the Palaia WebUI."""
+    try:
+        import uvicorn
+    except ImportError:
+        print("WebUI requires FastAPI + uvicorn.", file=sys.stderr)
+        print("Install with: pip install 'palaia[ui]'", file=sys.stderr)
+        return 1
+
+    from palaia.web.app import create_app
+
+    port = getattr(args, "port", 8384) or 8384
+    host = getattr(args, "host", "127.0.0.1") or "127.0.0.1"
+
+    root = find_palaia_root()
+    if not root:
+        print("Palaia not initialized. Run: palaia init", file=sys.stderr)
+        return 1
+
+    app = create_app(root)
+    print(f"Palaia WebUI starting at http://{host}:{port}")
+    print("Press Ctrl+C to stop")
+    uvicorn.run(app, host=host, port=port, log_level="warning")
+    return 0
+
+
 def main():
     from palaia.cli_args import build_parser
     from palaia.nudge import reset_nudge_throttle
@@ -1394,6 +1420,7 @@ def main():
         "priorities": cmd_priorities,
         "curate": cmd_curate,
         "sync": cmd_sync,
+        "ui": cmd_ui,
     }
     try:
         return commands[args.command](args)

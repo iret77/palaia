@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Palaia Memory Explorer</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app">
+    <header>
+        <h1>🧠 <span>Palaia</span> Memory Explorer</h1>
+        <div class="stats-bar" id="stats-bar">
+            <span class="stat" id="stat-total">...</span>
+            <span class="stat" id="stat-version">...</span>
+        </div>
+    </header>
+
+    <div class="search-box">
+        <input type="text" id="search-input" placeholder="Search memories..." autofocus>
+        <button onclick="doSearch()">Search</button>
+    </div>
+
+    <div class="filters">
+        <select id="filter-type" onchange="applyFilters()">
+            <option value="">All Types</option>
+            <option value="memory">Memory</option>
+            <option value="task">Task</option>
+            <option value="process">Process</option>
+        </select>
+        <select id="filter-tier" onchange="applyFilters()">
+            <option value="">All Tiers</option>
+            <option value="hot">Hot</option>
+            <option value="warm">Warm</option>
+            <option value="cold">Cold</option>
+        </select>
+        <select id="filter-project" onchange="applyFilters()">
+            <option value="">All Projects</option>
+        </select>
+        <select id="filter-status" onchange="applyFilters()">
+            <option value="">All Statuses</option>
+            <option value="open">Open</option>
+            <option value="in-progress">In Progress</option>
+            <option value="done">Done</option>
+            <option value="blocked">Blocked</option>
+        </select>
+    </div>
+
+    <div class="result-count" id="result-count"></div>
+    <div class="entry-list" id="entry-list">
+        <div class="loading">Loading entries...</div>
+    </div>
+
+    <div class="detail-panel" id="detail-panel">
+        <h2 id="detail-title"></h2>
+        <dl class="detail-meta" id="detail-meta"></dl>
+        <div class="detail-body" id="detail-body"></div>
+    </div>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
