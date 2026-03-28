@@ -4,12 +4,10 @@ Works with Claude Desktop, Cursor, and any MCP-compatible host.
 Independent of OpenClaw — palaia as a standalone memory layer.
 
 Usage:
-    palaia-mcp                                  # stdio (local, default)
-    palaia-mcp --sse --port 8411                # SSE (remote access)
-    palaia-mcp --sse --port 8411 --auth-token T # SSE with auth
-    palaia-mcp --root /path/to/.palaia          # explicit store root
-    palaia-mcp --read-only                      # no writes allowed
-    palaia mcp-server                           # via CLI subcommand
+    palaia-mcp                          # stdio transport (default)
+    palaia-mcp --root /path/to/.palaia  # explicit store root
+    palaia-mcp --read-only              # no writes allowed
+    palaia mcp-server                   # via CLI subcommand
 """
 
 from __future__ import annotations
@@ -34,25 +32,10 @@ def main(argv: list[str] | None = None) -> None:
         help="Disable write operations (store, edit, gc)",
     )
     parser.add_argument(
-        "--sse",
-        action="store_true",
-        help="Use SSE transport instead of stdio (for remote access)",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=8411,
-        help="Port for SSE transport (default: 8411)",
-    )
-    parser.add_argument(
-        "--host",
-        default="0.0.0.0",
-        help="Host to bind SSE server (default: 0.0.0.0)",
-    )
-    parser.add_argument(
-        "--auth-token",
-        default=None,
-        help="Bearer token for SSE authentication (recommended for network access)",
+        "--transport",
+        choices=["stdio"],
+        default="stdio",
+        help="MCP transport (default: stdio)",
     )
 
     args = parser.parse_args(argv)
@@ -91,23 +74,8 @@ def main(argv: list[str] | None = None) -> None:
 
     from palaia.mcp.server import create_server
 
-    server = create_server(root, read_only=args.read_only, auth_token=args.auth_token)
-
-    if args.sse:
-        print(
-            f"Palaia MCP Server (SSE) listening on http://{args.host}:{args.port}",
-            file=sys.stderr,
-        )
-        if args.auth_token:
-            print("Authentication: Bearer token required", file=sys.stderr)
-        else:
-            print(
-                "WARNING: No --auth-token set. Anyone with network access can read/write memories.",
-                file=sys.stderr,
-            )
-        server.run(transport="sse", host=args.host, port=args.port)
-    else:
-        server.run(transport="stdio")
+    server = create_server(root, read_only=args.read_only)
+    server.run(transport=args.transport)
 
 
 if __name__ == "__main__":

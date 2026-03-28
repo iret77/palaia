@@ -387,10 +387,6 @@ palaia config set-alias default alice
 |------|---------|-------------|
 | `--root` | auto-detect | Path to `.palaia` directory |
 | `--read-only` | — | Disable write operations |
-| `--sse` | — | Use SSE transport (for remote access) |
-| `--port` | `8411` | Port for SSE server |
-| `--host` | `0.0.0.0` | Host to bind SSE server |
-| `--auth-token` | — | Bearer token for SSE authentication |
 
 ---
 

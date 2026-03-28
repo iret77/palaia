@@ -252,16 +252,6 @@ palaia-mcp --read-only                  # No writes (untrusted hosts)
 
 **Read-only mode** (`--read-only`): Disables `palaia_store`, `palaia_edit`, `palaia_gc`. Use this when connecting untrusted AI tools that should only read memories, not modify them.
 
-**Remote access** (`--sse`): Access a palaia store from another machine:
-```bash
-# On the host with the store:
-palaia-mcp --sse --port 8411 --auth-token MY_SECRET
-```
-Connect from Claude Code on another machine via `~/.claude/settings.json`:
-```json
-{"mcpServers": {"palaia-remote": {"url": "http://HOST:8411/sse", "headers": {"Authorization": "Bearer MY_SECRET"}}}}
-```
-
 ---
 
 ## Commands Reference

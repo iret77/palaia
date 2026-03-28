@@ -56,43 +56,12 @@ Or add to `.cursor/mcp.json`:
 
 ### Other MCP Hosts
 
-Any MCP-compatible host can use palaia:
+Any MCP-compatible host that supports stdio transport can use palaia:
 ```bash
-palaia-mcp                              # stdio transport (default, local)
+palaia-mcp                              # stdio transport (default)
 palaia-mcp --root /path/to/.palaia      # explicit store
 palaia-mcp --read-only                  # no writes
 ```
-
-## Remote Access (SSE Transport)
-
-Access a palaia store from another machine — e.g. Claude Code on your laptop querying memories on a VPS:
-
-```bash
-# On the host with the .palaia store:
-palaia-mcp --sse --port 8411
-palaia-mcp --sse --port 8411 --auth-token MY_SECRET    # with auth (recommended)
-palaia-mcp --sse --port 8411 --read-only               # read-only remote access
-```
-
-Connect from Claude Code on another machine (`~/.claude/settings.json`):
-```json
-{
-  "mcpServers": {
-    "palaia-remote": {
-      "url": "http://100.x.x.x:8411/sse",
-      "headers": {
-        "Authorization": "Bearer MY_SECRET"
-      }
-    }
-  }
-}
-```
-
-**Security:**
-- Always use `--auth-token` when exposing over a network
-- Tailscale makes the server reachable only within your tailnet — no open internet exposure
-- `--read-only` prevents remote writes (useful for shared read access)
-- Without `--auth-token`, a warning is printed to stderr
 
 ## Available Tools
 

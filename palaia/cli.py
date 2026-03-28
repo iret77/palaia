@@ -1247,14 +1247,6 @@ def cmd_mcp_server(args):
         argv.extend(["--root", args.root])
     if getattr(args, "read_only", False):
         argv.append("--read-only")
-    if getattr(args, "sse", False):
-        argv.append("--sse")
-    if getattr(args, "port", None):
-        argv.extend(["--port", str(args.port)])
-    if getattr(args, "host", None):
-        argv.extend(["--host", args.host])
-    if getattr(args, "auth_token", None):
-        argv.extend(["--auth-token", args.auth_token])
     mcp_main(argv)
     return 0
 

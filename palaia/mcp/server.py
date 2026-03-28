@@ -11,14 +11,9 @@ from mcp.server.fastmcp import FastMCP
 logger = logging.getLogger(__name__)
 
 
-def create_server(root: Path, read_only: bool = False, auth_token: str | None = None) -> FastMCP:
-    """Create and configure the Palaia MCP server.
+def create_server(root: Path, read_only: bool = False) -> FastMCP:
+    """Create and configure the Palaia MCP server."""
 
-    Args:
-        root: Path to .palaia directory.
-        read_only: Disable write operations.
-        auth_token: Bearer token for SSE authentication (None = no auth).
-    """
     mcp = FastMCP(
         name="palaia",
         instructions=(
@@ -28,9 +23,6 @@ def create_server(root: Path, read_only: bool = False, auth_token: str | None = 
             "Memories persist across sessions and are available to all connected agents."
         ),
     )
-
-    # Store auth token for middleware use
-    _auth_token = auth_token
 
     # Lazy-init store and search engine (avoid import cost at module level)
     _store = None
