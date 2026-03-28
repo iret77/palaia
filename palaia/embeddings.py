@@ -457,7 +457,26 @@ def detect_providers() -> list[dict]:
         }
     )
 
-    # 6. Voyage
+    # 6. embed-server (running locally via Unix socket)
+    embed_server_available = False
+    try:
+        from palaia.embed_client import is_server_running as _is_es_running
+        from palaia.config import get_root as _get_root
+
+        _root = _get_root()
+        embed_server_available = _is_es_running(_root)
+    except Exception:
+        pass
+    providers.append(
+        {
+            "name": "embed-server",
+            "available": embed_server_available,
+            "version": None,
+            "install_hint": None if embed_server_available else "palaia embed-server --socket --daemon",
+        }
+    )
+
+    # 7. Voyage
     voyage_key = _check_voyage_key()
     providers.append(
         {
@@ -714,6 +733,16 @@ def _create_provider(name: str, model: str | None = None) -> EmbeddingProvider |
         return OpenAIProvider(model=model)
     elif name == "gemini":
         return GeminiProvider(model=model)
+    elif name == "embed-server":
+        from palaia.embed_client import EmbedServerProvider
+        from palaia.embed_server import get_socket_path
+        from palaia.config import get_root
+
+        try:
+            root = get_root()
+        except FileNotFoundError:
+            raise ValueError("Cannot create embed-server provider: no .palaia root found")
+        return EmbedServerProvider(get_socket_path(root))
     elif name == "bm25" or name == "none":
         return BM25Provider()
     else:

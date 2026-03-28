@@ -45,7 +45,47 @@ def search_entries(
     """Search memories.
 
     Returns dict with results list, has_embeddings flag, and bm25_only flag.
+
+    When an embed-server is running, delegates the full search to it for speed.
+    Falls back to direct SearchEngine if the server is unavailable.
     """
+    # Fast path: delegate to embed-server if running
+    try:
+        from palaia.embed_client import EmbedServerClient, is_server_running
+        from palaia.embed_server import get_socket_path
+
+        if is_server_running(root):
+            with EmbedServerClient(get_socket_path(root)) as client:
+                params = {"text": query, "top_k": limit, "include_cold": include_cold}
+                if project:
+                    params["project"] = project
+                if agent:
+                    params["agent"] = agent
+                if entry_type:
+                    params["type"] = entry_type
+                if status:
+                    params["status"] = status
+                if priority:
+                    params["priority"] = priority
+                if assignee:
+                    params["assignee"] = assignee
+                if instance:
+                    params["instance"] = instance
+                if cross_project:
+                    params["cross_project"] = True
+                result = client.query(params, timeout=5.0)
+                config = load_config(root)
+                chain_cfg = config.get("embedding_chain", [])
+                bm25_only = not chain_cfg or chain_cfg == ["bm25"]
+                return {
+                    "results": result.get("results", []),
+                    "has_embeddings": True,
+                    "bm25_only": bm25_only,
+                }
+    except Exception:
+        pass  # Fall through to direct search
+
+    # Direct path: load model in-process
     store = Store(root)
     store.recover()
 

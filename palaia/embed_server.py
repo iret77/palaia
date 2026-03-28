@@ -1,14 +1,17 @@
-"""Embedding server — long-lived subprocess for fast semantic search.
+"""Embedding server — long-lived process for fast semantic search.
 
-Loads the embedding model once and serves queries over stdin/stdout JSON-RPC.
+Loads the embedding model once and serves queries over stdin/stdout or Unix socket.
 Eliminates the ~3-23s model loading penalty on every CLI invocation.
 
 Usage:
-    palaia embed-server
+    palaia embed-server              # stdio mode (OpenClaw plugin)
+    palaia embed-server --socket     # Unix socket mode (CLI, MCP)
+    palaia embed-server --socket --daemon  # detached background process
 
-Protocol: One JSON object per line on stdin/stdout.
+Protocol: One JSON object per line (newline-delimited JSON-RPC).
 Requests:
-    {"method": "query", "params": {"text": "...", "top_k": 10, "agent": "...", "project": "...", "scope": "..."}}
+    {"method": "query", "params": {"text": "...", "top_k": 10, ...}}
+    {"method": "embed", "params": {"texts": ["...", "..."]}}
     {"method": "warmup"}
     {"method": "ping"}
     {"method": "status"}
@@ -19,6 +22,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import selectors
+import signal
+import socket
 import sys
 import threading
 import time
@@ -31,6 +38,21 @@ from palaia.config import get_root
 from palaia.embeddings import BM25Provider
 from palaia.search import SearchEngine
 from palaia.store import Store
+
+# Defaults
+DEFAULT_IDLE_TIMEOUT = 1800  # 30 minutes
+PID_FILENAME = "embed-server.pid"
+SOCKET_FILENAME = "embed.sock"
+
+
+def get_socket_path(palaia_root: Path) -> Path:
+    """Return the Unix socket path for a given .palaia root."""
+    return palaia_root / SOCKET_FILENAME
+
+
+def get_pid_path(palaia_root: Path) -> Path:
+    """Return the PID file path for a given .palaia root."""
+    return palaia_root / PID_FILENAME
 
 
 def _count_entries(store: Store) -> int:
@@ -92,9 +114,9 @@ def _warmup_missing(store: Store, engine: SearchEngine) -> dict:
 
 
 class EmbedServer:
-    """JSON-RPC server over stdin/stdout for embedding queries."""
+    """JSON-RPC server for embedding queries. Supports stdio and Unix socket transport."""
 
-    def __init__(self, root: Path, stale_check_interval: float = 30.0):
+    def __init__(self, root: Path, stale_check_interval: float = 30.0, idle_timeout: float = 0):
         self.root = root
         self.store = Store(root)
         self.engine = SearchEngine(self.store)
@@ -106,6 +128,12 @@ class EmbedServer:
         self._warming_up = False
         self._stale_check_interval = stale_check_interval
         self._stale_check_thread: threading.Thread | None = None
+        self._idle_timeout = idle_timeout  # 0 = no timeout
+        self._last_activity = time.monotonic()
+
+    def _touch_activity(self) -> None:
+        """Update last activity timestamp."""
+        self._last_activity = time.monotonic()
 
     def _start_stale_detection(self) -> None:
         """Start background thread that checks for entry count changes every 30s."""
@@ -129,8 +157,28 @@ class EmbedServer:
         self._stale_check_thread = threading.Thread(target=_check_loop, daemon=True)
         self._stale_check_thread.start()
 
+    def _start_idle_monitor(self) -> None:
+        """Start background thread that shuts down after idle timeout."""
+        if self._idle_timeout <= 0:
+            return
+
+        def _idle_loop():
+            while self._running:
+                time.sleep(min(30, self._idle_timeout / 2))
+                if not self._running:
+                    break
+                elapsed = time.monotonic() - self._last_activity
+                if elapsed >= self._idle_timeout:
+                    logger.info("Idle timeout (%.0fs), shutting down.", elapsed)
+                    self._running = False
+                    break
+
+        t = threading.Thread(target=_idle_loop, daemon=True)
+        t.start()
+
     def handle_request(self, request: dict) -> dict:
         """Dispatch a single JSON-RPC request. Always returns a dict."""
+        self._touch_activity()
         method = request.get("method", "")
 
         if method == "ping":
@@ -148,6 +196,9 @@ class EmbedServer:
 
         if method == "query":
             return self._handle_query(request.get("params", {}))
+
+        if method == "embed":
+            return self._handle_embed(request.get("params", {}))
 
         return {"error": f"Unknown method: {method}"}
 
@@ -209,15 +260,42 @@ class EmbedServer:
 
         return {"result": {"results": results}}
 
-    def run(self) -> None:
+    def _handle_embed(self, params: dict) -> dict:
+        """Compute raw embeddings for a list of texts."""
+        texts = params.get("texts", [])
+        if not texts:
+            return {"error": "Missing 'texts' parameter"}
+        if not isinstance(texts, list):
+            return {"error": "'texts' must be a list of strings"}
+
+        provider = self.engine.provider
+        if isinstance(provider, BM25Provider):
+            return {"error": "No semantic embedding provider available (BM25-only)"}
+
+        try:
+            vectors = provider.embed(texts)
+            provider_name = getattr(provider, "name", "unknown")
+            model = getattr(provider, "model_name", None) or getattr(provider, "model", None) or ""
+            return {
+                "result": {
+                    "vectors": [v if isinstance(v, list) else list(v) for v in vectors],
+                    "provider": provider_name,
+                    "model": model,
+                }
+            }
+        except Exception as e:
+            return {"error": f"Embedding failed: {e}"}
+
+    # ── stdio transport ─────────────────────────────────────────
+
+    def run_stdio(self) -> None:
         """Main loop: read JSON lines from stdin, write JSON responses to stdout."""
-        # Start stale detection
         self._start_stale_detection()
+        self._start_idle_monitor()
 
         # Signal ready IMMEDIATELY — warmup runs in background
-        # Queries arriving during warmup use BM25 fallback automatically
         self._warming_up = True
-        self._write_response({"result": "ready"})
+        self._write_stdout({"result": "ready"})
 
         # Background warmup thread
         def _bg_warmup():
@@ -235,7 +313,6 @@ class EmbedServer:
             try:
                 line = sys.stdin.readline()
                 if not line:
-                    # EOF — parent process closed stdin
                     break
                 line = line.strip()
                 if not line:
@@ -244,29 +321,325 @@ class EmbedServer:
                 try:
                     request = json.loads(line)
                 except json.JSONDecodeError as e:
-                    self._write_response({"error": f"Invalid JSON: {e}"})
+                    self._write_stdout({"error": f"Invalid JSON: {e}"})
                     continue
 
                 response = self.handle_request(request)
-                self._write_response(response)
+                self._write_stdout(response)
 
             except Exception as e:
                 try:
-                    self._write_response({"error": f"Internal error: {e}", "traceback": traceback.format_exc()})
+                    self._write_stdout({"error": f"Internal error: {e}", "traceback": traceback.format_exc()})
                 except Exception:
                     break
 
-    def _write_response(self, response: dict) -> None:
+    def _write_stdout(self, response: dict) -> None:
         """Write a JSON response line to stdout."""
         sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
         sys.stdout.flush()
 
+    # Keep backward compat alias
+    run = run_stdio
 
-def main() -> None:
+    # ── Unix socket transport ───────────────────────────────────
+
+    def run_socket(self, socket_path: Path | None = None) -> None:
+        """Serve over a Unix domain socket. Multiple clients can connect."""
+        sock_path = socket_path or get_socket_path(self.root)
+        pid_path = get_pid_path(self.root)
+
+        # Clean up stale socket
+        _cleanup_stale_socket(sock_path, pid_path)
+
+        # Create socket
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            sock.bind(str(sock_path))
+        except OSError as e:
+            raise RuntimeError(f"Cannot bind to {sock_path}: {e}") from e
+        sock.listen(8)
+        sock.setblocking(False)
+
+        # Write PID file
+        _write_pid_file(pid_path)
+
+        # Start background services
+        self._start_stale_detection()
+        self._start_idle_monitor()
+
+        # Background warmup
+        self._warming_up = True
+
+        def _bg_warmup():
+            try:
+                _warmup_missing(self.store, self.engine)
+            except Exception as e:
+                logger.warning("Background warmup failed: %s", e)
+            finally:
+                self._warming_up = False
+
+        warmup_thread = threading.Thread(target=_bg_warmup, daemon=True)
+        warmup_thread.start()
+
+        logger.info("Embed server listening on %s (pid %d)", sock_path, os.getpid())
+
+        sel = selectors.DefaultSelector()
+        sel.register(sock, selectors.EVENT_READ)
+
+        # Per-connection read buffers
+        buffers: dict[int, bytearray] = {}
+
+        try:
+            while self._running:
+                events = sel.select(timeout=1.0)
+                for key, mask in events:
+                    if key.fileobj is sock:
+                        # New connection
+                        conn, _ = sock.accept()
+                        conn.setblocking(False)
+                        sel.register(conn, selectors.EVENT_READ)
+                        buffers[conn.fileno()] = bytearray()
+                    else:
+                        conn = key.fileobj
+                        self._handle_socket_data(conn, sel, buffers)
+        except Exception as e:
+            logger.error("Socket server error: %s", e)
+        finally:
+            sel.close()
+            sock.close()
+            _remove_file(sock_path)
+            _remove_file(pid_path)
+            logger.info("Embed server stopped.")
+
+    def _handle_socket_data(self, conn, sel, buffers: dict) -> None:
+        """Read data from a socket connection, process complete lines."""
+        fd = conn.fileno()
+        try:
+            data = conn.recv(65536)
+        except (ConnectionError, OSError):
+            self._close_connection(conn, sel, buffers)
+            return
+
+        if not data:
+            self._close_connection(conn, sel, buffers)
+            return
+
+        buf = buffers.get(fd, bytearray())
+        buf.extend(data)
+
+        # Process complete lines (newline-delimited JSON)
+        while b"\n" in buf:
+            line, _, buf = buf.partition(b"\n")
+            buffers[fd] = buf
+            line_str = line.decode("utf-8", errors="replace").strip()
+            if not line_str:
+                continue
+            try:
+                request = json.loads(line_str)
+            except json.JSONDecodeError as e:
+                self._send_to_conn(conn, {"error": f"Invalid JSON: {e}"})
+                continue
+
+            response = self.handle_request(request)
+            self._send_to_conn(conn, response)
+
+            if not self._running:
+                return
+
+        buffers[fd] = buf
+
+    def _send_to_conn(self, conn, response: dict) -> None:
+        """Send a JSON response to a socket connection."""
+        try:
+            msg = json.dumps(response, ensure_ascii=False) + "\n"
+            conn.sendall(msg.encode("utf-8"))
+        except (ConnectionError, OSError):
+            pass
+
+    def _close_connection(self, conn, sel, buffers: dict) -> None:
+        """Clean up a closed connection."""
+        fd = conn.fileno()
+        try:
+            sel.unregister(conn)
+        except (KeyError, ValueError):
+            pass
+        buffers.pop(fd, None)
+        try:
+            conn.close()
+        except OSError:
+            pass
+
+
+# ── PID / socket lifecycle helpers ──────────────────────────────
+
+def _write_pid_file(pid_path: Path) -> None:
+    """Write current PID to file."""
+    pid_path.write_text(str(os.getpid()))
+
+
+def _read_pid_file(pid_path: Path) -> int | None:
+    """Read PID from file, return None if missing or invalid."""
+    try:
+        return int(pid_path.read_text().strip())
+    except (FileNotFoundError, ValueError):
+        return None
+
+
+def _is_pid_alive(pid: int) -> bool:
+    """Check if a process with the given PID is running."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
+def _remove_file(path: Path) -> None:
+    """Remove a file, ignoring errors."""
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _cleanup_stale_socket(sock_path: Path, pid_path: Path) -> None:
+    """Remove socket and PID file if the owning process is dead."""
+    if not sock_path.exists():
+        return
+    pid = _read_pid_file(pid_path)
+    if pid is not None and _is_pid_alive(pid):
+        raise RuntimeError(
+            f"Embed server already running (pid {pid}). "
+            f"Stop it with: palaia embed-server --stop"
+        )
+    # Stale — clean up
+    _remove_file(sock_path)
+    _remove_file(pid_path)
+
+
+def is_server_running(palaia_root: Path) -> bool:
+    """Check if an embed-server is running for the given .palaia root."""
+    pid_path = get_pid_path(palaia_root)
+    sock_path = get_socket_path(palaia_root)
+    if not sock_path.exists():
+        return False
+    pid = _read_pid_file(pid_path)
+    if pid is None:
+        return False
+    return _is_pid_alive(pid)
+
+
+def stop_server(palaia_root: Path) -> bool:
+    """Send SIGTERM to the running embed-server. Returns True if stopped."""
+    pid_path = get_pid_path(palaia_root)
+    pid = _read_pid_file(pid_path)
+    if pid is None or not _is_pid_alive(pid):
+        # Clean up stale files
+        _remove_file(get_socket_path(palaia_root))
+        _remove_file(pid_path)
+        return False
+    try:
+        os.kill(pid, signal.SIGTERM)
+        # Wait briefly for shutdown
+        for _ in range(20):
+            time.sleep(0.1)
+            if not _is_pid_alive(pid):
+                return True
+        # Force kill
+        os.kill(pid, signal.SIGKILL)
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+    finally:
+        _remove_file(get_socket_path(palaia_root))
+        _remove_file(pid_path)
+
+
+def start_daemon(palaia_root: Path, idle_timeout: float = DEFAULT_IDLE_TIMEOUT) -> int:
+    """Start embed-server as a detached daemon. Returns the child PID."""
+    import subprocess
+
+    sock_path = get_socket_path(palaia_root)
+    pid_path = get_pid_path(palaia_root)
+
+    # Already running?
+    if is_server_running(palaia_root):
+        pid = _read_pid_file(pid_path)
+        return pid or 0
+
+    # Clean stale files
+    _remove_file(sock_path)
+    _remove_file(pid_path)
+
+    # Spawn detached subprocess
+    cmd = [
+        sys.executable, "-m", "palaia", "embed-server",
+        "--socket",
+        "--idle-timeout", str(int(idle_timeout)),
+    ]
+    env = {**os.environ, "PALAIA_HOME": str(palaia_root)}
+
+    proc = subprocess.Popen(
+        cmd,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+    # Wait for socket to appear (up to 10s for model loading)
+    for _ in range(100):
+        time.sleep(0.1)
+        if sock_path.exists():
+            return proc.pid
+
+    # Check if process died
+    if proc.poll() is not None:
+        raise RuntimeError(f"Embed server exited with code {proc.returncode}")
+
+    return proc.pid
+
+
+# ── Entry point ─────────────────────────────────────────────────
+
+def main(
+    transport: str = "stdio",
+    root: Path | None = None,
+    idle_timeout: float = 0,
+    stop: bool = False,
+    status: bool = False,
+) -> None:
     """Entry point for `palaia embed-server`."""
-    root = get_root()
-    server = EmbedServer(root)
-    server.run()
+    palaia_root = root or get_root()
+
+    if stop:
+        if stop_server(palaia_root):
+            print("Embed server stopped.")
+        else:
+            print("No embed server running.")
+        return
+
+    if status:
+        if is_server_running(palaia_root):
+            pid = _read_pid_file(get_pid_path(palaia_root))
+            print(f"Embed server running (pid {pid})")
+        else:
+            print("No embed server running.")
+        return
+
+    server = EmbedServer(palaia_root, idle_timeout=idle_timeout)
+
+    # Handle SIGTERM for clean shutdown
+    def _handle_sigterm(signum, frame):
+        server._running = False
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+
+    if transport == "socket":
+        server.run_socket()
+    else:
+        server.run_stdio()
 
 
 if __name__ == "__main__":

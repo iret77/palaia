@@ -64,7 +64,7 @@ def test_detect_json_output():
     assert "python" in data
     assert "providers" in data
     assert isinstance(data["providers"], list)
-    assert len(data["providers"]) == 6  # ollama, st, fastembed, openai, gemini, voyage
+    assert len(data["providers"]) == 7  # ollama, st, fastembed, openai, gemini, embed-server, voyage
 
 
 def test_detect_with_ollama_available():

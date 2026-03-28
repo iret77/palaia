@@ -101,6 +101,7 @@ UNGATED_COMMANDS = frozenset(
         "config",
         "instance",
         "skill",
+        "mcp-server",
     }
 )
 
@@ -1208,9 +1209,52 @@ def cmd_package(args):
 
 def cmd_embed_server(args):
     """Start long-lived embedding server for fast queries."""
-    from palaia.embed_server import main as embed_server_main
+    from palaia.embed_server import (
+        DEFAULT_IDLE_TIMEOUT,
+        main as embed_server_main,
+        start_daemon,
+    )
 
-    embed_server_main()
+    stop = getattr(args, "stop", False)
+    status = getattr(args, "status", False)
+    use_socket = getattr(args, "socket", False)
+    daemon = getattr(args, "daemon", False)
+    idle_timeout = getattr(args, "idle_timeout", 0)
+
+    if stop or status:
+        embed_server_main(stop=stop, status=status)
+        return 0
+
+    if daemon:
+        if not use_socket:
+            print("Error: --daemon requires --socket", file=sys.stderr)
+            return 1
+        if idle_timeout == 0:
+            idle_timeout = DEFAULT_IDLE_TIMEOUT
+        root = get_root()
+        pid = start_daemon(root, idle_timeout=idle_timeout)
+        print(f"Embed server started (pid {pid})")
+        return 0
+
+    transport = "socket" if use_socket else "stdio"
+    embed_server_main(transport=transport, idle_timeout=idle_timeout)
+    return 0
+
+
+def cmd_mcp_server(args):
+    """Start MCP server for Claude Desktop, Cursor, etc."""
+    try:
+        from palaia.mcp import main as mcp_main
+    except ImportError:
+        print("Error: MCP SDK not installed. Install with: pip install 'palaia[mcp]'", file=sys.stderr)
+        return 1
+
+    argv = []
+    if getattr(args, "root", None):
+        argv.extend(["--root", args.root])
+    if getattr(args, "read_only", False):
+        argv.append("--read-only")
+    mcp_main(argv)
     return 0
 
 
@@ -1280,6 +1324,7 @@ def main():
         "unlock": cmd_unlock,
         "instance": cmd_instance,
         "embed-server": cmd_embed_server,
+        "mcp-server": cmd_mcp_server,
         "skill": cmd_skill,
         "priorities": cmd_priorities,
         "curate": cmd_curate,

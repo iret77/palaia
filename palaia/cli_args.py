@@ -267,7 +267,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_pkg_info.add_argument("--json", action="store_true", help="Output as JSON")
 
     # embed-server
-    sub.add_parser("embed-server", help="Start long-lived embedding server (stdin/stdout JSON-RPC)")
+    p_embed = sub.add_parser("embed-server", help="Start long-lived embedding server (JSON-RPC)")
+    p_embed.add_argument("--socket", action="store_true", help="Use Unix socket transport instead of stdio")
+    p_embed.add_argument("--daemon", action="store_true", help="Start as detached background process (requires --socket)")
+    p_embed.add_argument("--idle-timeout", type=int, default=0, help="Auto-shutdown after N seconds idle (0=never, default for --daemon: 1800)")
+    p_embed.add_argument("--stop", action="store_true", help="Stop a running embed-server daemon")
+    p_embed.add_argument("--status", action="store_true", help="Check if embed-server is running")
+
+    # mcp-server
+    p_mcp = sub.add_parser("mcp-server", help="Start MCP server for Claude Desktop, Cursor, etc.")
+    p_mcp.add_argument("--root", help="Path to .palaia directory")
+    p_mcp.add_argument("--read-only", action="store_true", help="Disable write operations")
 
     # skill
     p_skill = sub.add_parser("skill", help="Print the SKILL.md agent documentation")

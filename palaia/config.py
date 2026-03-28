@@ -49,6 +49,9 @@ DEFAULT_CONFIG = {
     # Migration and maintenance
     "migration_acknowledged": False,
     "last_gc": None,
+    # Embed-server configuration
+    "embed_server_auto_start": True,        # Auto-start daemon on first CLI query
+    "embed_server_idle_timeout": 1800,      # Daemon auto-shutdown after N seconds idle
     # OpenClaw plugin configuration
     "plugin_config": {},
     # Workspace identifier for sync
