@@ -335,9 +335,15 @@ def cmd_status(args):
     last_write = info["last_write"]
     last_gc = info["last_gc"]
 
+    # Backend info
+    backend = info.get("backend", {})
+    backend_type = backend.get("type", "sqlite").upper()
+    vector_search = backend.get("vector_search", "unknown")
+
     store_rows = [
         ("Root", str(info["palaia_root"])),
         ("Store version", f"v{info['version']}"),
+        ("Backend", f"{backend_type} — {vector_search}"),
         ("Entries", entries_str),
         ("Classes", class_str),
         ("Projects", str(info["project_count"])),
@@ -388,8 +394,10 @@ def cmd_status(args):
             budget_rows.append(("  Usage", budget_info.get("chars_usage", "?")))
         print(table_kv(budget_rows))
 
+    embed_server_status = "running" if info.get("embed_server_running") else "not running"
     plugin_status = "active" if info["plugin_detected"] else "not detected"
-    print(f"\nOpenClaw Plugin: {plugin_status}")
+    print(f"\nEmbed server: {embed_server_status}")
+    print(f"OpenClaw Plugin: {plugin_status}")
 
     # --- curate_reminder nudge (v2.2) ---
     try:

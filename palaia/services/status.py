@@ -136,6 +136,34 @@ def collect_status(root: Path) -> dict:
         idx_count = "?"
     info["idx_count"] = idx_count
 
+    # Backend info
+    backend_info = {"type": "sqlite", "vector_search": "python-fallback"}
+    try:
+        if hasattr(store, "_backend"):
+            backend = store._backend
+            backend_type = getattr(backend, "backend_type", None) or type(backend).__name__
+            backend_info["type"] = backend_type.lower().replace("backend", "").strip() or "sqlite"
+            if hasattr(backend, "_has_vec"):
+                backend_info["vector_search"] = "sqlite-vec (native KNN)" if backend._has_vec else "python cosine similarity"
+            elif "postgres" in backend_info["type"]:
+                backend_info["vector_search"] = "pgvector (ANN)"
+            health = getattr(backend, "health_check", lambda: {})()
+            if isinstance(health, dict):
+                backend_info["status"] = health.get("status", "ok")
+                if "sqlite_vec" in health:
+                    backend_info["sqlite_vec"] = health["sqlite_vec"]
+    except Exception:
+        pass
+    info["backend"] = backend_info
+
+    # Embed-server status
+    try:
+        from palaia.embed_client import is_server_running
+
+        info["embed_server_running"] = is_server_running(root)
+    except Exception:
+        info["embed_server_running"] = False
+
     # WAL recovery
     info["recovered"] = recovered
 

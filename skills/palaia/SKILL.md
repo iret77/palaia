@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "2.2.3"
+version: "2.3.0"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   SQLite-backed by default. Semantic search, projects, scopes, auto-capture.
@@ -171,6 +171,78 @@ Conversations are automatically captured when the OpenClaw plugin is active. You
 - **memory** — Facts, decisions, learnings (default)
 - **process** — Workflows, checklists, SOPs
 - **task** — Action items with status, priority, assignee, due date
+
+---
+
+## Storage & Search
+
+### Database Backends
+
+| Backend | Use Case | Vector Search | Install |
+|---------|----------|---------------|---------|
+| **SQLite** (default) | Local, single-agent or small team | sqlite-vec (native KNN) or Python fallback | Included |
+| **PostgreSQL** | Distributed teams, multiple hosts | pgvector (ANN, IVFFlat/HNSW) | `pip install 'palaia[postgres]'` |
+
+SQLite is zero-config — `palaia init` creates a single `palaia.db` file with WAL mode for crash safety. For teams with agents on multiple machines, PostgreSQL centralizes the store:
+```bash
+palaia config set database_url postgresql://user:pass@host/db
+# or: export PALAIA_DATABASE_URL=postgresql://...
+```
+
+### Semantic Vector Search
+
+Palaia uses **hybrid search**: BM25 keyword matching (always active) combined with semantic vector embeddings (when a provider is configured). This finds memories by meaning, not just keywords.
+
+**Embedding providers** (checked in chain order, first available wins):
+
+| Provider | Type | Latency | Install |
+|----------|------|---------|---------|
+| **fastembed** | Local (CPU) | ~10ms/query | `pip install 'palaia[fastembed]'` (default) |
+| **sentence-transformers** | Local (CPU/GPU) | ~10ms/query | `pip install 'palaia[sentence-transformers]'` |
+| **Ollama** | Local (server) | ~50ms/query | `ollama pull nomic-embed-text` |
+| **OpenAI** | API | ~200ms/query | Set `OPENAI_API_KEY` |
+| **Gemini** | API | ~200ms/query | Set `GEMINI_API_KEY` |
+| **BM25** | Built-in | <1ms/query | Always available (keyword only) |
+
+Configure the chain: `palaia config set embedding_chain '["fastembed", "bm25"]'`
+
+Check what's available: `palaia detect`
+
+### Embed Server (Performance)
+
+For fast CLI queries, palaia runs a background embed-server that keeps the model loaded in memory:
+```bash
+palaia embed-server --socket --daemon   # Start background server
+palaia embed-server --status            # Check if running
+palaia embed-server --stop              # Stop server
+```
+Without the server, each CLI call loads the model fresh (~2-5s). With it: **<500ms per query**.
+
+The OpenClaw plugin starts the embed-server automatically. For CLI-only usage, it auto-starts on first query when a local provider (fastembed, sentence-transformers) is configured.
+
+### MCP Server (Claude Desktop, Cursor)
+
+Palaia works as an MCP memory server — no OpenClaw required:
+```bash
+pip install 'palaia[mcp]'
+palaia-mcp                              # Start MCP server (stdio)
+palaia-mcp --root /path/to/.palaia      # Explicit store
+palaia-mcp --read-only                  # No writes (untrusted hosts)
+```
+
+Claude Desktop config (`~/.config/claude/claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "palaia": {
+      "command": "palaia-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+Available MCP tools: `palaia_search`, `palaia_read`, `palaia_list`, `palaia_status`, `palaia_store`, `palaia_edit`, `palaia_gc`.
 
 ---
 
@@ -556,20 +628,6 @@ Set in `openclaw.json` under `plugins.entries.palaia.config`:
 | `embeddingServer` | `true` | Keep embedding model loaded for fast queries |
 | `showMemorySources` | `true` | Show memory source footnotes |
 | `showCaptureConfirm` | `true` | Show capture confirmations |
-
----
-
-## Storage Backends
-
-Palaia v2.2 uses **SQLite by default** — zero-config, single-file database with WAL mode, hybrid BM25 + semantic search.
-
-For distributed agent teams, PostgreSQL + pgvector is available:
-```bash
-palaia config set database_url postgresql://user:pass@host/db
-# or: export PALAIA_DATABASE_URL=postgresql://...
-```
-
-Existing flat-file stores are automatically migrated to SQLite on first use.
 
 ---
 

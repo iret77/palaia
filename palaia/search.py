@@ -190,29 +190,61 @@ class SearchEngine:
         if self.has_embeddings and docs_with_meta:
             try:
                 query_vec = self.provider.embed_query(query)
-                # Only embed BM25 candidates + a few extra for recall
-                candidate_ids = set(bm25_scores.keys())
-                texts_to_embed = []
-                ids_to_embed = []
-                for doc_id, full_text, meta in docs_with_meta:
-                    # Check cache first
-                    cached = self.store.embedding_cache.get_cached(doc_id)
-                    if cached:
-                        sim = cosine_similarity(query_vec, cached)
-                        embed_norm[doc_id] = sim
-                    elif doc_id in candidate_ids or len(texts_to_embed) < top_k:
-                        texts_to_embed.append(full_text)
-                        ids_to_embed.append(doc_id)
 
-                if texts_to_embed:
-                    vectors = self.provider.embed(texts_to_embed)
-                    model_name = getattr(self.provider, "model_name", None) or getattr(
-                        self.provider, "model", "unknown"
-                    )
-                    for doc_id, vec in zip(ids_to_embed, vectors):
-                        self.store.embedding_cache.set_cached(doc_id, vec, model=model_name)
-                        sim = cosine_similarity(query_vec, vec)
-                        embed_norm[doc_id] = sim
+                # Fast path: use backend-native vector search (sqlite-vec / pgvector)
+                backend = getattr(self.store, "_backend", None)
+                is_postgres = backend is not None and type(backend).__name__ == "PostgresBackend"
+                has_native_vec = (
+                    backend is not None
+                    and hasattr(backend, "vector_search")
+                    and (getattr(backend, "_has_vec", False) or is_postgres)
+                )
+
+                if has_native_vec:
+                    # Embed any uncached BM25 candidates first so they're in the DB
+                    candidate_ids = set(bm25_scores.keys())
+                    texts_to_embed = []
+                    ids_to_embed = []
+                    for doc_id, full_text, meta in docs_with_meta:
+                        cached = self.store.embedding_cache.get_cached(doc_id)
+                        if cached is None and (doc_id in candidate_ids or len(texts_to_embed) < top_k):
+                            texts_to_embed.append(full_text)
+                            ids_to_embed.append(doc_id)
+
+                    if texts_to_embed:
+                        vectors = self.provider.embed(texts_to_embed)
+                        model_name = getattr(self.provider, "model_name", None) or getattr(
+                            self.provider, "model", "unknown"
+                        )
+                        for doc_id, vec in zip(ids_to_embed, vectors):
+                            self.store.embedding_cache.set_cached(doc_id, vec, model=model_name)
+
+                    # Native KNN search (SIMD-accelerated)
+                    vec_results = backend.vector_search(query_vec, top_k=top_k * 2)
+                    embed_norm = {doc_id: sim for doc_id, sim in vec_results}
+                else:
+                    # Fallback: Python cosine similarity (no native vector search)
+                    candidate_ids = set(bm25_scores.keys())
+                    texts_to_embed = []
+                    ids_to_embed = []
+                    for doc_id, full_text, meta in docs_with_meta:
+                        cached = self.store.embedding_cache.get_cached(doc_id)
+                        if cached:
+                            sim = cosine_similarity(query_vec, cached)
+                            embed_norm[doc_id] = sim
+                        elif doc_id in candidate_ids or len(texts_to_embed) < top_k:
+                            texts_to_embed.append(full_text)
+                            ids_to_embed.append(doc_id)
+
+                    if texts_to_embed:
+                        vectors = self.provider.embed(texts_to_embed)
+                        model_name = getattr(self.provider, "model_name", None) or getattr(
+                            self.provider, "model", "unknown"
+                        )
+                        for doc_id, vec in zip(ids_to_embed, vectors):
+                            self.store.embedding_cache.set_cached(doc_id, vec, model=model_name)
+                            sim = cosine_similarity(query_vec, vec)
+                            embed_norm[doc_id] = sim
             except Exception as e:
                 # If embedding fails, fall back to BM25 only
                 logger.warning("Embedding search failed, using BM25 only: %s", e)

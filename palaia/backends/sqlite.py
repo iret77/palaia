@@ -338,8 +338,11 @@ class SQLiteBackend:
     ) -> list[tuple[str, float]]:
         """Find nearest embedding vectors by cosine similarity.
 
-        Uses Python-level brute-force (sufficient for <100K entries).
+        When sqlite-vec is available, uses SIMD-accelerated vec_distance_cosine().
+        Otherwise falls back to Python-level cosine similarity.
         """
+        query_blob = _floats_to_blob(query_vector) if self._has_vec else None
+
         # Build filter for entry IDs if needed.
         if tier or entry_type:
             clauses: list[str] = []
@@ -351,14 +354,39 @@ class SQLiteBackend:
                 clauses.append("e.type = ?")
                 params.append(entry_type)
             where = " AND ".join(clauses)
-            cur = self.conn.execute(
-                f"SELECT emb.entry_id, emb.vector FROM embeddings emb "
-                f"JOIN entries e ON emb.entry_id = e.id WHERE {where}",
-                params,
-            )
-        else:
-            cur = self.conn.execute("SELECT entry_id, vector FROM embeddings")
 
+            if self._has_vec:
+                # sqlite-vec: SIMD-accelerated cosine distance in SQL
+                params.insert(0, query_blob)
+                cur = self.conn.execute(
+                    f"SELECT emb.entry_id, vec_distance_cosine(emb.vector, ?) AS dist "
+                    f"FROM embeddings emb "
+                    f"JOIN entries e ON emb.entry_id = e.id WHERE {where} "
+                    f"ORDER BY dist LIMIT ?",
+                    [*params, top_k],
+                )
+            else:
+                cur = self.conn.execute(
+                    f"SELECT emb.entry_id, emb.vector FROM embeddings emb "
+                    f"JOIN entries e ON emb.entry_id = e.id WHERE {where}",
+                    params,
+                )
+        else:
+            if self._has_vec:
+                cur = self.conn.execute(
+                    "SELECT entry_id, vec_distance_cosine(vector, ?) AS dist "
+                    "FROM embeddings ORDER BY dist LIMIT ?",
+                    [query_blob, top_k],
+                )
+            else:
+                cur = self.conn.execute("SELECT entry_id, vector FROM embeddings")
+
+        if self._has_vec:
+            # sqlite-vec returns cosine distance (0=identical, 2=opposite)
+            # Convert to similarity: sim = 1 - distance
+            return [(row[0], max(0.0, 1.0 - row[1])) for row in cur.fetchall()]
+
+        # Python fallback
         results: list[tuple[str, float]] = []
         for row in cur.fetchall():
             stored = _blob_to_floats(row["vector"] if isinstance(row, sqlite3.Row) else row[1])
