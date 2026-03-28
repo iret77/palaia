@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "2.3.0"
+version: "2.3.1"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   SQLite-backed by default. Semantic search, projects, scopes, auto-capture.
