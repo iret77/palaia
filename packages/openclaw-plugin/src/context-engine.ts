@@ -12,14 +12,7 @@
 import type {
   OpenClawPluginApi,
   ContextEngine,
-  ContextEngineInfo,
   AgentMessage,
-  AssembleResult,
-  BootstrapResult,
-  CompactResult,
-  IngestResult,
-  SubagentSpawnPreparation,
-  SubagentEndReason,
 } from "./types.js";
 import type { PalaiaPluginConfig } from "./config.js";
 import { run, recover, type RunnerOpts, getEmbedServerManager } from "./runner.js";
@@ -42,7 +35,6 @@ import {
   trimToRecentExchanges,
   parsePalaiaHints,
   loadProjects,
-  type ExtractionResult,
 } from "./hooks/capture.js";
 
 import {
@@ -74,7 +66,7 @@ function estimateTokens(text: string): number {
  * Build the memory context string from recall results.
  * Used by the ContextEngine assemble() method.
  */
-export async function buildMemoryContext(
+async function buildMemoryContext(
   config: PalaiaPluginConfig,
   opts: RunnerOpts,
   messages: unknown[],
@@ -209,7 +201,7 @@ export async function buildMemoryContext(
  * Run auto-capture logic on a set of messages.
  * Used by the ContextEngine afterTurn() method.
  */
-export async function runAutoCapture(
+async function runAutoCapture(
   messages: unknown[],
   api: OpenClawPluginApi,
   config: PalaiaPluginConfig,
@@ -332,11 +324,8 @@ export function createPalaiaContextEngine(
   /** Last messages seen via ingest(), used by assemble() for query building. */
   let _lastMessages: AgentMessage[] = [];
 
-  /** State from the last assemble() call. */
-  let _lastAssembleState = {
-    recallOccurred: false,
-    capturedInThisTurn: false,
-  };
+  /** Whether the last assemble() call found relevant memories. */
+  let _lastRecallOccurred = false;
 
   const engine: ContextEngine = {
     info: {
@@ -395,14 +384,13 @@ export function createPalaiaContextEngine(
       const messages = params?.messages?.length ? params.messages : _lastMessages;
 
       try {
-        const captured = await runAutoCapture(messages, api, config, logger);
-        _lastAssembleState.capturedInThisTurn = captured;
+        await runAutoCapture(messages, api, config, logger);
       } catch (error) {
         logger.warn(`[palaia] ContextEngine afterTurn capture failed: ${error}`);
       }
 
       // Reset for next turn
-      _lastAssembleState = { recallOccurred: false, capturedInThisTurn: false };
+      _lastRecallOccurred = false;
       _lastMessages = [];
     },
 
@@ -411,10 +399,7 @@ export function createPalaiaContextEngine(
      * Returns memory context via systemPromptAddition.
      */
     async assemble(params) {
-      _lastAssembleState = {
-        recallOccurred: false,
-        capturedInThisTurn: _lastAssembleState.capturedInThisTurn,
-      };
+      _lastRecallOccurred = false;
 
       if (!config.memoryInject) {
         return {
@@ -434,7 +419,7 @@ export function createPalaiaContextEngine(
           config, opts, queryMessages, maxChars,
         );
 
-        _lastAssembleState.recallOccurred = recallOccurred;
+        _lastRecallOccurred = recallOccurred;
 
         if (!text) {
           return {
