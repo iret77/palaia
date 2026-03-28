@@ -281,6 +281,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_mcp = sub.add_parser("mcp-server", help="Start MCP server for Claude Desktop, Cursor, etc.")
     p_mcp.add_argument("--root", help="Path to .palaia directory")
     p_mcp.add_argument("--read-only", action="store_true", help="Disable write operations")
+    p_mcp.add_argument("--sse", action="store_true", help="Use SSE transport (for remote access)")
+    p_mcp.add_argument("--port", type=int, default=None, help="Port for SSE transport (default: 8411)")
+    p_mcp.add_argument("--host", default=None, help="Host to bind SSE server (default: 0.0.0.0)")
+    p_mcp.add_argument("--auth-token", default=None, help="Bearer token for SSE authentication")
 
     # skill
     p_skill = sub.add_parser("skill", help="Print the SKILL.md agent documentation")
