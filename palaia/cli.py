@@ -1278,9 +1278,11 @@ def cmd_upgrade(args):
         except ImportError:
             pass
     if not extras:
-        extras = ["fastembed"]
+        # No optional extras detected — install base package only
+        # Don't assume fastembed; user may intentionally run BM25-only or API-only
+        pass
 
-    spec = f"palaia[{','.join(extras)}]"
+    spec = f"palaia[{','.join(extras)}]" if extras else "palaia"
 
     # Detect install method from binary path
     palaia_bin = shutil.which("palaia") or ""

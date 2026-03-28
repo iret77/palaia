@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "2.3.1"
+version: "2.3.2"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   SQLite-backed by default. Semantic search, projects, scopes, auto-capture.
@@ -392,6 +392,14 @@ palaia package import myapp.palaia-pkg.json --project target --merge skip
 # View package metadata
 palaia package info myapp.palaia-pkg.json
 ```
+
+### `palaia upgrade` — Update to latest version
+
+```bash
+palaia upgrade
+```
+
+Auto-detects the install method (pip/uv/pipx/brew), preserves all installed extras (fastembed, mcp, sqlite-vec, curate), runs `palaia doctor --fix`, and upgrades the OpenClaw npm plugin if present. Always use this instead of manual pip commands.
 
 ### `palaia doctor` — Diagnostics and auto-fix
 
