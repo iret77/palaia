@@ -155,6 +155,83 @@ export function resetTurnState(): void {
 }
 
 // ============================================================================
+// Session Continuity State (v3.0)
+// ============================================================================
+
+/** Accumulated tool observation from after_tool_call hooks. */
+export interface ToolObservation {
+  toolName: string;
+  paramsSummary: string;
+  resultSummary: string;
+  durationMs: number;
+  timestamp: number;
+}
+
+/** Pending session briefing, cached between session_start and first before_prompt_build. */
+export interface PendingBriefing {
+  summary: string | null;
+  openTasks: string[];
+  timestamp: number;
+}
+
+/** Session-level state that persists across turns within a session. */
+export interface SessionState {
+  /** Auto-generated session ID for instance tracking. */
+  autoSessionId: string;
+  /** Last known LLM model (for switch detection). */
+  lastModel: string | null;
+  /** True when model switch detected, cleared after briefing re-injection. */
+  modelSwitchDetected: boolean;
+  /** Pending briefing to inject on next before_prompt_build. */
+  pendingBriefing: PendingBriefing | null;
+  /** Accumulated tool observations for the current turn. */
+  toolObservations: ToolObservation[];
+  /** Accumulated token usage for the session. */
+  tokenUsage: { input: number; output: number };
+  /** Timestamp of session start. */
+  startedAt: number;
+  /** Whether the first turn briefing has been delivered. */
+  briefingDelivered: boolean;
+}
+
+/** Session state map. Keyed by sessionKey. */
+export const sessionStateByKey = new Map<string, SessionState>();
+
+/** Generate an auto session ID. */
+export function generateAutoSessionId(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+  const time = `${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const hex = Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0");
+  return `auto-${date}-${time}-${hex}`;
+}
+
+/** Get or create session state for a session key. */
+export function getOrCreateSessionState(sessionKey: string): SessionState {
+  let state = sessionStateByKey.get(sessionKey);
+  if (!state) {
+    state = {
+      autoSessionId: generateAutoSessionId(),
+      lastModel: null,
+      modelSwitchDetected: false,
+      pendingBriefing: null,
+      toolObservations: [],
+      tokenUsage: { input: 0, output: 0 },
+      startedAt: Date.now(),
+      briefingDelivered: false,
+    };
+    sessionStateByKey.set(sessionKey, state);
+  }
+  return state;
+}
+
+/** Delete session state (cleanup). */
+export function deleteSessionState(sessionKey: string): void {
+  sessionStateByKey.delete(sessionKey);
+}
+
+// ============================================================================
 // Session Key Helpers
 // ============================================================================
 
