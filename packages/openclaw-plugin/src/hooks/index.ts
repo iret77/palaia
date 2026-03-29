@@ -119,6 +119,8 @@ import {
   extractMessageTexts,
   buildRecallQuery,
   rerankByTypeWeight,
+  formatEntryLine,
+  shouldUseCompactMode,
 } from "./recall.js";
 
 import {
@@ -150,6 +152,9 @@ import {
   resolvePriorities,
   filterBlocked,
 } from "../priorities.js";
+
+import { formatBriefing } from "./session.js";
+import { getOrCreateSessionState } from "./state.js";
 
 // ============================================================================
 // Logger (Issue: api.logger integration)
@@ -189,6 +194,10 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
   }
 
   const opts = buildRunnerOpts(config);
+
+  // Note: Session lifecycle hooks (session_start, session_end, before_reset,
+  // llm_input, llm_output, after_tool_call) are registered in index.ts entry
+  // point BEFORE this function, so they work for both ContextEngine and legacy paths.
 
   // ── Startup checks (H-2, H-3, captureModel validation) ────────
   (async () => {
@@ -326,7 +335,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
     }
   });
 
-  // ── before_prompt_build (Issue #65: Query-based Recall) ────────
+  // ── before_prompt_build (Issue #65: Query-based Recall + v3.0 Session Briefing) ──
   if (config.memoryInject) {
     api.on("before_prompt_build", async (event: any, ctx: any) => {
       // Prune stale entries to prevent memory leaks from crashed sessions (C-2)
@@ -337,6 +346,34 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
       const hookOpts = buildRunnerOpts(config, { workspace: resolved.workspace });
 
       try {
+        // ── Session Briefing Injection (v3.0) ─────────────────────
+        // If a session briefing is pending (from session_start or model switch),
+        // prepend it to the recall context for seamless session continuity.
+        let briefingText = "";
+        let briefingSummary: string | null = null; // Kept for smart query fallback
+        const sessionKey = resolveSessionKeyFromCtx(ctx);
+        if (sessionKey) {
+          const sessState = getOrCreateSessionState(sessionKey);
+          // Wait for session_start briefing load (max 3s to avoid blocking)
+          if (sessState.briefingReady) {
+            await Promise.race([
+              sessState.briefingReady,
+              new Promise<void>(r => setTimeout(r, 3000)),
+            ]);
+          }
+          // Capture summary BEFORE clearing, for smart query fallback below
+          briefingSummary = sessState.pendingBriefing?.summary ?? null;
+          if (sessState.pendingBriefing && !sessState.briefingDelivered) {
+            briefingText = formatBriefing(sessState.pendingBriefing, config.sessionBriefingMaxChars);
+            sessState.briefingDelivered = true;
+            // Clear pending briefing after delivery (unless model switch re-triggers)
+            if (!sessState.modelSwitchDetected) {
+              sessState.pendingBriefing = null;
+            }
+            sessState.modelSwitchDetected = false;
+          }
+        }
+
         // Load and resolve priorities (Issue #121)
         const prio = await loadPriorities(resolved.workspace);
         const project = config.captureProject || undefined;
@@ -347,14 +384,24 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
           tier: config.tier,
         }, resolved.agentId, project);
 
-        const maxChars = resolvedPrio.maxInjectedChars || 4000;
+        // Reduce recall budget by briefing size
+        const maxChars = Math.max((resolvedPrio.maxInjectedChars || 4000) - briefingText.length, 500);
         const limit = Math.min(config.maxResults || 10, 20);
         let entries: QueryResult["results"] = [];
 
         if (config.recallMode === "query") {
-          const userMessage = event.messages
+          let userMessage = event.messages
             ? buildRecallQuery(event.messages)
             : (event.prompt || null);
+
+          // ── Smart Query Fallback (v3.0) ───────────────────────
+          // If query is too short or matches a continuation pattern,
+          // use the session summary as query for better recall results.
+          const CONTINUATION_PATTERN = /^(ja|ok|weiter|mach|genau|do it|yes|continue|go|proceed|sure|klar|passt|yep|yup|exactly|right)\b/i;
+          if (briefingSummary && userMessage && (userMessage.length < 10 || CONTINUATION_PATTERN.test(userMessage.trim()))) {
+            userMessage = briefingSummary.slice(0, 500);
+            logger.info("[palaia] Smart query fallback: using session summary as recall query");
+          }
 
           if (userMessage && userMessage.length >= 5) {
             // Try embed server first (fast path: ~0.5s), then CLI fallback (~3-14s)
@@ -417,36 +464,37 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
               entries = result.results;
             }
           } catch {
+            // Still deliver briefing even if recall fails completely
+            if (briefingText) {
+              return { prependContext: briefingText };
+            }
             return;
           }
         }
 
-        if (entries.length === 0) return;
+        // If no recall entries but briefing exists, deliver briefing alone
+        if (entries.length === 0) {
+          if (briefingText) {
+            return { prependContext: briefingText };
+          }
+          return;
+        }
 
         // Apply type-weighted reranking and blocked filtering (Issue #121)
-        const rankedRaw = rerankByTypeWeight(entries, resolvedPrio.recallTypeWeight);
+        const rankedRaw = rerankByTypeWeight(entries, resolvedPrio.recallTypeWeight, config.recallRecencyBoost);
         const ranked = filterBlocked(rankedRaw, resolvedPrio.blocked);
 
-        // Build context string with char budget (compact format for token efficiency)
-        const SCOPE_SHORT: Record<string, string> = { team: "t", private: "p", public: "pub" };
-        const TYPE_SHORT: Record<string, string> = { memory: "m", process: "pr", task: "tk" };
-
+        // Build context string with char budget
+        // Progressive disclosure: compact mode for large stores (title + first line + ID)
+        const compact = shouldUseCompactMode(ranked.length);
         let text = "## Active Memory (Palaia)\n\n";
+        if (compact) {
+          text += "_Compact mode — use `memory_get <id>` for full details._\n\n";
+        }
         let chars = text.length;
 
         for (const entry of ranked) {
-          const scopeKey = SCOPE_SHORT[entry.scope] || entry.scope;
-          const typeKey = TYPE_SHORT[entry.type] || entry.type;
-          const prefix = `[${scopeKey}/${typeKey}]`;
-
-          // If body starts with title (common), skip title to save tokens
-          let line: string;
-          if (entry.body.toLowerCase().startsWith(entry.title.toLowerCase())) {
-            line = `${prefix} ${entry.body}\n\n`;
-          } else {
-            line = `${prefix} ${entry.title}\n${entry.body}\n\n`;
-          }
-
+          const line = formatEntryLine(entry, compact);
           if (chars + line.length > maxChars) break;
           text += line;
           chars += line.length;
@@ -483,7 +531,6 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
         const hasRelevantRecall = !isListFallback && entries.some(
           (e) => typeof e.score === "number" && e.score >= resolvedPrio.recallMinScore,
         );
-        const sessionKey = resolveSessionKeyFromCtx(ctx);
         if (sessionKey && hasRelevantRecall) {
           const turnState = getOrCreateTurnState(sessionKey);
           turnState.recallOccurred = true;
@@ -506,7 +553,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
 
         // Return prependContext + appendSystemContext for recall emoji
         return {
-          prependContext: text + nudgeContext,
+          prependContext: briefingText + text,
           appendSystemContext: config.showMemorySources
             ? "You used Palaia memory in this turn. Add \u{1f9e0} at the very end of your response (after everything else, on its own line)."
             : undefined,
@@ -821,7 +868,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
   // ── Startup Recovery Service ───────────────────────────────────
   api.registerService({
     id: "palaia-recovery",
-    start: async () => {
+    start: async (_ctx) => {
       const result = await recover(opts);
       if (result.replayed > 0) {
         logger.info(`[palaia] WAL recovery: replayed ${result.replayed} entries`);

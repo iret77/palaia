@@ -4,16 +4,20 @@
  * Plugin entry point. Loaded by OpenClaw via jiti (no build step needed).
  *
  * Registers:
- * - memory_search: Semantic search over Palaia memory
- * - memory_get: Read a specific memory entry
- * - memory_write: Write new entries (optional, opt-in)
- * - before_prompt_build: Query-based contextual recall (opt-in, Issue #65)
- * - agent_end: Auto-capture of significant exchanges (opt-in, Issue #64)
- * - palaia-recovery: WAL replay on startup
+ * - Tools: memory_search, memory_get, memory_write
+ * - MemoryPromptSection: Guided tool usage hints
+ * - Session hooks (always): session_start, session_end, before_reset,
+ *   llm_input, llm_output, after_tool_call, subagent_spawning, subagent_ended
+ * - ContextEngine (modern) OR legacy hooks (before_prompt_build, agent_end,
+ *   message_received, message_sending)
  *
- * Phase 1.5: ContextEngine adapter support. When the host provides
- * api.registerContextEngine, palaia registers as a ContextEngine.
- * Otherwise, falls back to legacy hook-based integration.
+ * v3.0 Features:
+ * - Session continuity: Auto-briefing on session start / LLM switch
+ * - Session summaries: Auto-saved on session end / reset
+ * - Tool observations: Tracked via after_tool_call
+ * - Progressive disclosure: Compact mode for large memory stores
+ * - Privacy markers: <private> blocks excluded from capture
+ * - Recency boost: Fresh memories ranked higher
  *
  * Activation:
  *   plugins: { slots: { memory: "palaia" } }
@@ -22,6 +26,7 @@
 import { resolveConfig, type PalaiaPluginConfig } from "./src/config.js";
 import { registerTools } from "./src/tools.js";
 import { registerHooks } from "./src/hooks/index.js";
+import { registerSessionHooks } from "./src/hooks/session.js";
 import { createPalaiaContextEngine } from "./src/context-engine.js";
 import type { OpenClawPluginApi, OpenClawPluginEntry } from "./src/types.js";
 
@@ -30,13 +35,11 @@ const palaiaPlugin: OpenClawPluginEntry = {
   id: "palaia",
   name: "Palaia Memory",
   async register(api: OpenClawPluginApi) {
-    // Issue #66: Plugin config is currently resolved GLOBALLY via api.getConfig("palaia").
+    // Issue #66: Plugin config is resolved GLOBALLY via api.pluginConfig.
     // OpenClaw does NOT provide per-agent config resolution — all agents share the same
-    // plugin config from openclaw.json → plugins.config.palaia.
-    // A per-agent resolver would require an OpenClaw upstream change where api.getConfig()
-    // accepts an agentId parameter or automatically scopes to the current agent context.
+    // plugin config from openclaw.json → plugins.entries.palaia.config.
     // See: https://github.com/byte5ai/palaia/issues/66
-    const rawConfig = api.getConfig?.("palaia") as
+    const rawConfig = api.pluginConfig as
       | Partial<PalaiaPluginConfig>
       | undefined;
     const config = resolveConfig(rawConfig);
@@ -51,9 +54,31 @@ const palaiaPlugin: OpenClawPluginEntry = {
     // Register agent tools (memory_search, memory_get, memory_write)
     registerTools(api, config);
 
+    // Register MemoryPromptSection for guided memory tool usage (v3.0)
+    if (api.registerMemoryPromptSection) {
+      api.registerMemoryPromptSection(({ availableTools }) => {
+        const lines: string[] = [];
+        if (availableTools.has("memory_search")) {
+          lines.push("Use `memory_search` to find relevant memories by semantic query.");
+        }
+        if (availableTools.has("memory_get")) {
+          lines.push("Use `memory_get <id>` to retrieve full memory details by ID.");
+        }
+        if (availableTools.has("memory_write")) {
+          lines.push("Use `memory_write` for processes/SOPs and tasks only — conversation knowledge is auto-captured.");
+        }
+        return lines;
+      });
+    }
+
+    // Session lifecycle hooks are always registered (session_start, session_end,
+    // before_reset, llm_input, llm_output, after_tool_call).
+    // These work independently of the ContextEngine vs legacy hooks choice.
+    registerSessionHooks(api, config);
+
     // Register ContextEngine when available, otherwise use legacy hooks
     if (api.registerContextEngine) {
-      api.registerContextEngine("palaia", createPalaiaContextEngine(api, config));
+      api.registerContextEngine("palaia", () => createPalaiaContextEngine(api, config));
     } else {
       registerHooks(api, config);  // Legacy fallback
     }
