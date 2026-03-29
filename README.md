@@ -1,12 +1,60 @@
 # Palaia — The Knowledge System for AI Agent Teams
 
-**Crash-safe. Local-first. Zero-cloud. The memory system that makes your agents smarter over time.**
+**Your agents forget. Palaia doesn't.**
 
 [![CI](https://github.com/byte5ai/palaia/actions/workflows/ci.yml/badge.svg)](https://github.com/byte5ai/palaia/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/palaia)](https://pypi.org/project/palaia/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![OpenClaw Plugin](https://img.shields.io/badge/OpenClaw-Plugin-blueviolet)](https://openclaw.ai)
+
+---
+
+## What Palaia Does
+
+AI agents are stateless by default. Every session starts from scratch — no memory of past decisions, no shared knowledge between agents, no context that survives a restart.
+
+Palaia gives your agents a persistent, searchable knowledge store. They save what they learn. They find it again by meaning, not keyword. They share it across tools and sessions — automatically.
+
+---
+
+## What Palaia Is Not
+
+- Not a chatbot or prompt manager
+- Not a cloud service (everything runs locally)
+- Not a vector database you manage yourself (it manages itself)
+- Not limited to one tool — works with OpenClaw, Claude Desktop, Cursor, and any MCP client
+
+---
+
+## What You Get
+
+| Capability | What it means |
+|------------|---------------|
+| **Agents remember across sessions** | Knowledge survives restarts, tool switches, and team handoffs |
+| **Find anything by meaning** | Hybrid BM25 + vector search across 6 embedding providers |
+| **Zero-config local setup** | SQLite with native SIMD vector search — no separate database process |
+| **Works everywhere via MCP** | One memory store for OpenClaw, Claude Desktop, Cursor, and more |
+| **Multi-agent ready** | Private, team, and public scopes — agents see what they should |
+| **Crash-safe by default** | SQLite WAL mode survives power loss, kills, OOM |
+| **Fast** | Embed server keeps model in RAM — CLI queries ~1.5s, MCP/Plugin <500ms |
+| **Scales when needed** | Swap to PostgreSQL + pgvector for distributed teams, no code changes |
+
+---
+
+## Comparison
+
+| Feature | Palaia | claude-mem | Mem0 | Stock Memory |
+|---------|--------|-----------|------|--------------|
+| Local-first | Yes | Yes | No (cloud) | Yes |
+| Cross-tool (MCP) | Yes (any MCP client) | No (Claude Code only) | No | No |
+| Native Vector Search | sqlite-vec / pgvector | ChromaDB (separate) | Cloud | No |
+| Structured Types | memory/process/task | decisions/bugfixes | No | No |
+| Multi-Agent Scopes | private/team/public | No | Per-user | No |
+| Smart Tiering | HOT/WARM/COLD | No | No | No |
+| Embedding Providers | 6 (configurable) | 1 (fixed) | Cloud | None |
+| Open Source | MIT | AGPL-3.0 | Partial | N/A |
+| Crash-safe (WAL) | Yes | Partial | N/A | No |
 
 ---
 
@@ -68,40 +116,6 @@ palaia write "API rate limit is 100 req/min" \
 palaia query "what's the rate limit"                # Find it by meaning
 palaia status                                        # Check health
 ```
-
----
-
-## Why Palaia?
-
-| Feature | Details |
-|---------|---------|
-| **Semantic Search** | Hybrid BM25 + vector embeddings. 6 providers: fastembed, sentence-transformers, Ollama, OpenAI, Gemini, BM25. |
-| **Native Vector Search** | sqlite-vec (SIMD KNN) or pgvector (ANN/HNSW). Not Python cosine — real database-level acceleration. |
-| **MCP Server** | `palaia-mcp` — standalone memory for Claude Desktop, Cursor, any MCP host. No OpenClaw required. |
-| **Multi-Backend** | SQLite (default, zero-config) or PostgreSQL + pgvector for distributed teams. |
-| **Crash-Safe** | SQLite WAL mode — survives power loss, kills, OOM. |
-| **Auto-Capture** | OpenClaw plugin captures significant exchanges automatically. |
-| **Structured Types** | memory, process, task — with status, priority, assignee, due date. |
-| **Multi-Agent** | Shared store, scopes (private/team/public), agent aliases, per-agent injection priorities. |
-| **Smart Tiering** | HOT/WARM/COLD rotation based on decay scores and access patterns. |
-| **Embed Server** | Background process holds model in RAM. CLI queries: ~1.5s (was ~3-5s). MCP/Plugin: <500ms. |
-| **Zero-Cloud** | Everything local. No API keys needed for core functionality. |
-
----
-
-## Comparison
-
-| Feature | Palaia | claude-mem | Mem0 | Stock Memory |
-|---------|--------|-----------|------|--------------|
-| Local-first | Yes | Yes | No (cloud) | Yes |
-| Cross-tool (MCP) | Yes (any MCP client) | No (Claude Code only) | No | No |
-| Native Vector Search | sqlite-vec / pgvector | ChromaDB (separate) | Cloud | No |
-| Structured Types | memory/process/task | decisions/bugfixes | No | No |
-| Multi-Agent Scopes | private/team/public | No | Per-user | No |
-| Smart Tiering | HOT/WARM/COLD | No | No | No |
-| Embedding Providers | 6 (configurable) | 1 (fixed) | Cloud | None |
-| Open Source | MIT | AGPL-3.0 | Partial | N/A |
-| Crash-safe (WAL) | Yes | Partial | N/A | No |
 
 ---
 
