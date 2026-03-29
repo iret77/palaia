@@ -81,11 +81,6 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
           description: "hot|warm|all (default: hot+warm)",
         })
       ),
-      scope: Type.Optional(
-        Type.String({
-          description: "Filter by scope: private|team|shared:X|public",
-        })
-      ),
       type: Type.Optional(
         Type.String({
           description: "Filter by entry type: memory|process|task",
@@ -98,7 +93,6 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
         query: string;
         maxResults?: number;
         tier?: string;
-        scope?: string;
         type?: string;
       }
     ) {

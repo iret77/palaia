@@ -242,6 +242,8 @@ class EmbedServer:
         instance = params.get("instance")
         include_cold = params.get("include_cold", False)
         cross_project = params.get("cross_project", False)
+        before = params.get("before")
+        after = params.get("after")
 
         engine = self._bm25_engine if self._warming_up else self.engine
         results = engine.search(
@@ -255,6 +257,8 @@ class EmbedServer:
             priority=priority,
             assignee=assignee,
             instance=instance,
+            before=before,
+            after=after,
             cross_project=cross_project,
         )
 

@@ -98,6 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_query.add_argument("--assignee", default=None, help="Filter by assignee")
     p_query.add_argument("--instance", default=None, help="Filter by session identity")
+    p_query.add_argument("--tags", default=None, help="Filter by tags (comma-separated, AND logic)")
     p_query.add_argument("--before", default=None, help="Only entries created before this ISO timestamp")
     p_query.add_argument("--after", default=None, help="Only entries created after this ISO timestamp")
     p_query.add_argument(
@@ -135,6 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_list = sub.add_parser("list", help="List entries in a tier")
     p_list.add_argument("--tier", default=None, choices=["hot", "warm", "cold"], help="Tier to list (default: hot)")
     p_list.add_argument("--all", action="store_true", help="List across all tiers (hot+warm+cold)")
+    p_list.add_argument("--limit", type=int, default=None, help="Max entries to return")
     p_list.add_argument("--project", default=None, help="Filter by project")
     p_list.add_argument("--tag", default=None, action="append", help="Filter by tag (repeatable, AND logic)")
     p_list.add_argument("--scope", default=None, help="Filter by scope")

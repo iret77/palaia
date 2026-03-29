@@ -58,6 +58,15 @@ def cmd_query(args):
     has_embeddings = svc_result["has_embeddings"]
     bm25_only = svc_result["bm25_only"]
 
+    # Post-filter by --tags if specified (AND logic, comma-separated)
+    tags_filter = getattr(args, "tags", None)
+    if tags_filter:
+        required_tags = [t.strip() for t in tags_filter.split(",") if t.strip()]
+        results = [
+            r for r in results
+            if all(tag in (r.get("tags") or []) for tag in required_tags)
+        ]
+
     # --- Adaptive Nudging for query (Issue #68) ---
     query_nudge_messages = []
     try:
@@ -233,6 +242,11 @@ def cmd_list(args):
 
     tier_label = svc_result["tier"]
     entries_with_tier = svc_result["entries_with_tier"]
+
+    # Apply --limit if specified
+    limit = getattr(args, "limit", None)
+    if limit is not None and limit > 0:
+        entries_with_tier = entries_with_tier[:limit]
 
     if json_out(
         {
