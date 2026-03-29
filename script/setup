@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# One-time setup for palaia development.
+# Run after cloning: ./script/setup
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+echo "Installing Python dependencies..."
+pip install -e ".[dev,fastembed]"
+
+echo "Configuring git hooks..."
+git config core.hooksPath .hooks
+
+echo ""
+echo "Done. Run tests with:"
+echo "  pytest tests/ -v"
+echo "  cd packages/openclaw-plugin && npx vitest run"

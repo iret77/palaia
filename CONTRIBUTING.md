@@ -7,8 +7,14 @@ Thanks for your interest in contributing to Palaia!
 ```bash
 git clone https://github.com/byte5ai/palaia.git
 cd palaia
-pip install -e ".[dev,fastembed]"
+./script/setup          # installs deps + configures git hooks
 pytest tests/ -v
+```
+
+Or manually:
+```bash
+pip install -e ".[dev,fastembed]"
+git config core.hooksPath .hooks
 ```
 
 For TypeScript plugin development:
