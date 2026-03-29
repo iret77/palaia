@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from palaia.config import DEFAULT_CONFIG, save_config
