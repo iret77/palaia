@@ -25,14 +25,14 @@ metadata:
       - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && (npm install -g @byte5ai/palaia@latest 2>/dev/null || true) && palaia doctor --fix && palaia warmup"
         label: "Upgrade Palaia with semantic search (pip + npm plugin) and run health checks"
     postUpdateMessage: >
-      Palaia has been updated to v2.2. New: SQLite default backend, injection priorities,
-      knowledge curation, ContextEngine integration. Run `palaia doctor --fix` to upgrade.
+      Palaia has been updated to v2.4. New: session continuity (automatic briefings and
+      summaries), privacy markers, recency boost, progressive disclosure. Run `palaia doctor --fix` to upgrade.
     plugin:
       slot: memory
       package: "@byte5ai/palaia"
 ---
 
-# Palaia v2.2 — Agent Memory Skill
+# Palaia v2.4 — Agent Memory Skill
 
 Palaia is the memory system for OpenClaw agents. It gives you persistent, searchable, crash-safe memory across sessions. You don't need to understand how it works — just use the commands below.
 
@@ -290,6 +290,9 @@ palaia query "what's the rate limit"
 # Filter by type and status
 palaia query "tasks" --type task --status open
 
+# Filter by tags
+palaia query "session-summary" --tags session-summary
+
 # Search within a project
 palaia query "deploy steps" --project myapp
 
@@ -323,6 +326,9 @@ palaia list
 
 # Filter by tier, type, status
 palaia list --tier warm --type task --status open --priority high
+
+# Limit results
+palaia list --type task --status open --limit 5
 
 # Filter by project or assignee
 palaia list --project myapp --assignee Elliot
@@ -593,7 +599,7 @@ palaia instance set Claw-Main
 | Review accumulated knowledge | `palaia curate analyze` |
 | Share knowledge | `palaia sync export` or `palaia package export` |
 | Check for messages | `palaia memo inbox` |
-| Start of session | `palaia doctor` then `palaia query "active work"` then `palaia memo inbox` |
+| Start of session | Session briefing is now automatic. Just run `palaia doctor` and check `palaia memo inbox`. |
 
 **Do NOT manually write:** facts, decisions, or preferences that came up in the current conversation. Auto-Capture handles these.
 
@@ -632,6 +638,33 @@ palaia init --capture-level <off|minimal|normal|aggressive>
 
 ---
 
+## Session Continuity (NEW in v2.4)
+
+Session continuity gives agents automatic context restoration across sessions. These features work out of the box with the OpenClaw plugin -- no manual setup needed.
+
+### Session Briefings
+On session start, Palaia automatically injects a briefing with the last session summary and any open tasks. This means agents resume work without needing to manually search for context.
+
+### Session Summaries
+When a session ends or resets, Palaia auto-saves a summary of what happened. These are stored as entries with the `session-summary` tag and can be queried:
+```bash
+palaia query "session-summary" --tags session-summary
+```
+
+### Privacy Markers
+Wrap sensitive content in `<private>...</private>` blocks to exclude it from auto-capture. Private blocks are stripped before any extraction runs.
+
+### Recency Boost
+Fresh memories are ranked higher in recall results. The boost factor is configurable via `recallRecencyBoost` (default `0.3`, set to `0` to disable).
+
+### Progressive Disclosure
+When result sets exceed 100 entries, Palaia uses compact mode to keep context manageable. Use `--limit` to control result size explicitly:
+```bash
+palaia list --type task --status open --limit 5
+```
+
+---
+
 ## Plugin Configuration (OpenClaw)
 
 Set in `openclaw.json` under `plugins.entries.palaia.config`:
@@ -649,6 +682,11 @@ Set in `openclaw.json` under `plugins.entries.palaia.config`:
 | `embeddingServer` | `true` | Keep embedding model loaded for fast queries |
 | `showMemorySources` | `true` | Show memory source footnotes |
 | `showCaptureConfirm` | `true` | Show capture confirmations |
+| `sessionSummary` | `true` | Auto-save session summaries on end/reset |
+| `sessionBriefing` | `true` | Load session context on session start |
+| `sessionBriefingMaxChars` | `1500` | Max chars for session briefing injection |
+| `captureToolObservations` | `true` | Track tool usage as session context |
+| `recallRecencyBoost` | `0.3` | Boost factor for fresh memories (0=off) |
 
 ---
 
