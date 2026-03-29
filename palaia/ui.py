@@ -22,7 +22,7 @@ from palaia import __version__
 # ── Constants ────────────────────────────────────────────────────────────────
 
 HEADER_LINE = f"Palaia v{__version__} — Local memory for AI agents"
-HEADER_URL = "(c) 2026 byte5 GmbH — https://github.com/iret77/palaia"
+HEADER_URL = "(c) 2026 byte5 GmbH — https://github.com/byte5ai/palaia"
 
 # Box-drawing chars
 B_TL = "\u250c"  # ┌

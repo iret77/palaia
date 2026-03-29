@@ -35,7 +35,7 @@ const palaiaPlugin: OpenClawPluginEntry = {
     // plugin config from openclaw.json → plugins.config.palaia.
     // A per-agent resolver would require an OpenClaw upstream change where api.getConfig()
     // accepts an agentId parameter or automatically scopes to the current agent context.
-    // See: https://github.com/iret77/palaia/issues/66
+    // See: https://github.com/byte5ai/palaia/issues/66
     const rawConfig = api.getConfig?.("palaia") as
       | Partial<PalaiaPluginConfig>
       | undefined;

@@ -25,7 +25,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/iret77/palaia.git",
+    "url": "https://github.com/byte5ai/palaia.git",
     "directory": "packages/openclaw-plugin"
   },
   "peerDependencies": {

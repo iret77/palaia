@@ -5,7 +5,7 @@ Thanks for your interest in contributing to Palaia!
 ## Development Setup
 
 ```bash
-git clone https://github.com/iret77/palaia.git
+git clone https://github.com/byte5ai/palaia.git
 cd palaia
 pip install -e ".[dev,fastembed]"
 pytest tests/ -v
@@ -34,7 +34,7 @@ Intentional patterns in the codebase:
 
 ## Reporting Bugs
 
-Open a [GitHub Issue](https://github.com/iret77/palaia/issues). Include:
+Open a [GitHub Issue](https://github.com/byte5ai/palaia/issues). Include:
 
 - Python version (`python --version`)
 - Palaia version (`palaia --version`)

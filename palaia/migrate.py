@@ -500,6 +500,6 @@ def format_result(result: dict) -> str:
             lines.append("    This file is used at runtime by agents. It was copied to Palaia but NOT deleted.")
             lines.append("    Do not remove it manually.")
         lines.append("")
-        lines.append("See: https://github.com/iret77/palaia/blob/main/docs/migration-guide.md")
+        lines.append("See: https://github.com/byte5ai/palaia/blob/main/docs/migration-guide.md")
 
     return "\n".join(lines)
