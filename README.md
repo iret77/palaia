@@ -1,4 +1,4 @@
-# Palaia — The Knowledge OS for AI Agent Teams
+# Palaia — The Knowledge System for AI Agent Teams
 
 **Crash-safe. Local-first. Zero-cloud. The memory system that makes your agents smarter over time.**
 
