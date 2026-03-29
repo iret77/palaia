@@ -29,9 +29,9 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://palaia.ai"
-Repository = "https://github.com/iret77/palaia"
-Issues = "https://github.com/iret77/palaia/issues"
-Documentation = "https://github.com/iret77/palaia/tree/main/docs"
+Repository = "https://github.com/byte5ai/palaia"
+Issues = "https://github.com/byte5ai/palaia/issues"
+Documentation = "https://github.com/byte5ai/palaia/tree/main/docs"
 
 [project.scripts]
 palaia = "palaia.cli:main"

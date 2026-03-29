@@ -122,7 +122,7 @@ OpenClaw Agent
 
 ```bash
 # Clone the repo
-git clone https://github.com/iret77/palaia.git
+git clone https://github.com/byte5ai/palaia.git
 cd palaia/packages/openclaw-plugin
 
 # Install deps

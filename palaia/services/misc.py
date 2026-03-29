@@ -84,7 +84,7 @@ def get_skill_content() -> dict:
         return {
             "error": (
                 "SKILL.md not found in this installation. "
-                "View it online: https://github.com/iret77/palaia/blob/main/SKILL.md"
+                "View it online: https://github.com/byte5ai/palaia/blob/main/SKILL.md"
             )
         }
     content = skill_path.read_text(encoding="utf-8")

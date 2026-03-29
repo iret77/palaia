@@ -2,7 +2,7 @@
 
 **Crash-safe. Local-first. Zero-cloud. The memory system that makes your agents smarter over time.**
 
-[![CI](https://github.com/iret77/palaia/actions/workflows/ci.yml/badge.svg)](https://github.com/iret77/palaia/actions/workflows/ci.yml)
+[![CI](https://github.com/byte5ai/palaia/actions/workflows/ci.yml/badge.svg)](https://github.com/byte5ai/palaia/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/palaia)](https://pypi.org/project/palaia/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -127,7 +127,7 @@ palaia status                                        # Check health
 ## Development
 
 ```bash
-git clone https://github.com/iret77/palaia.git
+git clone https://github.com/byte5ai/palaia.git
 cd palaia
 pip install -e ".[dev]"
 pytest
