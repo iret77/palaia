@@ -606,14 +606,17 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
           collectedHints.push(...hints);
         }
 
-        // Strip Palaia-injected recall context from user messages to prevent feedback loop.
+        // Strip Palaia-injected recall context and private blocks from messages.
         // The recall block is prepended to user messages by before_prompt_build.
         // Without stripping, auto-capture would re-capture previously recalled memories.
-        const cleanedTexts = allTexts.map(t =>
-          t.role === "user"
-            ? { ...t, text: stripPalaiaInjectedContext(t.text) }
-            : t
-        );
+        // Private blocks (<private>...</private>) must be excluded from capture.
+        const { stripPrivateBlocks } = await import("./capture.js");
+        const cleanedTexts = allTexts.map(t => ({
+          ...t,
+          text: stripPrivateBlocks(
+            t.role === "user" ? stripPalaiaInjectedContext(t.text) : t.text
+          ),
+        }));
 
         // Only extract from recent exchanges — full history causes LLM timeouts
         // and dilutes extraction quality
