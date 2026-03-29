@@ -21,6 +21,7 @@ import {
 } from "./state.js";
 import {
   stripPalaiaInjectedContext,
+  stripPrivateBlocks,
   trimToRecentExchanges,
   extractWithLLM,
 } from "./capture.js";
@@ -151,11 +152,12 @@ export async function captureSessionSummary(
     // Rule-based fallback: last 3 user+assistant pairs
     if (!summaryText) {
       const allTexts = extractMessageTexts(messages);
-      const cleaned = allTexts.map((t: { role: string; text: string }) =>
-        t.role === "user"
-          ? { ...t, text: stripPalaiaInjectedContext(t.text) }
-          : t
-      );
+      const cleaned = allTexts.map((t: { role: string; text: string }) => ({
+        ...t,
+        text: stripPrivateBlocks(
+          t.role === "user" ? stripPalaiaInjectedContext(t.text) : t.text
+        ),
+      }));
       const recent = trimToRecentExchanges(cleaned, 3);
       if (recent.length > 0) {
         summaryText = recent
@@ -305,9 +307,14 @@ export function registerSessionHooks(
       if (!sessionKey) return;
 
       try {
-        // Only save summary if session had meaningful interaction
-        const messageCount = (event as any)?.messageCount ?? 0;
-        if (messageCount >= 4) { // At least 2 user + 2 assistant messages
+        // Only save summary if session had meaningful interaction.
+        // Guard: if OpenClaw omits messageCount, fall back to tool observations
+        // as evidence of interaction rather than silently skipping.
+        const messageCount = (event as any)?.messageCount;
+        const state = getOrCreateSessionState(sessionKey);
+        const hasInteraction = (typeof messageCount === "number" && messageCount >= 4)
+          || (messageCount === undefined && state.toolObservations.length > 0);
+        if (hasInteraction) {
           await captureSessionSummary(undefined, sessionKey, api, config, logger);
         }
       } catch (error) {
@@ -357,19 +364,6 @@ export function registerSessionHooks(
       }
     }
     state.lastModel = model;
-  });
-
-  // ── llm_output: Token usage tracking ──────────────────────────────
-  api.on("llm_output", (event: any, ctx: any) => {
-    const sessionKey = ctx?.sessionKey || ctx?.sessionId;
-    if (!sessionKey) return;
-    const state = getOrCreateSessionState(sessionKey);
-
-    const usage = (event as any)?.usage;
-    if (usage) {
-      state.tokenUsage.input += usage.input || 0;
-      state.tokenUsage.output += usage.output || 0;
-    }
   });
 
   // ── after_tool_call: Tool observation tracking ────────────────��───

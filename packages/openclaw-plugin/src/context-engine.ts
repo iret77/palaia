@@ -16,6 +16,8 @@ import type {
 } from "./types.js";
 import type { PalaiaPluginConfig } from "./config.js";
 import { run, recover, type RunnerOpts, getEmbedServerManager } from "./runner.js";
+import { getOrCreateSessionState } from "./hooks/state.js";
+import { formatBriefing } from "./hooks/session.js";
 
 import {
   extractMessageTexts,
@@ -421,7 +423,34 @@ export function createPalaiaContextEngine(
 
         _lastRecallOccurred = recallOccurred;
 
-        if (!text) {
+        // Inject session briefing if pending (session_start or model switch)
+        let briefingText = "";
+        if (config.sessionBriefing && params.sessionKey) {
+          const sessionState = getOrCreateSessionState(params.sessionKey);
+          if (sessionState.pendingBriefing && !sessionState.briefingDelivered) {
+            // Wait for briefing to be ready (with timeout)
+            if (sessionState.briefingReady) {
+              await Promise.race([
+                sessionState.briefingReady,
+                new Promise<void>(r => setTimeout(r, 3000)),
+              ]);
+            }
+            if (sessionState.pendingBriefing) {
+              const remainingChars = maxChars - (text?.length || 0);
+              briefingText = formatBriefing(
+                sessionState.pendingBriefing,
+                Math.min(config.sessionBriefingMaxChars || 1500, remainingChars),
+              );
+              if (briefingText) {
+                sessionState.briefingDelivered = true;
+              }
+            }
+          }
+        }
+
+        const combined = [briefingText, text].filter(Boolean).join("\n\n");
+
+        if (!combined) {
           return {
             messages: params.messages || [],
             estimatedTokens: 0,
@@ -430,8 +459,8 @@ export function createPalaiaContextEngine(
 
         return {
           messages: params.messages || [],
-          estimatedTokens: estimateTokens(text),
-          systemPromptAddition: text,
+          estimatedTokens: estimateTokens(combined),
+          systemPromptAddition: combined,
         };
       } catch (error) {
         logger.warn(`[palaia] ContextEngine assemble failed: ${error}`);
