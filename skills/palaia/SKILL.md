@@ -234,9 +234,14 @@ palaia-mcp --read-only                  # No writes (untrusted hosts)
 }
 ```
 
-**Cursor** (Settings → MCP Servers → Add):
+**Cursor** (Settings → MCP Servers → Add, or `.cursor/mcp.json`):
 - Command: `palaia-mcp`
 - Arguments: (none, or `--root /path/to/.palaia`)
+
+**Claude Code** (`~/.claude/settings.json`):
+```json
+{"mcpServers": {"palaia": {"command": "palaia-mcp"}}}
+```
 
 **MCP Tools:**
 
