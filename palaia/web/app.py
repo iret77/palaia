@@ -8,7 +8,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def create_app(palaia_root: Path | None = None) -> "FastAPI":
+def create_app(palaia_root: Path | None = None) -> "FastAPI":  # noqa: F821
     """Create and configure the FastAPI application.
 
     Args:

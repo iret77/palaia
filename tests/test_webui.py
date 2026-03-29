@@ -1,9 +1,6 @@
 """Tests for Palaia WebUI API routes."""
 
-import json
 import pytest
-from pathlib import Path
-from unittest.mock import patch
 
 from palaia.store import Store
 

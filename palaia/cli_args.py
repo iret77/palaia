@@ -332,7 +332,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_sync_import.add_argument("--dry-run", action="store_true", help="Preview without writing")
     p_sync_import.add_argument("--json", action="store_true", help="Output as JSON")
 
-    
+
     # WebUI
     p_ui = sub.add_parser("ui", help="Launch the Palaia WebUI (local memory explorer)")
     p_ui.add_argument("--port", type=int, default=8384, help="Port to listen on (default: 8384)")
