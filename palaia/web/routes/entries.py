@@ -127,14 +127,14 @@ def create_entry(request: Request, payload: EntryCreate) -> dict:
     try:
         entry_id = store.write(
             body=payload.body,
-        title=payload.title,
-        entry_type=payload.type,
-        scope=payload.scope,
-        tags=payload.tags or None,
-        project=payload.project,
-        status=payload.status,
-        priority=payload.priority,
-        assignee=payload.assignee,
+            title=payload.title,
+            entry_type=payload.type,
+            scope=payload.scope,
+            tags=payload.tags or None,
+            project=payload.project,
+            status=payload.status,
+            priority=payload.priority,
+            assignee=payload.assignee,
             due_date=payload.due_date,
         )
     except ValueError as e:
@@ -200,27 +200,9 @@ def delete_entry(request: Request, entry_id: str) -> dict:
     store = Store(root)
     store.recover()
 
-    # Find the entry across tiers
-    path = store._find_entry(entry_id)
-    if path is None:
-        return JSONResponse(status_code=404, content={"error": f"Entry not found: {entry_id}"})
-
-    relative = str(path.relative_to(root))
-
-    # WAL-backed delete
-    from palaia.wal import WALEntry
-    with store.lock:
-        wal_entry = WALEntry(
-            operation="delete",
-            target=relative,
-            payload_hash="",
-            payload="",
-        )
-        store.wal.log(wal_entry)
-        store.delete_raw(relative)
-        store.wal.commit(wal_entry)
-
-    # Clean up metadata index
-    store.metadata_index.remove(entry_id)
+    try:
+        store.delete(entry_id)
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
 
     return {"id": entry_id, "status": "deleted"}

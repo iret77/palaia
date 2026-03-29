@@ -392,6 +392,35 @@ class Store:
         if path.exists():
             path.unlink()
 
+
+    def delete(self, entry_id: str) -> bool:
+        """Delete a memory entry by ID. WAL-backed for crash safety.
+
+        Returns True if deleted, raises ValueError if not found.
+        """
+        path = self._find_entry(entry_id)
+        if path is None:
+            raise ValueError(f"Entry not found: {entry_id}")
+
+        relative = str(path.relative_to(self.root))
+
+        with self.lock:
+            wal_entry = WALEntry(
+                operation="delete",
+                target=relative,
+                payload_hash="",
+                payload="",
+            )
+            self.wal.log(wal_entry)
+            self.delete_raw(relative)
+            self.wal.commit(wal_entry)
+
+        # Clean up metadata index and embedding cache
+        self.metadata_index.remove(entry_id)
+        self.embedding_cache.invalidate(entry_id)
+
+        return True
+
     def read(
         self, entry_id: str, agent: str | None = None, projects: list[str] | None = None
     ) -> tuple[dict, str] | None:

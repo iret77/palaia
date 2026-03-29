@@ -48,6 +48,8 @@ def search(
             include_cold=include_cold,
         )
 
+    # NOTE: ThreadPoolExecutor spawns a thread per search. Fine for local
+    # single-user UI; not designed for concurrent multi-user load.
     timed_out = False
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
@@ -94,7 +96,9 @@ def _bm25_fallback(
     store.recover()
     engine = SearchEngine(store)
 
-    # Force BM25-only by temporarily disabling embeddings
+    # Force BM25-only by temporarily disabling embeddings.
+    # NOTE: Mutates engine.has_embeddings — safe for single-user local UI
+    # but would cause race conditions under concurrent multi-user load.
     original = engine.has_embeddings
     engine.has_embeddings = False
     try:
