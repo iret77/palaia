@@ -60,12 +60,12 @@ class TestSearchEngineCacheInvalidation:
         engine = SearchEngine(store)
 
         # Build for agent-a
-        docs_a = engine.build_index(include_cold=False, agent="agent-a")
+        engine.build_index(include_cold=False, agent="agent-a")
         key_a = engine._index_cache_key
         assert key_a == (False, "agent-a")
 
         # Build for agent-b — cache key changes, should rebuild
-        docs_b = engine.build_index(include_cold=False, agent="agent-b")
+        engine.build_index(include_cold=False, agent="agent-b")
         key_b = engine._index_cache_key
         assert key_b == (False, "agent-b")
         assert key_a != key_b
