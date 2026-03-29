@@ -123,7 +123,8 @@ def create_server(root: Path, read_only: bool = False) -> FastMCP:
         header_parts = [
             f"ID: {result['id']}",
             f"Title: {meta.get('title', 'untitled')}",
-            f"Type: {meta.get('scope', 'team')}",
+            f"Type: {meta.get('type', 'memory')}",
+            f"Scope: {meta.get('scope', 'team')}",
             f"Tier: {meta.get('tier', '?')}",
             f"Tags: {', '.join(meta.get('tags', []))}",
             f"Created: {meta.get('created', '?')}",

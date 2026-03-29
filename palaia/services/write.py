@@ -62,7 +62,8 @@ def write_entry(
         instance=instance,
     )
 
-    # Check dedup and tier
+    # Check dedup: Store.write() returns existing ID on hash collision
+    # Compare with a fresh read to detect if this was a dedup or new write
     entry = store.read(entry_id)
     tier = "hot"
     actual_scope = scope or "team"
@@ -74,6 +75,10 @@ def write_entry(
             if (root / t / f"{entry_id}.md").exists():
                 tier = t
                 break
+        # If entry existed before write (non-hot tier or older timestamp),
+        # it was deduplicated. Hot + just-created = new entry.
+        if tier != "hot":
+            deduplicated = True
 
     # --- Adaptive Nudging (Issue #68) ---
     nudge_messages: list[str] = []

@@ -34,6 +34,7 @@ import {
   shouldAttemptCapture,
   extractSignificance,
   stripPalaiaInjectedContext,
+  stripPrivateBlocks,
   trimToRecentExchanges,
   parsePalaiaHints,
   loadProjects,
@@ -223,12 +224,13 @@ async function runAutoCapture(
     collectedHints.push(...hints);
   }
 
-  // Strip injected context and trim to recent
-  const cleanedTexts = allTexts.map(t =>
-    t.role === "user"
-      ? { ...t, text: stripPalaiaInjectedContext(t.text) }
-      : t
-  );
+  // Strip injected context and private blocks, then trim to recent
+  const cleanedTexts = allTexts.map(t => ({
+    ...t,
+    text: stripPrivateBlocks(
+      t.role === "user" ? stripPalaiaInjectedContext(t.text) : t.text
+    ),
+  }));
   const recentTexts = trimToRecentExchanges(cleanedTexts);
   const exchangeParts: string[] = [];
   for (const t of recentTexts) {

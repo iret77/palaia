@@ -132,7 +132,6 @@ export async function captureSessionSummary(
 
   // Guard: prevent double-save (before_reset + session_end race)
   if (state.summarySaved) return;
-  state.summarySaved = true;
   let summaryText: string | null = null;
 
   if (messages && messages.length > 0) {
@@ -192,8 +191,10 @@ export async function captureSessionSummary(
     if (agentName) args.push("--agent", agentName);
 
     await run(args, { ...opts, timeoutMs: 10_000 });
+    state.summarySaved = true;  // Only mark after successful write
     logger.info(`[palaia] Session summary saved (${summaryText.length} chars)`);
   } catch (error) {
+    // Don't set summarySaved — allow retry from session_end if before_reset failed
     logger.warn(`[palaia] Failed to save session summary: ${error}`);
   }
 }

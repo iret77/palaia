@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from palaia.config import DEFAULT_CONFIG, save_config
+from palaia.embed_server import EmbedServer
 from palaia.entry import parse_entry, serialize_entry
 from palaia.search import SearchEngine
 from palaia.store import Store
@@ -107,4 +110,50 @@ class TestTemporalSearch:
         # after is exclusive (> not >=)
         results = engine.search("Late Plan", after="2026-03-15T10:00:00+00:00")
         result_ids = [r["id"] for r in results]
+        assert ids[2] not in result_ids
+
+
+class TestEmbedServerTemporalQuery:
+    """Verify embed-server _handle_query forwards before/after to SearchEngine."""
+
+    def test_before_param_forwarded(self, temporal_store):
+        store, ids = temporal_store
+        server = EmbedServer(store.root)
+        response = server.handle_request({
+            "method": "query",
+            "params": {"text": "decision update plan", "before": "2026-02-01"},
+        })
+        assert "result" in response
+        result_ids = [r["id"] for r in response["result"]["results"]]
+        assert ids[0] in result_ids
+        assert ids[1] not in result_ids
+        assert ids[2] not in result_ids
+
+    def test_after_param_forwarded(self, temporal_store):
+        store, ids = temporal_store
+        server = EmbedServer(store.root)
+        response = server.handle_request({
+            "method": "query",
+            "params": {"text": "decision update plan", "after": "2026-03-01"},
+        })
+        assert "result" in response
+        result_ids = [r["id"] for r in response["result"]["results"]]
+        assert ids[2] in result_ids
+        assert ids[0] not in result_ids
+
+    def test_before_and_after_combined(self, temporal_store):
+        store, ids = temporal_store
+        server = EmbedServer(store.root)
+        response = server.handle_request({
+            "method": "query",
+            "params": {
+                "text": "decision update plan",
+                "after": "2026-02-01",
+                "before": "2026-03-01",
+            },
+        })
+        assert "result" in response
+        result_ids = [r["id"] for r in response["result"]["results"]]
+        assert ids[1] in result_ids
+        assert ids[0] not in result_ids
         assert ids[2] not in result_ids

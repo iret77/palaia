@@ -73,6 +73,7 @@ class SearchEngine:
         self._provider = None
         self._index_cache: list[tuple[str, str, dict]] | None = None
         self._index_dirty = True
+        self._index_cache_key: tuple | None = None  # (include_cold, agent) for cache validity
 
     @property
     def provider(self):
@@ -95,7 +96,8 @@ class SearchEngine:
         Uses a cached index when available. Call invalidate_index() after
         write/edit/gc operations to force a rebuild.
         """
-        if not self._index_dirty and self._index_cache is not None:
+        cache_key = (include_cold, agent)
+        if not self._index_dirty and self._index_cache is not None and self._index_cache_key == cache_key:
             # Re-index BM25 from cache (cheap — no disk reads)
             self.bm25.index([(did, text) for did, text, _meta in self._index_cache])
             return list(self._index_cache)
@@ -112,6 +114,7 @@ class SearchEngine:
             docs_with_meta.append((doc_id, full_text, meta))
         self.bm25.index(docs)
         self._index_cache = docs_with_meta
+        self._index_cache_key = cache_key
         self._index_dirty = False
         return docs_with_meta
 

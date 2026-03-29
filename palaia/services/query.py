@@ -80,6 +80,10 @@ def search_entries(
                     params["instance"] = instance
                 if cross_project:
                     params["cross_project"] = True
+                if before:
+                    params["before"] = before
+                if after:
+                    params["after"] = after
                 result = client.query(params, timeout=5.0)
                 chain_cfg = _config.get("embedding_chain", [])
                 bm25_only = not chain_cfg or chain_cfg == ["bm25"]
