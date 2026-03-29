@@ -39,14 +39,17 @@ Note: `palaia[fastembed]` already includes sqlite-vec for native vector search a
 
 **Upgrading?** `palaia upgrade` — auto-detects install method, preserves extras, runs doctor.
 
-### MCP Setup (Claude Desktop, Cursor — no OpenClaw needed)
+### MCP Setup (Claude Desktop, Cursor, Claude Code — no OpenClaw needed)
 
 ```bash
 pip install "palaia[mcp,fastembed]"
 palaia init
 ```
 
-Add to `~/.config/claude/claude_desktop_config.json` (Claude Desktop) or `.cursor/mcp.json` (Cursor):
+Add to your MCP config:
+- Claude Desktop: `~/.config/claude/claude_desktop_config.json`
+- Cursor: `.cursor/mcp.json`
+- Claude Code: `~/.claude/settings.json`
 ```json
 {
   "mcpServers": {

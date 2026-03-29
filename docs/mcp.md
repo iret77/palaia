@@ -54,6 +54,32 @@ Or add to `.cursor/mcp.json`:
 }
 ```
 
+### Claude Code
+
+Add to `~/.claude/settings.json`:
+```json
+{
+  "mcpServers": {
+    "palaia": {
+      "command": "palaia-mcp"
+    }
+  }
+}
+```
+
+If palaia is installed in a virtualenv, use the full path:
+```json
+{
+  "mcpServers": {
+    "palaia": {
+      "command": "/path/to/.venv/bin/palaia-mcp"
+    }
+  }
+}
+```
+
+Restart Claude Code after adding the config. palaia tools (`palaia_search`, `palaia_store`, etc.) will be available automatically.
+
 ### Other MCP Hosts
 
 Any MCP-compatible host that supports stdio transport can use palaia:
