@@ -868,7 +868,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
   // ── Startup Recovery Service ───────────────────────────────────
   api.registerService({
     id: "palaia-recovery",
-    start: async () => {
+    start: async (_ctx) => {
       const result = await recover(opts);
       if (result.replayed > 0) {
         logger.info(`[palaia] WAL recovery: replayed ${result.replayed} entries`);

@@ -5,7 +5,7 @@
  * They are maintained locally to avoid a build-time dependency on the
  * openclaw package (which is a peerDependency loaded at runtime).
  *
- * Based on OpenClaw v2026.3.24 plugin-sdk.
+ * Based on OpenClaw v2026.3.28 plugin-sdk.
  */
 
 import type { TObject } from "@sinclair/typebox";
@@ -28,12 +28,12 @@ export interface ToolOptions {
   optional?: boolean;
 }
 
-export type ToolFactory = ToolDefinition;
+export type ToolFactory = ToolDefinition | ((ctx: Record<string, unknown>) => ToolDefinition | ToolDefinition[] | null);
 
 // ── Hook Types ─────────────��────────────────────────────────────────────
 
 /**
- * All hook names supported by OpenClaw v2026.3.24.
+ * All hook names supported by OpenClaw v2026.3.28.
  * palaia registers handlers for a subset of these.
  */
 export type HookName =
@@ -261,10 +261,17 @@ export interface CommandDefinition {
 
 // ── Service Types ─────────────────────────────────────���─────────────────
 
+export interface ServiceContext {
+  config: Record<string, unknown>;
+  workspaceDir?: string;
+  stateDir: string;
+  logger: PluginLogger;
+}
+
 export interface ServiceDefinition {
   id: string;
-  start(): Promise<void>;
-  stop?(): Promise<void>;
+  start(ctx: ServiceContext): Promise<void>;
+  stop?(ctx: ServiceContext): Promise<void>;
 }
 
 // ���─ Context Engine Types ────────────���───────────────────────────────────
@@ -315,7 +322,7 @@ export type SubagentSpawnPreparation = {
 export type SubagentEndReason = "deleted" | "completed" | "swept" | "released";
 
 /**
- * ContextEngine interface — matches OpenClaw v2026.3.24.
+ * ContextEngine interface — matches OpenClaw v2026.3.28.
  *
  * This is the full interface. Palaia implements a subset;
  * optional methods are marked with `?`.
@@ -423,10 +430,10 @@ export type MemoryPromptSectionBuilder = (params: {
 // ── Logger ──────────────���───────────────────────────────────────────────
 
 export interface PluginLogger {
-  info(...args: unknown[]): void;
-  warn(...args: unknown[]): void;
-  error?(...args: unknown[]): void;
-  debug?(...args: unknown[]): void;
+  info(message: string): void;
+  warn(message: string): void;
+  error(message: string): void;
+  debug?(message: string): void;
 }
 
 // ���─ Runtime ───────────────��─────────────────────────────���───────────────
@@ -476,15 +483,13 @@ export interface OpenClawPluginApi {
   source?: string;
   registrationMode?: string;
 
-  registerTool(definition: ToolDefinition, options?: ToolOptions): void;
+  registerTool(definition: ToolDefinition | ToolFactory, options?: ToolOptions): void;
   registerCommand(command: CommandDefinition): void;
   registerService(service: ServiceDefinition): void;
   registerContextEngine?(id: string, factory: ContextEngineFactory): void;
   registerMemoryPromptSection?(builder: MemoryPromptSectionBuilder): void;
   registerHook?(events: string | string[], handler: HookHandler, opts?: HookOptions): void;
   on(hook: HookName | string, handler: HookHandler, opts?: HookOptions): void;
-  getConfig?(pluginId: string): Record<string, unknown> | undefined;
-
   logger: PluginLogger;
   runtime: PluginRuntime;
   config: Record<string, unknown>;

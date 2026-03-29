@@ -35,13 +35,11 @@ const palaiaPlugin: OpenClawPluginEntry = {
   id: "palaia",
   name: "Palaia Memory",
   async register(api: OpenClawPluginApi) {
-    // Issue #66: Plugin config is currently resolved GLOBALLY via api.getConfig("palaia").
+    // Issue #66: Plugin config is resolved GLOBALLY via api.pluginConfig.
     // OpenClaw does NOT provide per-agent config resolution — all agents share the same
-    // plugin config from openclaw.json → plugins.config.palaia.
-    // A per-agent resolver would require an OpenClaw upstream change where api.getConfig()
-    // accepts an agentId parameter or automatically scopes to the current agent context.
+    // plugin config from openclaw.json → plugins.entries.palaia.config.
     // See: https://github.com/byte5ai/palaia/issues/66
-    const rawConfig = api.getConfig?.("palaia") as
+    const rawConfig = api.pluginConfig as
       | Partial<PalaiaPluginConfig>
       | undefined;
     const config = resolveConfig(rawConfig);
