@@ -78,7 +78,17 @@ def unlock_project(root: Path, *, project: str) -> dict:
 
 
 def get_skill_content() -> dict:
-    """Read and return SKILL.md content. Returns dict with 'skill' or 'error'."""
+    """Read and return SKILL.md content.
+
+    Strips the install/update section (between ``<!-- begin:install -->``
+    and ``<!-- end:install -->``) because ``palaia skill`` is only called
+    when palaia is already installed — the install block wastes context window.
+    ClawHub and GitHub still see the full file.
+
+    Returns dict with 'skill' or 'error'.
+    """
+    import re
+
     skill_path = Path(__file__).parent.parent / "SKILL.md"
     if not skill_path.exists():
         return {
@@ -88,6 +98,13 @@ def get_skill_content() -> dict:
             )
         }
     content = skill_path.read_text(encoding="utf-8")
+    # Strip install section — agent already has palaia installed
+    content = re.sub(
+        r"<!-- begin:install -->.*?<!-- end:install -->\n*",
+        "",
+        content,
+        flags=re.DOTALL,
+    )
     return {"skill": content}
 
 

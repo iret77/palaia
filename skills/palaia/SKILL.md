@@ -36,6 +36,7 @@ metadata:
 
 Palaia is the memory system for OpenClaw agents. It gives you persistent, searchable, crash-safe memory across sessions. You don't need to understand how it works — just use the commands below.
 
+<!-- begin:install -->
 ## First-Time Setup
 
 When a user asks you to "set up palaia", "enable memory", or "remember things across sessions", run these steps:
@@ -136,6 +137,7 @@ npm install -g @byte5ai/palaia@latest
 ```
 
 After the manual update, `palaia upgrade` will be available for future updates.
+<!-- end:install -->
 
 ## Auto-Check (run every time this skill is loaded)
 
