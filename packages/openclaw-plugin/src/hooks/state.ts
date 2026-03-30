@@ -127,6 +127,8 @@ export function pruneStaleEntries(): void {
       lastInboundMessageByChannel.delete(key);
     }
   }
+  // Also prune stale session state (orphaned sessions)
+  pruneStaleSessionState();
 }
 
 /**
@@ -186,14 +188,16 @@ export interface SessionState {
   pendingBriefing: PendingBriefing | null;
   /** Accumulated tool observations for the session (used in session summary). */
   toolObservations: ToolObservation[];
-  /** Accumulated token usage for the session. */
-  tokenUsage: { input: number; output: number };
   /** Timestamp of session start. */
   startedAt: number;
   /** Whether the first turn briefing has been delivered. */
   briefingDelivered: boolean;
-  /** Whether a session summary has already been saved (prevents double-save). */
+  /** Whether a session summary has already been saved (prevents double-save at session end). */
   summarySaved: boolean;
+  /** Turn counter for rolling digest updates. */
+  turnCount: number;
+  /** Turn at which the last rolling digest was saved. */
+  lastDigestTurn: number;
   /** Promise that resolves when session_start briefing load is complete. */
   briefingReady: Promise<void> | null;
   /** Resolver for briefingReady promise. */
@@ -202,6 +206,23 @@ export interface SessionState {
 
 /** Session state map. Keyed by sessionKey. */
 export const sessionStateByKey = new Map<string, SessionState>();
+
+/** Maximum age for session state entries before pruning (1 hour). */
+const SESSION_STATE_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * Remove stale entries from sessionStateByKey.
+ * Called alongside pruneStaleEntries() to prevent memory leaks from
+ * sessions that ended without firing session_end (crash/kill).
+ */
+export function pruneStaleSessionState(): void {
+  const now = Date.now();
+  for (const [key, state] of sessionStateByKey) {
+    if (now - state.startedAt > SESSION_STATE_TTL_MS) {
+      sessionStateByKey.delete(key);
+    }
+  }
+}
 
 /** Generate an auto session ID. */
 export function generateAutoSessionId(): string {
@@ -223,10 +244,11 @@ export function getOrCreateSessionState(sessionKey: string): SessionState {
       modelSwitchDetected: false,
       pendingBriefing: null,
       toolObservations: [],
-      tokenUsage: { input: 0, output: 0 },
       startedAt: Date.now(),
       briefingDelivered: false,
       summarySaved: false,
+      turnCount: 0,
+      lastDigestTurn: 0,
       briefingReady: null,
       briefingReadyResolve: null,
     };
