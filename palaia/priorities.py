@@ -33,15 +33,19 @@ class ResolvedPriorities:
     recall_min_score: float = DEFAULT_MIN_SCORE
     max_injected_chars: int = DEFAULT_MAX_CHARS
     tier: str = DEFAULT_TIER
+    scope_visibility: list[str] | None = None  # Issue #145: agent isolation
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "blocked": sorted(self.blocked),
             "recallTypeWeight": self.recall_type_weight,
             "recallMinScore": self.recall_min_score,
             "maxInjectedChars": self.max_injected_chars,
             "tier": self.tier,
         }
+        if self.scope_visibility is not None:
+            d["scopeVisibility"] = self.scope_visibility
+        return d
 
 
 def _empty_priorities() -> dict:
@@ -111,6 +115,8 @@ def resolve_priorities(
             resolved.max_injected_chars = int(agent_cfg["maxInjectedChars"])
         if "tier" in agent_cfg:
             resolved.tier = agent_cfg["tier"]
+        if "scopeVisibility" in agent_cfg:
+            resolved.scope_visibility = list(agent_cfg["scopeVisibility"])
 
     # Layer 3: Project override
     if project:
@@ -176,6 +182,17 @@ def set_priority_value(
         if value not in ("hot", "warm", "all"):
             raise ValueError(f"Invalid tier: {value}. Valid: hot, warm, all")
         target["tier"] = value
+    elif key == "scopeVisibility":
+        if isinstance(value, str):
+            value = [s.strip() for s in value.split(",")]
+        if not isinstance(value, list):
+            raise ValueError("scopeVisibility must be a list of scopes or comma-separated string")
+        valid = {"private", "team", "public", "shared"}
+        for s in value:
+            base = s.split(":")[0] if ":" in s else s
+            if base not in valid:
+                raise ValueError(f"Invalid scope in scopeVisibility: {s}. Valid: private, team, public, shared:<name>")
+        target["scopeVisibility"] = value
     else:
         raise ValueError(f"Unknown priority key: {key}")
 

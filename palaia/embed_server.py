@@ -234,7 +234,7 @@ class EmbedServer:
         top_k = params.get("top_k", 10)
         agent = params.get("agent")
         project = params.get("project")
-        _scope = params.get("scope")  # reserved for future scope filtering
+        scope_visibility = params.get("scope_visibility")  # Issue #145: agent isolation
         entry_type = params.get("type")
         status = params.get("status")
         priority = params.get("priority")
@@ -260,6 +260,7 @@ class EmbedServer:
             before=before,
             after=after,
             cross_project=cross_project,
+            scope_visibility=scope_visibility,
         )
 
         return {"result": {"results": results}}

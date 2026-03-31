@@ -10,6 +10,7 @@ import { Type } from "@sinclair/typebox";
 import { run, runJson, type RunnerOpts } from "./runner.js";
 import type { PalaiaPluginConfig } from "./config.js";
 import { sanitizeScope, isValidScope } from "./hooks/index.js";
+import { loadPriorities, resolvePriorities } from "./priorities.js";
 import type { OpenClawPluginApi } from "./types.js";
 
 /** Shape returned by `palaia query --json` */
@@ -96,6 +97,22 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
         type?: string;
       }
     ) {
+      // Load scope visibility from priorities (Issue #145: agent isolation)
+      let scopeVisibility: string[] | null = null;
+      try {
+        const prio = await loadPriorities(config.workspace || "");
+        const agentId = process.env.PALAIA_AGENT || undefined;
+        const resolvedPrio = resolvePriorities(prio, {
+          recallTypeWeight: config.recallTypeWeight,
+          recallMinScore: config.recallMinScore,
+          maxInjectedChars: config.maxInjectedChars,
+          tier: config.tier,
+        }, agentId);
+        scopeVisibility = resolvedPrio.scopeVisibility;
+      } catch {
+        // Non-fatal: proceed without scope filtering
+      }
+
       const limit = params.maxResults || config.maxResults || 5;
       const args: string[] = ["query", params.query, "--limit", String(limit)];
 
@@ -111,8 +128,21 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
 
       const result = await runJson<QueryResult>(args, opts);
 
+      // Apply scope visibility filter (Issue #145: agent isolation)
+      let filteredResults = result.results || [];
+      if (scopeVisibility) {
+        filteredResults = filteredResults.filter((r) => {
+          const scope = r.scope || "team";
+          return scopeVisibility!.some((allowed) => {
+            if (scope === allowed) return true;
+            if (allowed === "shared" && scope.startsWith("shared:")) return true;
+            return false;
+          });
+        });
+      }
+
       // Format as memory_search compatible output
-      const snippets = (result.results || []).map((r) => {
+      const snippets = filteredResults.map((r) => {
         const body = r.content || r.body || "";
         const path = r.path || `${r.tier}/${r.id}.md`;
         return {

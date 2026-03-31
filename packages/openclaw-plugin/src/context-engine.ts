@@ -102,6 +102,7 @@ async function buildMemoryContext(
             text: userMessage,
             top_k: limit,
             include_cold: resolvedPrio.tier === "all",
+            ...(resolvedPrio.scopeVisibility ? { scope_visibility: resolvedPrio.scopeVisibility } : {}),
           }, config.timeoutMs || 3000);
           if (resp?.result?.results && Array.isArray(resp.result.results)) {
             entries = resp.result.results;

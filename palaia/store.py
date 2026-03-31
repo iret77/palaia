@@ -393,7 +393,8 @@ class Store:
             path.unlink()
 
     def read(
-        self, entry_id: str, agent: str | None = None, projects: list[str] | None = None
+        self, entry_id: str, agent: str | None = None, projects: list[str] | None = None,
+        scope_visibility: list[str] | None = None,
     ) -> tuple[dict, str] | None:
         """Read a memory entry by ID. Updates access metadata."""
         path = self._find_entry(entry_id)
@@ -405,7 +406,7 @@ class Store:
 
         # Scope check
         resolved = self._resolve_names(agent)
-        if not can_access(meta.get("scope", "team"), agent, meta.get("agent"), projects, resolved):
+        if not can_access(meta.get("scope", "team"), agent, meta.get("agent"), projects, resolved, scope_visibility):
             return None
 
         # Debounce access metadata writes: only update if enough time has passed
@@ -423,7 +424,8 @@ class Store:
         return meta, body
 
     def list_entries(
-        self, tier: str = "hot", agent: str | None = None, projects: list[str] | None = None
+        self, tier: str = "hot", agent: str | None = None, projects: list[str] | None = None,
+        scope_visibility: list[str] | None = None,
     ) -> list[tuple[dict, str]]:
         """List all entries in a tier."""
         tier_dir = self.root / tier
@@ -436,20 +438,21 @@ class Store:
             try:
                 text = p.read_text(encoding="utf-8")
                 meta, body = parse_entry(text)
-                if can_access(meta.get("scope", "team"), agent, meta.get("agent"), projects, resolved):
+                if can_access(meta.get("scope", "team"), agent, meta.get("agent"), projects, resolved, scope_visibility):
                     results.append((meta, body))
             except (OSError, UnicodeDecodeError):
                 continue
         return results
 
     def all_entries(
-        self, include_cold: bool = False, agent: str | None = None, projects: list[str] | None = None
+        self, include_cold: bool = False, agent: str | None = None, projects: list[str] | None = None,
+        scope_visibility: list[str] | None = None,
     ) -> list[tuple[dict, str, str]]:
         """Get all entries across tiers. Returns (meta, body, tier)."""
         tiers = ["hot", "warm"] + (["cold"] if include_cold else [])
         results = []
         for tier in tiers:
-            for meta, body in self.list_entries(tier, agent, projects):
+            for meta, body in self.list_entries(tier, agent, projects, scope_visibility):
                 results.append((meta, body, tier))
         return results
 

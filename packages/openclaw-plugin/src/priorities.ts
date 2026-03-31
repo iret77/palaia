@@ -32,6 +32,7 @@ export interface AgentPriorityOverride {
   recallMinScore?: number;
   maxInjectedChars?: number;
   tier?: string;
+  scopeVisibility?: string[];  // Issue #145: agent isolation
 }
 
 export interface ProjectPriorityOverride {
@@ -45,6 +46,7 @@ export interface ResolvedPriorities {
   recallMinScore: number;
   maxInjectedChars: number;
   tier: string;
+  scopeVisibility: string[] | null;  // Issue #145: agent isolation
 }
 
 // ============================================================================
@@ -136,6 +138,7 @@ export function resolvePriorities(
     recallMinScore: defaults.recallMinScore ?? DEFAULT_MIN_SCORE,
     maxInjectedChars: defaults.maxInjectedChars ?? DEFAULT_MAX_CHARS,
     tier: defaults.tier ?? DEFAULT_TIER,
+    scopeVisibility: null,
   };
 
   if (!prio) return resolved;
@@ -175,6 +178,9 @@ export function resolvePriorities(
       }
       if (agentCfg.tier !== undefined) {
         resolved.tier = agentCfg.tier;
+      }
+      if (agentCfg.scopeVisibility) {
+        resolved.scopeVisibility = [...agentCfg.scopeVisibility];
       }
     }
   }
