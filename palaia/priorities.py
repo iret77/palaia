@@ -34,6 +34,7 @@ class ResolvedPriorities:
     max_injected_chars: int = DEFAULT_MAX_CHARS
     tier: str = DEFAULT_TIER
     scope_visibility: list[str] | None = None  # Issue #145: agent isolation
+    capture_scope: str | None = None  # Issue #147: per-agent write scope
 
     def to_dict(self) -> dict:
         d = {
@@ -45,6 +46,8 @@ class ResolvedPriorities:
         }
         if self.scope_visibility is not None:
             d["scopeVisibility"] = self.scope_visibility
+        if self.capture_scope is not None:
+            d["captureScope"] = self.capture_scope
         return d
 
 
@@ -117,6 +120,8 @@ def resolve_priorities(
             resolved.tier = agent_cfg["tier"]
         if "scopeVisibility" in agent_cfg:
             resolved.scope_visibility = list(agent_cfg["scopeVisibility"])
+        if "captureScope" in agent_cfg:
+            resolved.capture_scope = str(agent_cfg["captureScope"])
 
     # Layer 3: Project override
     if project:
@@ -182,6 +187,12 @@ def set_priority_value(
         if value not in ("hot", "warm", "all"):
             raise ValueError(f"Invalid tier: {value}. Valid: hot, warm, all")
         target["tier"] = value
+    elif key == "captureScope":
+        from palaia.scope import validate_scope
+        value = str(value).strip().lower()
+        if not validate_scope(value):
+            raise ValueError(f"Invalid captureScope: {value}. Valid: private, team, public, shared:<name>")
+        target["captureScope"] = value
     elif key == "scopeVisibility":
         if isinstance(value, str):
             value = [s.strip() for s in value.split(",")]

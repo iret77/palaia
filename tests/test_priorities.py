@@ -306,3 +306,65 @@ class TestScopeVisibility:
         """Invalid scope in visibility raises ValueError."""
         with pytest.raises(ValueError, match="Invalid scope"):
             set_priority_value(prio_root, "scopeVisibility", "private,bogus", agent="dev")
+
+
+# ---------------------------------------------------------------------------
+# captureScope tests (Issue #147)
+# ---------------------------------------------------------------------------
+
+class TestCaptureScope:
+    def test_resolve_default_is_none(self):
+        """Without captureScope in config, resolved is None."""
+        rp = resolve_priorities({"version": 1, "blocked": []})
+        assert rp.capture_scope is None
+
+    def test_resolve_from_agent(self):
+        """captureScope is resolved from agent config."""
+        prio = {
+            "version": 1, "blocked": [],
+            "agents": {
+                "worker": {"captureScope": "private"},
+            },
+        }
+        rp = resolve_priorities(prio, agent="worker")
+        assert rp.capture_scope == "private"
+
+    def test_resolve_unknown_agent_is_none(self):
+        """Unknown agent has no captureScope."""
+        prio = {
+            "version": 1, "blocked": [],
+            "agents": {
+                "worker": {"captureScope": "private"},
+            },
+        }
+        rp = resolve_priorities(prio, agent="orchestrator")
+        assert rp.capture_scope is None
+
+    def test_set_capture_scope(self, prio_root):
+        """set_priority_value sets captureScope for agent."""
+        set_priority_value(prio_root, "captureScope", "private", agent="worker")
+        prio = load_priorities(prio_root)
+        assert prio["agents"]["worker"]["captureScope"] == "private"
+
+    def test_set_capture_scope_shared(self, prio_root):
+        """shared:<name> is a valid captureScope."""
+        set_priority_value(prio_root, "captureScope", "shared:myproject", agent="worker")
+        prio = load_priorities(prio_root)
+        assert prio["agents"]["worker"]["captureScope"] == "shared:myproject"
+
+    def test_set_capture_scope_invalid(self, prio_root):
+        """Invalid captureScope raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid captureScope"):
+            set_priority_value(prio_root, "captureScope", "bogus", agent="worker")
+
+    def test_to_dict_with_capture_scope(self):
+        """captureScope appears in to_dict when set."""
+        rp = ResolvedPriorities(capture_scope="private")
+        d = rp.to_dict()
+        assert d["captureScope"] == "private"
+
+    def test_to_dict_without_capture_scope(self):
+        """captureScope is omitted from to_dict when None."""
+        rp = ResolvedPriorities()
+        d = rp.to_dict()
+        assert "captureScope" not in d

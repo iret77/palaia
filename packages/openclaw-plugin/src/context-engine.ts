@@ -52,6 +52,27 @@ import {
   filterBlocked,
 } from "./priorities.js";
 
+/**
+ * Resolve the effective capture scope from priorities (per-agent override)
+ * falling back to plugin config, then to "team".
+ */
+async function getEffectiveCaptureScope(config: PalaiaPluginConfig): Promise<string> {
+  try {
+    const prio = await loadPriorities(config.workspace || "");
+    const agentId = process.env.PALAIA_AGENT || undefined;
+    const resolved = resolvePriorities(prio, {
+      recallTypeWeight: config.recallTypeWeight,
+      recallMinScore: config.recallMinScore,
+      maxInjectedChars: config.maxInjectedChars,
+      tier: config.tier,
+    }, agentId);
+    if (resolved.captureScope) return resolved.captureScope;
+  } catch {
+    // Fall through to config default
+  }
+  return config.captureScope || "team";
+}
+
 function buildRunnerOpts(config: PalaiaPluginConfig, overrides?: { workspace?: string }): RunnerOpts {
   return {
     binaryPath: config.binaryPath,
@@ -245,6 +266,7 @@ async function runAutoCapture(
   const hookOpts = buildRunnerOpts(config);
   const knownProjects = await loadProjects(hookOpts);
   const agentName = process.env.PALAIA_AGENT || undefined;
+  const effectiveCaptureScope = await getEffectiveCaptureScope(config);
 
   // LLM-based extraction (primary)
   let llmHandled = false;
@@ -258,8 +280,8 @@ async function runAutoCapture(
         const hintProject = collectedHints.find((h) => h.project)?.project;
         const hintScope = collectedHints.find((h) => h.scope)?.scope;
         const effectiveProject = hintProject || r.project;
-        const scope = config.captureScope
-          ? sanitizeScope(config.captureScope, "team", true)
+        const scope = effectiveCaptureScope !== "team"
+          ? sanitizeScope(effectiveCaptureScope, "team", true)
           : sanitizeScope(hintScope || r.scope, "team", false);
         const tags = [...r.tags];
         if (!tags.includes("auto-capture")) tags.push("auto-capture");
@@ -289,8 +311,8 @@ async function runAutoCapture(
       if (!significance) return false;
       const tags = [...significance.tags];
       if (!tags.includes("auto-capture")) tags.push("auto-capture");
-      const scope = config.captureScope
-        ? sanitizeScope(config.captureScope, "team", true)
+      const scope = effectiveCaptureScope !== "team"
+        ? sanitizeScope(effectiveCaptureScope, "team", true)
         : "team";
       const args: string[] = [
         "write", significance.summary,
@@ -306,7 +328,7 @@ async function runAutoCapture(
         "write", summary,
         "--type", "memory",
         "--tags", "auto-capture",
-        "--scope", config.captureScope || "team",
+        "--scope", effectiveCaptureScope,
       ];
       if (agentName) args.push("--agent", agentName);
       await run(args, { ...hookOpts, timeoutMs: 10_000 });
@@ -519,11 +541,12 @@ export function createPalaiaContextEngine(
             );
             if (summaryParts.length > 0) {
               const summaryText = `Sub-agent result:\n${summaryParts.join("\n")}`.slice(0, 500);
+              const subagentScope = await getEffectiveCaptureScope(config);
               await run([
                 "write", summaryText,
                 "--type", "memory",
                 "--tags", "subagent-result,auto-capture",
-                "--scope", config.captureScope || "team",
+                "--scope", subagentScope,
               ], { ...opts, timeoutMs: 10_000 });
               logger.info(`[palaia] Sub-agent result captured (${summaryText.length} chars)`);
             }
