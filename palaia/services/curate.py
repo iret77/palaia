@@ -31,12 +31,12 @@ def analyze_svc(root: Path, project: str | None = None, agent: str | None = None
     }
 
 
-def apply_svc(root: Path, report_path: str, output: str | None = None) -> dict:
+def apply_svc(root: Path, report_path: str, output: str | None = None, *, force: bool = False) -> dict:
     """Apply edited curation report. Returns {output_path, kept, merged, dropped}."""
     store = Store(root)
     markdown = Path(report_path).read_text(encoding="utf-8")
     report = parse_report(markdown)
-    result = apply_report(report, store)
+    result = apply_report(report, store, force=force)
 
     output_path = output or str(root / "curated.palaia-pkg.json")
     package = {

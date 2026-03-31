@@ -12,6 +12,7 @@ from palaia.curate import (
     Cluster,
     ClusterEntry,
     CurateReport,
+    ProcessSafetyError,
     ScopeMapping,
     _cosine_similarity,
     _find_duplicates,
@@ -543,6 +544,138 @@ class TestMergeEntries:
         e = _make_entry(content="Only one", title="Solo")
         merged = merge_entries([e])
         assert merged["content"] == "Only one"
+
+    def test_merge_preserves_full_process_content(self):
+        """Process entries must never have their content truncated."""
+        long_content = "Step " + "x" * 500  # Well over 200 chars
+        e1 = _make_entry(
+            content="Main process", title="Main",
+            entry_type="process", decay_score=0.9,
+        )
+        e2 = _make_entry(
+            content=long_content, title="Extra steps",
+            entry_type="process", decay_score=0.3,
+        )
+        merged = merge_entries([e1, e2])
+        # Full content of secondary entry must be preserved
+        assert long_content in merged["content"]
+
+    def test_merge_truncates_non_process_content(self):
+        """Non-process entries still get truncated to 200 chars."""
+        long_content = "Note " + "x" * 500
+        e1 = _make_entry(
+            content="Main note", title="Main",
+            entry_type="memory", decay_score=0.9,
+        )
+        e2 = _make_entry(
+            content=long_content, title="Extra",
+            entry_type="memory", decay_score=0.3,
+        )
+        merged = merge_entries([e1, e2])
+        # Secondary content should be truncated
+        assert long_content not in merged["content"]
+        assert long_content[:200] in merged["content"]
+
+
+# ---------------------------------------------------------------------------
+# Test process safety guardrails
+# ---------------------------------------------------------------------------
+
+class TestProcessSafety:
+    def test_drop_process_raises(self, palaia_root):
+        """DROP on cluster with process entries raises ProcessSafetyError."""
+        store = Store(palaia_root)
+        e1 = _make_entry(content="Deploy SOP", title="Deploy", entry_type="process")
+        cluster = Cluster(
+            cluster_id=1, label="drop-proc", entries=[e1],
+            recommendation="DROP", reason="test",
+        )
+        report = CurateReport(
+            project=None, generated_at="", total_entries=1,
+            clusters=[cluster], scope_mappings=[], unclustered=[],
+        )
+        with pytest.raises(ProcessSafetyError, match="Cannot DROP"):
+            apply_report(report, store)
+
+    def test_merge_process_raises(self, palaia_root):
+        """MERGE on cluster with process entries raises ProcessSafetyError."""
+        store = Store(palaia_root)
+        e1 = _make_entry(content="Step 1", title="Process A", entry_type="process")
+        e2 = _make_entry(content="Step 2", title="Process B", entry_type="process")
+        cluster = Cluster(
+            cluster_id=1, label="merge-proc", entries=[e1, e2],
+            recommendation="MERGE", reason="test",
+        )
+        report = CurateReport(
+            project=None, generated_at="", total_entries=2,
+            clusters=[cluster], scope_mappings=[], unclustered=[],
+        )
+        with pytest.raises(ProcessSafetyError, match="Cannot MERGE"):
+            apply_report(report, store)
+
+    def test_force_allows_drop_process(self, palaia_root):
+        """DROP on process entries works with force=True."""
+        store = Store(palaia_root)
+        e1 = _make_entry(content="Old SOP", title="Old", entry_type="process")
+        cluster = Cluster(
+            cluster_id=1, label="force-drop", entries=[e1],
+            recommendation="DROP", reason="test",
+        )
+        report = CurateReport(
+            project=None, generated_at="", total_entries=1,
+            clusters=[cluster], scope_mappings=[], unclustered=[],
+        )
+        result = apply_report(report, store, force=True)
+        assert result["dropped"] == 1
+        assert len(result["entries"]) == 0
+
+    def test_force_allows_merge_process(self, palaia_root):
+        """MERGE on process entries works with force=True."""
+        store = Store(palaia_root)
+        e1 = _make_entry(content="Step 1", title="A", entry_type="process", decay_score=0.9)
+        e2 = _make_entry(content="Step 2", title="B", entry_type="process", decay_score=0.3)
+        cluster = Cluster(
+            cluster_id=1, label="force-merge", entries=[e1, e2],
+            recommendation="MERGE", reason="test",
+        )
+        report = CurateReport(
+            project=None, generated_at="", total_entries=2,
+            clusters=[cluster], scope_mappings=[], unclustered=[],
+        )
+        result = apply_report(report, store, force=True)
+        assert result["merged"] == 2
+        assert len(result["entries"]) == 1
+
+    def test_non_process_drop_unaffected(self, palaia_root):
+        """DROP on non-process entries works without force."""
+        store = Store(palaia_root)
+        e1 = _make_entry(content="Old note", entry_type="memory")
+        cluster = Cluster(
+            cluster_id=1, label="drop-mem", entries=[e1],
+            recommendation="DROP", reason="test",
+        )
+        report = CurateReport(
+            project=None, generated_at="", total_entries=1,
+            clusters=[cluster], scope_mappings=[], unclustered=[],
+        )
+        result = apply_report(report, store)
+        assert result["dropped"] == 1
+
+    def test_mixed_cluster_with_process_raises(self, palaia_root):
+        """A cluster mixing process and memory entries still triggers the guard."""
+        store = Store(palaia_root)
+        e1 = _make_entry(content="Note", entry_type="memory")
+        e2 = _make_entry(content="SOP", title="Deploy", entry_type="process")
+        cluster = Cluster(
+            cluster_id=1, label="mixed", entries=[e1, e2],
+            recommendation="DROP", reason="test",
+        )
+        report = CurateReport(
+            project=None, generated_at="", total_entries=2,
+            clusters=[cluster], scope_mappings=[], unclustered=[],
+        )
+        with pytest.raises(ProcessSafetyError):
+            apply_report(report, store)
 
 
 # ---------------------------------------------------------------------------

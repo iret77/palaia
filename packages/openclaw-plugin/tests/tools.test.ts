@@ -5,12 +5,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the runner module
+const mockQuery = vi.fn();
 vi.mock("../src/runner.js", () => ({
   runJson: vi.fn(),
   run: vi.fn(),
   detectBinary: vi.fn().mockResolvedValue("palaia"),
   recover: vi.fn().mockResolvedValue({ replayed: 0, errors: 0 }),
   resetCache: vi.fn(),
+  getEmbedServerManager: vi.fn(() => ({ query: mockQuery })),
 }));
 
 import { registerTools } from "../src/tools.js";
@@ -57,19 +59,21 @@ describe("tools", () => {
   });
 
   describe("memory_search", () => {
-    it("returns formatted results", async () => {
-      mockRunJson.mockResolvedValueOnce({
-        results: [
-          {
-            id: "abc-123",
-            body: "Test memory content",
-            score: 0.92,
-            tier: "hot",
-            scope: "team",
-            title: "Test Entry",
-            path: "hot/abc-123.md",
-          },
-        ],
+    it("returns formatted results via embed server", async () => {
+      mockQuery.mockResolvedValueOnce({
+        result: {
+          results: [
+            {
+              id: "abc-123",
+              body: "Test memory content",
+              score: 0.92,
+              tier: "hot",
+              scope: "team",
+              title: "Test Entry",
+              path: "hot/abc-123.md",
+            },
+          ],
+        },
       });
 
       const execute = api.tools["memory_search"].def.execute;
@@ -81,43 +85,70 @@ describe("tools", () => {
       expect(result.content[0].text).toContain("Source: hot/abc-123.md");
       expect(result.content[0].text).toContain("score: 0.92");
 
-      // Verify CLI args (default maxResults is 10)
+      // Should use embed server, not CLI
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "test", top_k: 10 }),
+        expect.any(Number)
+      );
+      expect(mockRunJson).not.toHaveBeenCalled();
+    });
+
+    it("falls back to CLI when embed server fails", async () => {
+      mockQuery.mockRejectedValueOnce(new Error("server down"));
+      mockRunJson.mockResolvedValueOnce({
+        results: [
+          {
+            id: "abc-123",
+            body: "Fallback content",
+            score: 0.85,
+            tier: "hot",
+            scope: "team",
+            path: "hot/abc-123.md",
+          },
+        ],
+      });
+
+      const result = await api.tools["memory_search"].def.execute("call-fb", {
+        query: "test",
+      });
+
+      expect(result.content[0].text).toContain("Fallback content");
       expect(mockRunJson).toHaveBeenCalledWith(
         ["query", "test", "--limit", "10"],
-        expect.any(Object)
+        expect.objectContaining({ timeoutMs: 15000 })
       );
     });
 
     it("respects maxResults param", async () => {
-      mockRunJson.mockResolvedValueOnce({ results: [] });
+      mockQuery.mockResolvedValueOnce({ result: { results: [] } });
 
       await api.tools["memory_search"].def.execute("call-2", {
         query: "test",
         maxResults: 20,
       });
 
-      expect(mockRunJson).toHaveBeenCalledWith(
-        ["query", "test", "--limit", "20"],
-        expect.any(Object)
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ top_k: 20 }),
+        expect.any(Number)
       );
     });
 
-    it("passes --all for tier=all", async () => {
-      mockRunJson.mockResolvedValueOnce({ results: [] });
+    it("passes include_cold for tier=all", async () => {
+      mockQuery.mockResolvedValueOnce({ result: { results: [] } });
 
       await api.tools["memory_search"].def.execute("call-3", {
         query: "test",
         tier: "all",
       });
 
-      expect(mockRunJson).toHaveBeenCalledWith(
-        expect.arrayContaining(["--all"]),
-        expect.any(Object)
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ include_cold: true }),
+        expect.any(Number)
       );
     });
 
     it("returns 'No results found.' when empty", async () => {
-      mockRunJson.mockResolvedValueOnce({ results: [] });
+      mockQuery.mockResolvedValueOnce({ result: { results: [] } });
 
       const result = await api.tools["memory_search"].def.execute("call-4", {
         query: "nothing",
@@ -247,10 +278,36 @@ describe("tools", () => {
   });
 
   describe("memory_search type filter (Issue #82)", () => {
-    it("passes --type filter when set", async () => {
-      mockRunJson.mockResolvedValueOnce({ results: [] });
+    it("passes type filter to embed server", async () => {
+      mockQuery.mockResolvedValueOnce({ result: { results: [] } });
 
       await api.tools["memory_search"].def.execute("call-type-1", {
+        query: "tasks",
+        type: "task",
+      });
+
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "task" }),
+        expect.any(Number)
+      );
+    });
+
+    it("omits type when not set", async () => {
+      mockQuery.mockResolvedValueOnce({ result: { results: [] } });
+
+      await api.tools["memory_search"].def.execute("call-type-2", {
+        query: "anything",
+      });
+
+      const queryParams = mockQuery.mock.calls[0][0];
+      expect(queryParams).not.toHaveProperty("type");
+    });
+
+    it("passes --type to CLI fallback", async () => {
+      mockQuery.mockRejectedValueOnce(new Error("server down"));
+      mockRunJson.mockResolvedValueOnce({ results: [] });
+
+      await api.tools["memory_search"].def.execute("call-type-3", {
         query: "tasks",
         type: "task",
       });
@@ -259,17 +316,6 @@ describe("tools", () => {
         expect.arrayContaining(["--type", "task"]),
         expect.any(Object)
       );
-    });
-
-    it("omits --type when not set", async () => {
-      mockRunJson.mockResolvedValueOnce({ results: [] });
-
-      await api.tools["memory_search"].def.execute("call-type-2", {
-        query: "anything",
-      });
-
-      const callArgs = mockRunJson.mock.calls[0][0];
-      expect(callArgs).not.toContain("--type");
     });
   });
 });

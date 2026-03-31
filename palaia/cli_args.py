@@ -325,6 +325,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_curate_apply = curate_sub.add_parser("apply", help="Apply edited curation report")
     p_curate_apply.add_argument("report", help="Path to edited curation report")
     p_curate_apply.add_argument("--output", default=None, help="Output package path")
+    p_curate_apply.add_argument("--force", action="store_true", help="Allow MERGE/DROP on process entries (dangerous)")
     p_curate_apply.add_argument("--json", action="store_true", help="Output as JSON")
 
     # sync
