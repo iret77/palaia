@@ -210,7 +210,29 @@ async function buildMemoryContext(
     // Non-fatal
   }
 
-  const nudgeText = USAGE_NUDGE + "\n\n" + agentNudges;
+  // --- Isolation workflow nudges (#148) ---
+  let isolationNudges = "";
+
+  // 1. missing_agent_identity: scopeVisibility configured but no PALAIA_AGENT
+  if (resolvedPrio.scopeVisibility && !process.env.PALAIA_AGENT) {
+    isolationNudges += "\n\n⚠️ scopeVisibility is configured but PALAIA_AGENT is not set. " +
+      "Scope filtering cannot work without agent identity. Set PALAIA_AGENT env var.";
+  }
+
+  // 2. recall_noise_ratio: >80% auto-capture entries for isolated agents
+  if (resolvedPrio.scopeVisibility && ranked.length >= 5) {
+    const autoCaptureCount = ranked.filter(e =>
+      (e.tags || []).includes("auto-capture")
+    ).length;
+    if (autoCaptureCount / ranked.length > 0.8) {
+      isolationNudges += "\n\n[palaia] Most recall results are auto-captured session data. " +
+        "Ask the orchestrator to run: palaia prune --agent " +
+        (process.env.PALAIA_AGENT || "<agent>") +
+        " --tags auto-capture --protect-type process";
+    }
+  }
+
+  const nudgeText = USAGE_NUDGE + "\n\n" + agentNudges + isolationNudges;
   if (chars + nudgeText.length <= effectiveMaxChars) {
     text += nudgeText;
   }

@@ -560,6 +560,15 @@ def cmd_prune(args):
         for e in entries:
             print(f"  {e['id']}  {e['title'][:40]}")
 
+        # Record prune success for prune_reminder graduation (#148)
+        try:
+            from palaia.nudge import NudgeTracker
+            caller = os.environ.get("PALAIA_AGENT") or "default"
+            tracker = NudgeTracker(root)
+            tracker.record_success("prune_reminder", caller)
+        except Exception:
+            pass
+
     return 0
 
 

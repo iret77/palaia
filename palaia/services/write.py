@@ -150,6 +150,36 @@ def write_entry(
             except Exception:
                 pass
 
+        # isolation_scope_mismatch: detect writes outside scopeVisibility (#148)
+        try:
+            from palaia.priorities import load_priorities, resolve_priorities
+
+            prio = load_priorities(root)
+            resolved_prio = resolve_priorities(prio, agent=agent_for_nudge)
+            vis = resolved_prio.scope_visibility
+            if vis:
+                written_scope = scope or "team"
+                # Check if written scope is visible to this agent
+                scope_visible = any(
+                    written_scope == v or (v == "shared" and written_scope.startswith("shared:"))
+                    for v in vis
+                )
+                if scope_visible:
+                    tracker.record_success("isolation_scope_mismatch", agent_for_nudge)
+                else:
+                    tracker.record_failure("isolation_scope_mismatch", agent_for_nudge)
+                    if tracker.should_nudge("isolation_scope_mismatch", agent_for_nudge):
+                        msg = tracker.get_nudge_message("isolation_scope_mismatch")
+                        if msg:
+                            msg = msg.format(
+                                visibility=",".join(vis),
+                                scope=written_scope,
+                            )
+                            nudge_messages.append(msg)
+                            tracker.record_nudge("isolation_scope_mismatch", agent_for_nudge)
+        except Exception:
+            pass
+
         # migration_success: one-shot nudge after flat-file → SQLite migration
         try:
             flag_file = root / ".migration_success"

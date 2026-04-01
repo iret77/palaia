@@ -344,6 +344,7 @@ export interface RankedEntry {
   embedScore?: number;
   weightedScore: number;
   created?: string;
+  tags?: string[];
 }
 
 /**
@@ -384,6 +385,7 @@ export function rerankByTypeWeight(
         embedScore: r.embed_score,
         weightedScore: r.score * weight * recency,
         created: r.created,
+        tags: r.tags,
       };
     })
     .sort((a, b) => b.weightedScore - a.weightedScore);
