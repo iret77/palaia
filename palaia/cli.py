@@ -49,7 +49,17 @@ from palaia.config import (  # noqa: E402
 from palaia.doctor import apply_fixes, format_doctor_report, run_doctor  # noqa: E402
 from palaia.migrate import format_result, migrate  # noqa: E402
 from palaia.store import Store  # noqa: E402
-from palaia.ui import print_header, section, table_multi  # noqa: E402
+from palaia.ui import (  # noqa: E402
+    bold,
+    dim,
+    error_msg,
+    print_header,
+    section,
+    success,
+    sym_arrow,
+    table_multi,
+)
+
 
 # Commands that require a valid init (agent identity set)
 GATED_COMMANDS = frozenset(
@@ -178,9 +188,9 @@ def cmd_init(args):
             args,
         ):
             return 0
-        print(f"Initialized Palaia at {result['path']}")
+        print(success(f"Initialized at {dim(result['path'])}"))
         if result.get("used_default"):
-            print("Initialized with agent: default (use --agent NAME to customize)")
+            print(f"    Agent: default {dim('(use --agent NAME to customize)')}")
 
     # Print all messages from service (chain info, capture level, setup instructions)
     if not getattr(args, "json", False):
@@ -243,7 +253,10 @@ def cmd_write(args):
     ):
         return 0
 
-    print(f"Written: {result['id']}")
+    short_id = result['id'][:12]
+    scope = result.get('scope', 'team')
+    tier = result.get('tier', 'hot')
+    print(success(f"Written {dim(short_id)}  {sym_arrow()}  {tier}/{scope}"))
 
     if significance_detected:
         tags_str = ", ".join(significance_detected)
@@ -294,7 +307,7 @@ def cmd_edit(args):
     if _json_out(result, args):
         return 0
 
-    print(f"Updated: {result['id']}")
+    print(success(f"Updated {dim(result['id'][:12])}"))
     changes = []
     if body is not None:
         changes.append("content")
@@ -304,7 +317,7 @@ def cmd_edit(args):
         if getattr(args, field, None) is not None:
             changes.append(field)
     if changes:
-        print(f"  Changed: {', '.join(changes)}")
+        print(f"    Changed: {', '.join(changes)}")
     return 0
 
 
@@ -506,17 +519,17 @@ def cmd_gc(args):
 
     skip_keys = {"wal_cleaned", "pruned", "pruned_entries"}
     total_moves = sum(v for k, v in result.items() if k not in skip_keys and isinstance(v, int))
-    print("GC complete.")
     if total_moves:
+        print(success("GC complete"))
         for k, v in result.items():
             if v and k not in skip_keys and isinstance(v, int):
-                print(f"  {k}: {v}")
+                print(f"    {k}: {v}")
     else:
-        print("  No tier changes needed.")
+        print(success("GC complete — no tier changes needed"))
     if result.get("wal_cleaned"):
-        print(f"  WAL cleaned: {result['wal_cleaned']} old entries")
+        print(f"    WAL cleaned: {result['wal_cleaned']} old entries")
     if result.get("pruned"):
-        print(f"  Pruned (budget): {result['pruned']} entries")
+        print(f"    Pruned (budget): {result['pruned']} entries")
     return 0
 
 
@@ -541,9 +554,9 @@ def cmd_doctor(args):
     print(format_doctor_report(results, show_fix=show_fix))
 
     if fix_actions:
-        print("\nFixes applied:")
+        print(f"\n  {bold('Fixes applied:')}")
         for action in fix_actions:
-            print(f"  [ok] {action}")
+            print(success(action))
         print()
 
     return 0
@@ -742,17 +755,18 @@ def cmd_setup(args):
 
     # Print action details
     if not getattr(args, "json", False):
+        from palaia.ui import status_label, warn_msg
         for action in result.get("actions", []):
             label = action["action"]
             agent = action["agent"]
             if label == "skip":
-                print(f"  [skip] {agent}: {action.get('reason', '')}")
+                print(f"  {status_label('skip')}  {agent}: {dim(action.get('reason', ''))}")
             elif label == "plan":
-                print(f"  [plan] {agent}: would create .palaia -> {action.get('target', '')}")
+                print(f"  {status_label('info')}  {agent}: would create .palaia {sym_arrow()} {action.get('target', '')}")
             elif label == "ok":
-                print(f"  [ok] {agent}: .palaia -> {action.get('target', '')}")
+                print(success(f"{agent}: .palaia {sym_arrow()} {action.get('target', '')}"))
             elif label == "error":
-                print(f"  [error] {agent}: {action.get('error', '')}")
+                print(error_msg(f"{agent}: {action.get('error', '')}"))
 
     if _json_out(
         {

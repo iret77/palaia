@@ -47,8 +47,9 @@ def resolve_agent(args) -> str | None:
                 or "default"
             )
             if resolved == "default":
-                print("[palaia] WARNING: Multi-agent setup detected but no agent identity set.", file=sys.stderr)
-                print("[palaia] Set PALAIA_AGENT env var or use --agent flag. Falling back to 'default'.", file=sys.stderr)
+                from palaia.ui import dim, sym_warn
+                print(f"  {sym_warn()} Multi-agent setup detected but no agent identity set.", file=sys.stderr)
+                print(f"    Set PALAIA_AGENT env var or use --agent flag. {dim('Falling back to default.')}", file=sys.stderr)
             return resolved
         else:
             # Single-agent: config > env var > detect > default
@@ -121,12 +122,14 @@ def check_version_nag():
         store_version = config.get("store_version", "")
 
         if not store_version:
-            print("Warning: Palaia store has no version stamp. Run: palaia doctor --fix", file=sys.stderr)
+            from palaia.ui import dim, sym_warn
+            print(f"  {sym_warn()} Store has no version stamp. Run: palaia doctor --fix", file=sys.stderr)
             return
 
         if store_version != __version__:
+            from palaia.ui import dim, sym_warn
             print(
-                f"Warning: Palaia CLI is v{__version__} but store is v{store_version}. Run: palaia doctor --fix",
+                f"  {sym_warn()} CLI is v{__version__} but store is v{store_version}. Run: palaia doctor --fix",
                 file=sys.stderr,
             )
     except Exception:
@@ -154,4 +157,5 @@ def nudge_hint(hint_key: str, message: str, args) -> None:
         hints_file.write_text(json.dumps(shown))
     except Exception:
         pass
-    print(f"\nHint: {message}", file=sys.stderr)
+    from palaia.ui import hint_msg
+    print(hint_msg(message), file=sys.stderr)

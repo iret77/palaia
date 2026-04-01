@@ -1,41 +1,178 @@
-"""Palaia UI — Professional box-drawing table renderer and formatting helpers.
+"""Palaia UI — Modern CLI design system.
 
-No external dependencies. Pure Python with Unicode box-drawing characters.
+Zero external dependencies. ANSI colors with TTY detection and NO_COLOR support.
 All CLI output flows through this module for consistency.
 
-Box-drawing characters used:
-  Corners:  ┌ ┐ └ ┘
-  Borders:  │ ─
-  T-joins:  ├ ┤ ┬ ┴ ┼
+Design principles:
+  - Symbols + color + text — never rely on one channel alone
+  - TTY-aware: colors and symbols only in interactive terminals
+  - NO_COLOR respected (https://no-color.org)
+  - Whitespace over decoration — no box-drawing borders
+  - Dim for secondary, bold for primary
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import shutil
+import sys
 from typing import Sequence
 
 logger = logging.getLogger(__name__)
 
 from palaia import __version__
 
-# ── Constants ────────────────────────────────────────────────────────────────
+# ── Color system ────────────────────────────────────────────────────────────
 
-HEADER_LINE = f"Palaia v{__version__} — Local memory for AI agents"
-HEADER_URL = "(c) 2026 byte5 GmbH — https://github.com/byte5ai/palaia"
+_RESET = "\033[0m"
+_BOLD = "\033[1m"
+_DIM = "\033[2m"
+_GREEN = "\033[32m"
+_RED = "\033[31m"
+_YELLOW = "\033[33m"
+_CYAN = "\033[36m"
 
-# Box-drawing chars
-B_TL = "\u250c"  # ┌
-B_TR = "\u2510"  # ┐
-B_BL = "\u2514"  # └
-B_BR = "\u2518"  # ┘
-B_H = "\u2500"  # ─
-B_V = "\u2502"  # │
-B_LT = "\u251c"  # ├
-B_RT = "\u2524"  # ┤
-B_TT = "\u252c"  # ┬
-B_BT = "\u2534"  # ┴
-B_X = "\u253c"  # ┼
+
+def is_tty(stream=None) -> bool:
+    """Check if the given stream (default: stdout) is a TTY."""
+    if stream is None:
+        stream = sys.stdout
+    try:
+        return hasattr(stream, "isatty") and stream.isatty()
+    except Exception:
+        return False
+
+
+def use_color(stream=None) -> bool:
+    """Determine whether to use ANSI colors.
+
+    Respects NO_COLOR env var (https://no-color.org) and FORCE_COLOR.
+    """
+    if os.environ.get("FORCE_COLOR"):
+        return True
+    if os.environ.get("NO_COLOR"):
+        return False
+    if os.environ.get("TERM") == "dumb":
+        return False
+    return is_tty(stream)
+
+
+def _c(code: str, text: str, stream=None) -> str:
+    """Apply ANSI color code if colors are enabled."""
+    if use_color(stream):
+        return f"{code}{text}{_RESET}"
+    return text
+
+
+def green(text: str) -> str:
+    """Green text (success)."""
+    return _c(_GREEN, text)
+
+
+def red(text: str) -> str:
+    """Red text (error)."""
+    return _c(_RED, text)
+
+
+def yellow(text: str) -> str:
+    """Yellow text (warning)."""
+    return _c(_YELLOW, text)
+
+
+def cyan(text: str) -> str:
+    """Cyan text (info, links, values)."""
+    return _c(_CYAN, text)
+
+
+def dim(text: str) -> str:
+    """Dim text (secondary info, IDs, paths)."""
+    return _c(_DIM, text)
+
+
+def bold(text: str) -> str:
+    """Bold text (emphasis)."""
+    return _c(_BOLD, text)
+
+
+# ── Symbols ─────────────────────────────────────────────────────────────────
+
+def _sym(colored: str, plain: str) -> str:
+    """Return Unicode symbol if TTY, plain fallback otherwise."""
+    if is_tty():
+        return colored
+    return plain
+
+
+SYM_OK = property(lambda self: None)  # use sym_ok() instead
+
+
+def sym_ok() -> str:
+    return _sym(green("\u2713"), "ok")
+
+
+def sym_err() -> str:
+    return _sym(red("\u2717"), "error")
+
+
+def sym_warn() -> str:
+    return _sym(yellow("\u26a0"), "warn")
+
+
+def sym_info() -> str:
+    return _sym(cyan("\u2139"), "info")
+
+
+def sym_arrow() -> str:
+    return _sym(dim("\u2192"), "->")
+
+
+def sym_bullet() -> str:
+    return _sym(dim("\u25b8"), "-")
+
+
+# ── Formatted output helpers ────────────────────────────────────────────────
+
+
+def success(msg: str) -> str:
+    """Format a success message: ✓ msg"""
+    return f"  {sym_ok()} {msg}"
+
+
+def error_msg(msg: str) -> str:
+    """Format an error message: ✗ msg"""
+    return f"  {sym_err()} {msg}"
+
+
+def warn_msg(msg: str) -> str:
+    """Format a warning message: ⚠ msg"""
+    return f"  {sym_warn()} {msg}"
+
+
+def info_msg(msg: str) -> str:
+    """Format an info message: ℹ msg"""
+    return f"  {sym_info()} {msg}"
+
+
+def hint_msg(msg: str) -> str:
+    """Format a hint (printed to stderr)."""
+    return f"  {sym_info()} {dim('Hint:')} {msg}"
+
+
+def error_block(title: str, explanation: str = "", fix: str = "") -> str:
+    """Format a verbose error with explanation and fix suggestion.
+
+    Example:
+      ✗ No palaia store found
+
+        Run palaia init to create one, or set PALAIA_ROOT.
+    """
+    lines = [error_msg(title)]
+    if explanation:
+        lines.append(f"\n    {explanation}")
+    if fix:
+        lines.append(f"    {bold(fix)}")
+    return "\n".join(lines)
 
 
 # ── Terminal helpers ─────────────────────────────────────────────────────────
@@ -58,72 +195,70 @@ def truncate(text: str, max_len: int, suffix: str = "..") -> str:
     return text[: max_len - len(suffix)] + suffix
 
 
-# ── Header ───────────────────────────────────────────────────────────────────
+# ── Header / Branding ──────────────────────────────────────────────────────
+
+HEADER_LINE = f"palaia v{__version__}"
 
 
 def header() -> str:
-    """Return the standard Palaia header (2 lines)."""
-    return f"{HEADER_LINE}\n{HEADER_URL}"
+    """Return compact version string."""
+    return dim(HEADER_LINE)
 
 
 def print_header() -> None:
-    """Print the standard header."""
-    print(header())
+    """Print the compact header."""
+    print(f"\n  {header()}\n")
 
 
-# ── Table rendering ──────────────────────────────────────────────────────────
+# ── Status label ────────────────────────────────────────────────────────────
 
 
-def _cell_widths(rows: Sequence[tuple[str, str]], key_min: int = 16, val_min: int = 20) -> tuple[int, int]:
-    """Calculate column widths from rows (key-value pairs)."""
-    tw = terminal_width()
-    # Overhead: │ + space + key + space + │ + space + val + space + │ = 7 + key_w + val_w
-    overhead = 7
+def status_label(status: str) -> str:
+    """Return a styled status label.
 
-    max_key = max((len(r[0]) for r in rows), default=key_min)
-    max_val = max((len(r[1]) for r in rows), default=val_min)
+    ok    → ✓ (green)
+    warn  → ⚠ (yellow)
+    error → ✗ (red)
+    info  → ℹ (cyan)
+    skip  → - (dim)
+    """
+    labels = {
+        "ok": sym_ok,
+        "warn": sym_warn,
+        "error": sym_err,
+        "info": sym_info,
+        "skip": lambda: dim("-"),
+    }
+    fn = labels.get(status, lambda: f"[{status}]")
+    return fn()
 
-    key_w = max(max_key, key_min)
-    val_w = max(max_val, val_min)
 
-    # Fit within terminal
-    total = overhead + key_w + val_w
-    if total > tw:
-        # Shrink value column first, then key if needed
-        val_w = max(val_min, tw - overhead - key_w)
-        total = overhead + key_w + val_w
-        if total > tw:
-            key_w = max(key_min, tw - overhead - val_w)
-
-    return key_w, val_w
+# ── Table rendering (modern, borderless) ─────────────────────────────────
 
 
 def table_kv(rows: Sequence[tuple[str, str]], key_min: int = 16, val_min: int = 20) -> str:
-    """Render a key-value table (no header row, just data).
+    """Render a key-value table (no borders, dim keys).
 
     Example output:
-    ┌──────────────────┬────────────────────────────────────────────┐
-    │ Root             │ /home/claw/.openclaw/workspace/.palaia     │
-    │ Store version    │ v1.5.2                                     │
-    └──────────────────┴────────────────────────────────────────────┘
+      Root             /home/user/.palaia
+      Store version    v2.5.0
+      Backend          SQLITE — sqlite-vec SIMD
     """
     if not rows:
         return ""
 
-    kw, vw = _cell_widths(rows, key_min, val_min)
+    tw = terminal_width()
+    max_key = max((len(r[0]) for r in rows), default=key_min)
+    kw = max(max_key, key_min)
+    # Cap key width to leave room for value
+    kw = min(kw, tw // 3)
+    vw = tw - kw - 6  # 4 leading spaces + 2 gap
+
     lines: list[str] = []
-
-    # Top border
-    lines.append(f"{B_TL}{B_H * (kw + 2)}{B_TT}{B_H * (vw + 2)}{B_TR}")
-
-    # Data rows
     for key, val in rows:
         k = truncate(key, kw).ljust(kw)
-        v = truncate(val, vw).ljust(vw)
-        lines.append(f"{B_V} {k} {B_V} {v} {B_V}")
-
-    # Bottom border
-    lines.append(f"{B_BL}{B_H * (kw + 2)}{B_BT}{B_H * (vw + 2)}{B_BR}")
+        v = truncate(val, max(vw, val_min))
+        lines.append(f"    {dim(k)}  {v}")
 
     return "\n".join(lines)
 
@@ -139,7 +274,6 @@ def _multi_col_widths(
     if min_widths is None:
         min_widths = [6] * n
 
-    # Start with max of header width or content width per column
     widths = []
     for i in range(n):
         col_max = max(
@@ -149,14 +283,12 @@ def _multi_col_widths(
         )
         widths.append(col_max)
 
-    # Overhead: │ + (space + col + space + │) * n
-    overhead = 1 + n * 3  # leading │ plus per-col " " + " │"
+    # Overhead: 4 leading spaces + 2-space gaps between columns
+    overhead = 4 + (n - 1) * 2
     total = overhead + sum(widths)
 
-    # If over terminal width, shrink largest columns proportionally
     if total > tw and tw > overhead + sum(min_widths):
         budget = tw - overhead
-        # First pass: fix columns that are already at or below their share
         shares = [w / sum(widths) * budget for w in widths]
         for i in range(n):
             widths[i] = max(min_widths[i], min(widths[i], int(shares[i])))
@@ -169,14 +301,12 @@ def table_multi(
     rows: Sequence[Sequence[str]],
     min_widths: Sequence[int] | None = None,
 ) -> str:
-    """Render a multi-column table with header row.
+    """Render a multi-column table with dim header row (no borders).
 
     Example output:
-    ┌──────────┬────────┬──────────────────┬────────────┐
-    │ ID       │ Scope  │ Title            │ Age        │
-    ├──────────┼────────┼──────────────────┼────────────┤
-    │ 050d2e70 │ team   │ CONTEXT (chunk)  │ 2d ago     │
-    └──────────┴────────┴──────────────────┴────────────┘
+      ID        Score   Tier  Title              Preview
+      050d2e70  0.87    hot   Deploy process      staging env setup
+      a1b2c3d4  0.72    warm  Production deploy   checklist for prod
     """
     if not headers:
         return ""
@@ -185,29 +315,22 @@ def table_multi(
     widths = _multi_col_widths(headers, rows, min_widths)
     lines: list[str] = []
 
-    def h_line(left: str, mid: str, right: str) -> str:
-        segments = [B_H * (w + 2) for w in widths]
-        return left + mid.join(segments) + right
-
-    def data_line(cells: Sequence[str]) -> str:
+    def format_row(cells: Sequence[str], is_header: bool = False) -> str:
         parts = []
         for i, cell in enumerate(cells):
-            parts.append(f" {truncate(str(cell), widths[i]).ljust(widths[i])} ")
-        return B_V + B_V.join(parts) + B_V
+            text = truncate(str(cell), widths[i]).ljust(widths[i])
+            if is_header:
+                text = dim(text)
+            parts.append(text)
+        return "    " + "  ".join(parts)
 
-    # Top border
-    lines.append(h_line(B_TL, B_TT, B_TR))
     # Header
-    lines.append(data_line(headers))
-    # Separator
-    lines.append(h_line(B_LT, B_X, B_RT))
-    # Data
+    lines.append(format_row(headers, is_header=True))
+
+    # Data rows
     for row in rows:
-        # Pad row if shorter than headers
         padded = list(row) + [""] * (n - len(row))
-        lines.append(data_line(padded[:n]))
-    # Bottom border
-    lines.append(h_line(B_BL, B_BT, B_BR))
+        lines.append(format_row(padded[:n]))
 
     return "\n".join(lines)
 
@@ -216,19 +339,8 @@ def table_multi(
 
 
 def section(title: str) -> str:
-    """Return a section title line."""
-    return f"\n{title}"
-
-
-def status_label(status: str) -> str:
-    """Return a clean text label for a status level (no emoji).
-
-    ok   → [ok]
-    warn → [warn]
-    error → [error]
-    info → [info]
-    """
-    return f"[{status}]"
+    """Return a section title (bold, indented)."""
+    return f"\n  {bold(title)}"
 
 
 # ── Age / relative time ─────────────────────────────────────────────────────
@@ -241,7 +353,6 @@ def relative_time(iso_str: str) -> str:
     try:
         from datetime import datetime, timezone
 
-        # Parse ISO format
         if iso_str.endswith("Z"):
             iso_str = iso_str[:-1] + "+00:00"
         dt = datetime.fromisoformat(iso_str)
@@ -287,11 +398,27 @@ def format_size(bytes_val: int) -> str:
 
 
 def score_display(score: float, width: int = 10) -> str:
-    """Render a score as a compact numeric + bar.
+    """Render a score as a compact numeric value.
 
-    Example: 0.87 [========  ]
+    Example: 0.87
     """
-    filled = int(round(score * width))
-    filled = max(0, min(filled, width))
-    bar = "#" * filled + "." * (width - filled)
-    return f"{score:.2f} [{bar}]"
+    return f"{score:.2f}"
+
+
+# ── Backward compatibility ──────────────────────────────────────────────────
+
+# Old constants preserved for any external consumers
+HEADER_URL = ""
+
+# Box-drawing chars (kept for any code that imports them directly)
+B_TL = "\u250c"
+B_TR = "\u2510"
+B_BL = "\u2514"
+B_BR = "\u2518"
+B_H = "\u2500"
+B_V = "\u2502"
+B_LT = "\u251c"
+B_RT = "\u2524"
+B_TT = "\u252c"
+B_BT = "\u2534"
+B_X = "\u253c"

@@ -448,7 +448,7 @@ class TestDefaultAgentWorkflow:
         rc = _run_palaia(["write", "Test memory entry", "--title", "Test"], monkeypatch)
         assert rc == 0
         captured = capsys.readouterr()
-        assert "Written:" in captured.out
+        assert "Written" in captured.out
 
         # Query
         rc = _run_palaia(["query", "Test memory", "--json"], monkeypatch)
