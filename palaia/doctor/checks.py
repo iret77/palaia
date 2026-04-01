@@ -1572,11 +1572,13 @@ def _check_storage_backend(palaia_root: Path | None) -> dict[str, Any]:
 
     # Build result
     if findings:
+        fixable = any("entries on disk but 0 in database" in f for f in findings)
         return {
             "name": "storage_backend",
             "label": "Storage backend",
             "status": "error" if any("integrity" in f or "migration may" in f for f in findings) else "warn",
             "message": "; ".join(findings),
+            **({"fixable": True} if fixable else {}),
         }
 
     parts = [f"SQLite OK ({db_count} entries)"]
