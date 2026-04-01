@@ -365,7 +365,7 @@ function calcRecencyBoost(created: string | undefined, boostFactor: number): num
 
 export function rerankByTypeWeight(
   results: QueryResult["results"],
-  weights: RecallTypeWeights,
+  weights: Record<string, number>,
   recencyBoost = 0,
 ): RankedEntry[] {
   return results
