@@ -60,6 +60,7 @@ GATED_COMMANDS = frozenset(
         "edit",
         "memo",
         "gc",
+        "prune",
         "export",
         "import",
         "ingest",
@@ -517,6 +518,48 @@ def cmd_gc(args):
         print(f"  WAL cleaned: {result['wal_cleaned']} old entries")
     if result.get("pruned"):
         print(f"  Pruned (budget): {result['pruned']} entries")
+    return 0
+
+
+def cmd_prune(args):
+    """Selectively delete entries by agent + tags."""
+    from palaia.services.admin import run_prune
+
+    root = get_root()
+    agent = args.agent
+    tags = [t.strip() for t in args.tags.split(",") if t.strip()]
+    protect_types = None
+    if args.protect_type:
+        protect_types = [t.strip() for t in args.protect_type.split(",") if t.strip()]
+    dry_run = getattr(args, "dry_run", False)
+
+    result = run_prune(root, agent=agent, tags=tags, protect_types=protect_types, dry_run=dry_run)
+
+    if _json_out(result, args):
+        return 0
+
+    entries = result.get("entries", [])
+    count = result.get("pruned", 0)
+
+    if count == 0:
+        print("No matching entries found.")
+        return 0
+
+    if dry_run:
+        rows = [(e["id"], e["title"][:30], e["type"], e["tier"], ",".join(e.get("tags", []))) for e in entries]
+        print(
+            table_multi(
+                headers=("ID", "Title", "Type", "Tier", "Tags"),
+                rows=rows,
+                min_widths=(8, 30, 8, 4, 15),
+            )
+        )
+        print(f"\n{count} entries would be deleted (dry-run).")
+    else:
+        print(f"Pruned {count} entries for agent '{agent}'.")
+        for e in entries:
+            print(f"  {e['id']}  {e['title'][:40]}")
+
     return 0
 
 
@@ -1372,6 +1415,7 @@ def main():
         "list": cmd_list,
         "status": cmd_status,
         "gc": cmd_gc,
+        "prune": cmd_prune,
         "setup": cmd_setup,
         "doctor": cmd_doctor,
         "export": cmd_export,

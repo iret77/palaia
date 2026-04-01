@@ -516,6 +516,75 @@ class Store:
 
         return round(base_score * sw * tw, 6)
 
+    def prune(
+        self,
+        agent: str,
+        tags: list[str],
+        protect_types: list[str] | None = None,
+        dry_run: bool = False,
+    ) -> dict:
+        """Selectively delete entries matching agent + tags.
+
+        Args:
+            agent: Agent name to match (required).
+            tags: Tag filter — entry must have ALL specified tags.
+            protect_types: Entry types to preserve (e.g. ["process", "task"]).
+            dry_run: If True, report candidates without deleting.
+
+        Returns dict with "pruned" count and "entries" list.
+        """
+        protect = set(protect_types or [])
+        required_tags = set(tags)
+        candidates: list[dict] = []
+
+        for tier in TIERS:
+            tier_dir = self.root / tier
+            if not tier_dir.exists():
+                continue
+            for p in tier_dir.glob("*.md"):
+                try:
+                    text = p.read_text(encoding="utf-8")
+                    meta, body = parse_entry(text)
+                except (OSError, UnicodeDecodeError):
+                    continue
+
+                # Filter: agent must match
+                if meta.get("agent") != agent:
+                    continue
+
+                # Filter: entry must have ALL required tags
+                entry_tags = set(meta.get("tags", []))
+                if not required_tags.issubset(entry_tags):
+                    continue
+
+                # Protect: skip entries with protected types
+                entry_type = meta.get("type", "memory")
+                if entry_type in protect:
+                    continue
+
+                entry_id = meta.get("id", p.stem)
+                candidates.append({
+                    "id": entry_id[:8],
+                    "full_id": entry_id,
+                    "title": meta.get("title", "(untitled)"),
+                    "type": entry_type,
+                    "tier": tier,
+                    "tags": list(entry_tags),
+                    "path": str(p.relative_to(self.root)),
+                })
+
+        if dry_run:
+            return {"dry_run": True, "pruned": len(candidates), "entries": candidates}
+
+        # Delete matching entries
+        with self.lock:
+            for entry in candidates:
+                self.delete_raw(entry["path"])
+                self.metadata_index.remove(entry["full_id"])
+                self.embedding_cache.invalidate(entry["full_id"])
+
+        return {"dry_run": False, "pruned": len(candidates), "entries": candidates}
+
     def gc(self, dry_run: bool = False, budget: bool = False) -> dict:
         """Garbage collect: rotate tiers based on decay scores.
 
