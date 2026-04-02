@@ -392,6 +392,18 @@ class Store:
         if path.exists():
             path.unlink()
 
+    def delete(self, entry_id: str) -> bool:
+        """Delete an entry by ID, including metadata index and embedding cache."""
+        path = self._find_entry(entry_id)
+        if path is None:
+            return False
+        with self.lock:
+            rel_path = str(path.relative_to(self.root))
+            self.delete_raw(rel_path)
+            self.metadata_index.remove(entry_id)
+            self.embedding_cache.invalidate(entry_id)
+        return True
+
     def read(
         self, entry_id: str, agent: str | None = None, projects: list[str] | None = None,
         scope_visibility: list[str] | None = None,

@@ -9,6 +9,7 @@ from palaia.doctor.checks import (
     LOOP_ARTIFACT_PATTERNS,
     _check_agent_identity,
     _check_binary_path,
+    _check_capture_health,
     _check_capture_level,
     _check_capture_model,
     _check_default_agent_alias,
@@ -64,6 +65,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_unread_memos(palaia_root),
         _check_capture_level(palaia_root),
         _check_capture_model(),
+        _check_capture_health(palaia_root),
         _check_plugin_defaults_upgrade(palaia_root),
         _check_openclaw_plugin(),
         _check_smart_memory_skill(),
@@ -86,6 +88,7 @@ __all__ = [
     "format_doctor_report",
     # Check functions (used by tests)
     "_check_agent_identity",
+    "_check_capture_health",
     "_check_capture_level",
     "_check_capture_model",
     "_check_default_agent_alias",

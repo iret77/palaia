@@ -80,7 +80,7 @@ def test_smart_memory_extract(smart_memory_source):
 
     # Check scopes
     by_title = {e.title: e for e in entries}
-    assert by_title["Project: clawsy"].scope == "shared:clawsy"
+    assert by_title["Project: clawsy"].scope == "team"  # Legacy shared:X normalized to team
     assert by_title["Agent: coding"].tier == "warm"
     assert by_title["Daily: 2026-03-10"].tier == "cold"
 
@@ -321,7 +321,7 @@ def test_format_result_shows_system_file_warnings():
         "total_entries": 6,
         "files_scanned": 5,
         "tiers": {"hot": 4, "warm": 1, "cold": 1},
-        "scopes": {"team": 5, "shared:clawsy": 1},
+        "scopes": {"team": 6},  # Legacy shared:X normalized to team
         "imported": 6,
         "skipped_dedup": 0,
         "dry_run": False,

@@ -202,16 +202,11 @@ def test_can_access_private_no_agent():
     assert can_access("private", None, "owner") is False
 
 
-def test_can_access_shared_project():
+def test_can_access_shared_legacy_as_team():
+    """Legacy shared:X entries are treated as team — always accessible."""
     assert can_access("shared:myproj", "anyone", "owner", projects=["myproj"]) is True
-
-
-def test_can_access_shared_wrong_project():
-    assert can_access("shared:myproj", "anyone", "owner", projects=["other"]) is False
-
-
-def test_can_access_shared_no_projects():
-    assert can_access("shared:myproj", "anyone", "owner", projects=None) is False
+    assert can_access("shared:myproj", "anyone", "owner", projects=["other"]) is True
+    assert can_access("shared:myproj", "anyone", "owner", projects=None) is True
 
 
 # --- Alias-aware scope enforcement ---

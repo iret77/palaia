@@ -237,12 +237,8 @@ WHAT TO CAPTURE (be thorough — capture anything worth remembering):
 - Project context changes: scope changes, timeline shifts, requirement updates, priority changes
 - Workflow patterns the user established ("my process is...", "I always do X before Y")
 
-STRICT TASK CLASSIFICATION RULES — a "task" MUST have ALL three of:
-1. A clear, completable action (not just an observation or idea)
-2. An identifiable responsible party (explicitly named or unambiguously inferable from context)
-3. A concrete deliverable or measurable end state
-If ANY of these is missing, classify as "memory" instead of "task". When in doubt, use "memory".
-Observations, learnings, insights, opinions, and general knowledge are ALWAYS "memory", never "task".
+IMPORTANT: Never classify as "task". Tasks are manually created sticky notes (post-its) — they must only come from explicit user/agent intent via palaia write --type task. Auto-capture must use "memory" or "process" only.
+Observations, learnings, insights, opinions, action items, and general knowledge are ALWAYS "memory" or "process", never "task".
 
 Only extract genuinely significant knowledge. Skip small talk, acknowledgments, routine exchanges.
 Do NOT extract if similar knowledge was likely captured in a recent exchange. Prefer quality over quantity. Skip routine status updates and acknowledgments.
@@ -461,7 +457,7 @@ export function trimToRecentExchanges(
 export async function extractWithLLM(
   messages: unknown[],
   config: any,
-  pluginConfig?: { captureModel?: string },
+  pluginConfig?: { captureModel?: string; workspace?: string },
   knownProjects?: CachedProject[],
 ): Promise<ExtractionResult[]> {
   const runEmbeddedPiAgent = await getEmbeddedPiAgent();
@@ -519,7 +515,7 @@ export async function extractWithLLM(
     const result = await runEmbeddedPiAgent({
       sessionId,
       sessionFile,
-      workspaceDir: config?.agents?.defaults?.workspace ?? process.cwd(),
+      workspaceDir: pluginConfig?.workspace || config?.agents?.defaults?.workspace || process.cwd(),
       config,
       prompt,
       timeoutMs: 15_000,
@@ -551,7 +547,8 @@ export async function extractWithLLM(
       const content = typeof item.content === "string" ? item.content.trim() : "";
       if (!content) continue;
 
-      const validTypes = new Set(["memory", "process", "task"]);
+      const validTypes = new Set(["memory", "process"]);
+      // Tasks are manual-only (post-its) — auto-capture never creates tasks
       const type = validTypes.has(item.type) ? item.type : "memory";
 
       const validTags = new Set([
@@ -614,9 +611,9 @@ const SIGNIFICANCE_RULES: Array<{
   { pattern: /(?:mistake was|fehler war|should have|hätten sollen|next time)/i, tag: "lesson", type: "memory" },
   // Surprises
   { pattern: /(?:surprising|überraschend|unexpected|unerwartet|didn'?t expect|nicht erwartet|plot twist)/i, tag: "surprise", type: "memory" },
-  // Commitments and tasks
-  { pattern: /(?:i will|ich werde|todo:|action item|must do|muss noch|need to|commit to|verspreche)/i, tag: "commitment", type: "task" },
-  { pattern: /(?:deadline|frist|due date|bis zum|by end of|spätestens)/i, tag: "commitment", type: "task" },
+  // Commitments (captured as memory — tasks are manual-only post-its)
+  { pattern: /(?:i will|ich werde|todo:|action item|must do|muss noch|need to|commit to|verspreche)/i, tag: "commitment", type: "memory" },
+  { pattern: /(?:deadline|frist|due date|bis zum|by end of|spätestens)/i, tag: "commitment", type: "memory" },
   // Processes and workflows
   { pattern: /(?:the process is|der prozess|steps?:|workflow:|how to|anleitung|recipe:|checklist)/i, tag: "process", type: "process" },
   { pattern: /(?:first,?\s.*then|schritt \d|step \d|1\.\s.*2\.\s)/i, tag: "process", type: "process" },

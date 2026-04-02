@@ -482,7 +482,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
         }
 
         // Apply type-weighted reranking and blocked filtering (Issue #121)
-        const rankedRaw = rerankByTypeWeight(entries, resolvedPrio.recallTypeWeight, config.recallRecencyBoost);
+        const rankedRaw = rerankByTypeWeight(entries, resolvedPrio.recallTypeWeight, config.recallRecencyBoost, config.manualEntryBoost);
         const ranked = filterBlocked(rankedRaw, resolvedPrio.blocked);
 
         // Build context string with char budget
@@ -587,6 +587,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
       const hookOpts = buildRunnerOpts(config, { workspace: resolved.workspace });
 
       if (!event.success || !event.messages || event.messages.length === 0) {
+        logger.info(`[palaia] Auto-capture skipped: success=${event.success}, messages=${event.messages?.length ?? 0}`);
         return;
       }
 
@@ -597,6 +598,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
 
         const userTurns = allTexts.filter((t) => t.role === "user").length;
         if (userTurns < config.captureMinTurns) {
+          logger.info(`[palaia] Auto-capture skipped: ${userTurns} user turns < captureMinTurns=${config.captureMinTurns}`);
           return;
         }
 
@@ -632,6 +634,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
         const exchangeText = exchangeParts.join("\n");
 
         if (!shouldAttemptCapture(exchangeText)) {
+          logger.info(`[palaia] Auto-capture skipped: content did not pass significance filter (${exchangeText.length} chars)`);
           return;
         }
 
@@ -733,6 +736,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
         try {
           const results = await extractWithLLM(event.messages, api.config, {
             captureModel: config.captureModel,
+            workspace: resolved.workspace,
           }, knownProjects);
 
           await storeLLMResults(results);
@@ -752,6 +756,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
               // Retry without captureModel -> resolveCaptureModel will use primary model
               const fallbackResults = await extractWithLLM(event.messages, api.config, {
                 captureModel: undefined,
+                workspace: resolved.workspace,
               }, knownProjects);
               await storeLLMResults(fallbackResults);
               llmHandled = true;
@@ -776,6 +781,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
           if (config.captureFrequency === "significant") {
             const significance = extractSignificance(exchangeText);
             if (!significance) {
+              logger.info("[palaia] Auto-capture skipped: rule-based extraction found no significance (need ≥2 distinct tags)");
               return;
             }
             captureData = significance;

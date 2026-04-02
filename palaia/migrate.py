@@ -125,9 +125,10 @@ class SmartMemoryAdapter(BaseAdapter):
                             entries.append(
                                 MigrationEntry(
                                     body=body,
-                                    scope=f"shared:{proj_name}",
+                                    scope="team",
                                     tier="hot",
                                     title=f"Project: {proj_name}",
+                                    tags=["migrated", f"project:{proj_name}"],
                                     source_file=str(ctx.relative_to(source)),
                                 )
                             )

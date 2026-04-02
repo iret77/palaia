@@ -74,6 +74,8 @@ export interface PalaiaPluginConfig {
   captureToolObservations: boolean;
   /** Recency boost factor for recall (0 = off, 0.3 = 30% boost for <24h entries) */
   recallRecencyBoost: number;
+  /** Boost factor for manually written entries vs auto-captured (default: 1.3 = 30% boost) */
+  manualEntryBoost: number;
 }
 
 export const DEFAULT_RECALL_TYPE_WEIGHTS: RecallTypeWeights = {
@@ -103,6 +105,7 @@ export const DEFAULT_CONFIG: PalaiaPluginConfig = {
   sessionBriefingMaxChars: 1500,
   captureToolObservations: true,
   recallRecencyBoost: 0.3,
+  manualEntryBoost: 1.3,
 };
 
 /**

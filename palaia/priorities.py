@@ -191,18 +191,17 @@ def set_priority_value(
         from palaia.scope import validate_scope
         value = str(value).strip().lower()
         if not validate_scope(value):
-            raise ValueError(f"Invalid captureScope: {value}. Valid: private, team, public, shared:<name>")
+            raise ValueError(f"Invalid captureScope: {value}. Valid: private, team, public")
         target["captureScope"] = value
     elif key == "scopeVisibility":
         if isinstance(value, str):
             value = [s.strip() for s in value.split(",")]
         if not isinstance(value, list):
             raise ValueError("scopeVisibility must be a list of scopes or comma-separated string")
-        valid = {"private", "team", "public", "shared"}
+        valid = {"private", "team", "public"}
         for s in value:
-            base = s.split(":")[0] if ":" in s else s
-            if base not in valid:
-                raise ValueError(f"Invalid scope in scopeVisibility: {s}. Valid: private, team, public, shared:<name>")
+            if s not in valid:
+                raise ValueError(f"Invalid scope in scopeVisibility: {s}. Valid: private, team, public")
         target["scopeVisibility"] = value
     else:
         raise ValueError(f"Unknown priority key: {key}")

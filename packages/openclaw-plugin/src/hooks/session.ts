@@ -161,6 +161,7 @@ export async function captureSessionSummary(
     try {
       const results = await extractWithLLM(messages, api.config, {
         captureModel: config.captureModel,
+        workspace: config.workspace,
       }, []);
 
       if (results.length > 0) {
