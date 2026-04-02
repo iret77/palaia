@@ -175,12 +175,12 @@ describe("extractSignificance", () => {
     expect(result!.tags).toContain("lesson");
   });
 
-  it("detects commitments as task type (requires 2+ tags)", () => {
+  it("detects commitments as memory type (tasks are manual-only post-its)", () => {
     const text = "We decided on a new approach. I will refactor the authentication module by end of week. The deadline is Friday.";
     const result = extractSignificance(text);
     expect(result).not.toBeNull();
     expect(result!.tags).toContain("commitment");
-    expect(result!.type).toBe("task");
+    expect(result!.type).toBe("memory");
   });
 
   it("detects process documentation (requires 2+ tags)", () => {
@@ -217,11 +217,11 @@ describe("extractSignificance", () => {
     expect(result!.tags.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("prioritizes task type over memory", () => {
+  it("commitments with decisions stay memory (tasks are manual-only)", () => {
     const text = "We decided to use Redis. I will deploy it by the deadline Friday.";
     const result = extractSignificance(text);
     expect(result).not.toBeNull();
-    expect(result!.type).toBe("task");
+    expect(result!.type).toBe("memory");
   });
 
   it("truncates summary to 500 chars", () => {
@@ -353,7 +353,7 @@ describe("rerankByTypeWeight", () => {
       { id: "1", content: "Unknown type", score: 0.8, tier: "hot", scope: "team", type: "custom" },
     ];
 
-    const ranked = rerankByTypeWeight(results, weights);
+    const ranked = rerankByTypeWeight(results, weights, 0, 1.0);
     expect(ranked[0].weightedScore).toBe(0.8);
   });
 
@@ -362,7 +362,7 @@ describe("rerankByTypeWeight", () => {
       { id: "1", content: "No type", score: 0.8, tier: "hot", scope: "team" },
     ];
 
-    const ranked = rerankByTypeWeight(results, weights);
+    const ranked = rerankByTypeWeight(results, weights, 0, 1.0);
     expect(ranked[0].type).toBe("memory");
     expect(ranked[0].weightedScore).toBe(0.8);
   });
@@ -643,12 +643,12 @@ describe("Task classification strictness", () => {
     }
   });
 
-  it("rule-based extraction classifies clear commitment with deadline as task", () => {
+  it("rule-based extraction classifies commitments as memory (tasks are manual-only post-its)", () => {
     const text = "We decided to migrate the database. I will complete the schema migration by Friday. " +
       "The deadline is strict because the release depends on it.";
     const result = extractSignificance(text);
     expect(result).not.toBeNull();
-    expect(result!.type).toBe("task");
+    expect(result!.type).toBe("memory");
   });
 
   it("vague actionable statements without assignee stay as memory", () => {
@@ -1017,7 +1017,7 @@ describe("isValidScope", () => {
   it("accepts private", () => expect(isValidScope("private")).toBe(true));
   it("accepts team", () => expect(isValidScope("team")).toBe(true));
   it("accepts public", () => expect(isValidScope("public")).toBe(true));
-  it("accepts shared: prefix", () => expect(isValidScope("shared:org")).toBe(true));
+  it("rejects shared: prefix (shared scopes removed)", () => expect(isValidScope("shared:org")).toBe(false));
   it("rejects garbage", () => expect(isValidScope("y")).toBe(false));
   it("rejects empty string", () => expect(isValidScope("")).toBe(false));
   it("rejects partial match", () => expect(isValidScope("teams")).toBe(false));
@@ -1030,7 +1030,7 @@ describe("sanitizeScope", () => {
   it("returns fallback for null", () => expect(sanitizeScope(null)).toBe("team"));
   it("returns fallback for undefined", () => expect(sanitizeScope(undefined)).toBe("team"));
   it("uses custom fallback", () => expect(sanitizeScope("garbage", "private")).toBe("private"));
-  it("accepts shared: scope", () => expect(sanitizeScope("shared:org")).toBe("shared:org"));
+  it("normalizes shared: scope to team", () => expect(sanitizeScope("shared:org")).toBe("team"));
 });
 
 // ============================================================================
