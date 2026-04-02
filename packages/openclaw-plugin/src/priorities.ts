@@ -32,6 +32,8 @@ export interface AgentPriorityOverride {
   recallMinScore?: number;
   maxInjectedChars?: number;
   tier?: string;
+  scopeVisibility?: string[];  // Issue #145: agent isolation
+  captureScope?: string;       // Issue #147: per-agent write scope
 }
 
 export interface ProjectPriorityOverride {
@@ -45,6 +47,8 @@ export interface ResolvedPriorities {
   recallMinScore: number;
   maxInjectedChars: number;
   tier: string;
+  scopeVisibility: string[] | null;  // Issue #145: agent isolation
+  captureScope: string | null;       // Issue #147: per-agent write scope
 }
 
 // ============================================================================
@@ -136,6 +140,8 @@ export function resolvePriorities(
     recallMinScore: defaults.recallMinScore ?? DEFAULT_MIN_SCORE,
     maxInjectedChars: defaults.maxInjectedChars ?? DEFAULT_MAX_CHARS,
     tier: defaults.tier ?? DEFAULT_TIER,
+    scopeVisibility: null,
+    captureScope: null,
   };
 
   if (!prio) return resolved;
@@ -175,6 +181,12 @@ export function resolvePriorities(
       }
       if (agentCfg.tier !== undefined) {
         resolved.tier = agentCfg.tier;
+      }
+      if (agentCfg.scopeVisibility) {
+        resolved.scopeVisibility = [...agentCfg.scopeVisibility];
+      }
+      if (agentCfg.captureScope) {
+        resolved.captureScope = agentCfg.captureScope;
       }
     }
   }

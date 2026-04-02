@@ -144,7 +144,10 @@ function resolveExtensionAPIPath(): string | null {
 
   // Strategy 3: Sibling in global node_modules (plugin installed alongside openclaw)
   try {
-    const thisFile = typeof __dirname !== "undefined" ? __dirname : path.dirname(new URL(import.meta.url).pathname);
+    // __dirname is always available in CJS (our tsconfig module); the ESM
+    // fallback via import.meta.url is kept for jiti/ESM loaders at runtime.
+    // @ts-expect-error import.meta is valid at runtime under jiti/ESM but TS module=commonjs rejects it
+    const thisFile: string = typeof __dirname !== "undefined" ? __dirname : path.dirname(new URL(import.meta.url).pathname);
     // Walk up from plugin src/dist to node_modules, then into openclaw
     let dir = thisFile;
     for (let i = 0; i < 6; i++) {

@@ -99,6 +99,45 @@ def cmd_query(args):
     except Exception:
         pass
 
+    # --- prune_reminder nudge: remind orchestrator to clean isolated agent entries (#148) ---
+    try:
+        from palaia.nudge import NudgeTracker
+        from palaia.priorities import load_priorities, resolve_priorities
+
+        tracker_prune = NudgeTracker(root)
+        agent_prune = agent or "default"
+        prio = load_priorities(root)
+        resolved_prio = resolve_priorities(prio, agent=agent_prune)
+
+        # Only fire for agents WITHOUT scopeVisibility (i.e. orchestrators)
+        if not resolved_prio.scope_visibility:
+            # Check if any isolated agent has accumulated auto-capture entries
+            store_prune = Store(root)
+            all_entries_prune = store_prune.all_entries_unfiltered(include_cold=False)
+            agent_auto_counts: dict[str, int] = {}
+            for m, _, _ in all_entries_prune:
+                a = m.get("agent")
+                if not a:
+                    continue
+                entry_tags = m.get("tags", [])
+                if "auto-capture" in entry_tags:
+                    # Check if this agent is isolated
+                    agent_prio = resolve_priorities(prio, agent=a)
+                    if agent_prio.scope_visibility:
+                        agent_auto_counts[a] = agent_auto_counts.get(a, 0) + 1
+
+            for isolated_agent, count in agent_auto_counts.items():
+                if count >= 10:  # threshold: 10+ auto-capture entries
+                    if tracker_prune.should_nudge("prune_reminder", agent_prune):
+                        msg = tracker_prune.get_nudge_message("prune_reminder")
+                        if msg:
+                            msg = msg.format(agent=isolated_agent, count=count)
+                            query_nudge_messages.append(msg)
+                            tracker_prune.record_nudge("prune_reminder", agent_prune)
+                        break  # one nudge per invocation
+    except Exception:
+        pass
+
     if json_out(
         {
             "results": results,

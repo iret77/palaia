@@ -26,6 +26,28 @@ import {
   extractWithLLM,
 } from "./capture.js";
 import { extractMessageTexts } from "./recall.js";
+import { loadPriorities, resolvePriorities } from "../priorities.js";
+
+/**
+ * Resolve effective capture scope from priorities (per-agent override)
+ * falling back to plugin config, then to "team".
+ */
+async function getEffectiveCaptureScope(config: PalaiaPluginConfig): Promise<string> {
+  try {
+    const prio = await loadPriorities(config.workspace || "");
+    const agentId = process.env.PALAIA_AGENT || undefined;
+    const resolved = resolvePriorities(prio, {
+      recallTypeWeight: config.recallTypeWeight,
+      recallMinScore: config.recallMinScore,
+      maxInjectedChars: config.maxInjectedChars,
+      tier: config.tier,
+    }, agentId);
+    if (resolved.captureScope) return resolved.captureScope;
+  } catch {
+    // Fall through to config default
+  }
+  return config.captureScope || "team";
+}
 
 function buildRunnerOpts(config: PalaiaPluginConfig): RunnerOpts {
   return {
@@ -180,11 +202,12 @@ export async function captureSessionSummary(
 
   // Save session summary
   try {
+    const scope = await getEffectiveCaptureScope(config);
     const args: string[] = [
       "write", summaryText,
       "--type", "memory",
       "--tags", "session-summary,auto-capture",
-      "--scope", config.captureScope || "team",
+      "--scope", scope,
     ];
     if (state.autoSessionId) args.push("--instance", state.autoSessionId);
     const agentName = process.env.PALAIA_AGENT || undefined;
@@ -425,11 +448,12 @@ export function registerSessionHooks(
         if (summaryParts.length === 0) return;
 
         const summaryText = `Sub-agent result:\n${summaryParts.join("\n")}`.slice(0, 500);
+        const subagentScope = await getEffectiveCaptureScope(config);
         await run([
           "write", summaryText,
           "--type", "memory",
           "--tags", "subagent-result,auto-capture",
-          "--scope", config.captureScope || "team",
+          "--scope", subagentScope,
         ], { ...buildRunnerOpts(config), timeoutMs: 10_000 });
         logger.info(`[palaia] Sub-agent result captured (${summaryText.length} chars)`);
       } catch (error) {

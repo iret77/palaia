@@ -90,19 +90,22 @@ class SearchEngine:
         self._index_dirty = True
         self._index_cache = None
 
-    def build_index(self, include_cold: bool = False, agent: str | None = None) -> list[tuple[str, str, dict]]:
+    def build_index(
+        self, include_cold: bool = False, agent: str | None = None,
+        scope_visibility: list[str] | None = None,
+    ) -> list[tuple[str, str, dict]]:
         """Build search index from store entries. Returns (doc_id, full_text, meta) list.
 
         Uses a cached index when available. Call invalidate_index() after
         write/edit/gc operations to force a rebuild.
         """
-        cache_key = (include_cold, agent)
+        cache_key = (include_cold, agent, tuple(scope_visibility) if scope_visibility else None)
         if not self._index_dirty and self._index_cache is not None and self._index_cache_key == cache_key:
             # Re-index BM25 from cache (cheap — no disk reads)
             self.bm25.index([(did, text) for did, text, _meta in self._index_cache])
             return list(self._index_cache)
 
-        entries = self.store.all_entries(include_cold=include_cold, agent=agent)
+        entries = self.store.all_entries(include_cold=include_cold, agent=agent, scope_visibility=scope_visibility)
         docs = []
         docs_with_meta = []
         for meta, body, tier in entries:
@@ -133,6 +136,7 @@ class SearchEngine:
         before: str | None = None,
         after: str | None = None,
         cross_project: bool = False,
+        scope_visibility: list[str] | None = None,
     ) -> list[dict]:
         """Search memories using hybrid ranking (BM25 + embeddings when available).
 
@@ -141,8 +145,9 @@ class SearchEngine:
 
         Temporal filters (before, after) filter by entry created timestamp.
         cross_project=True ignores project filter and searches across all projects.
+        scope_visibility: If set, only entries with matching scope are included (Issue #145).
         """
-        docs_with_meta = self.build_index(include_cold=include_cold, agent=agent)
+        docs_with_meta = self.build_index(include_cold=include_cold, agent=agent, scope_visibility=scope_visibility)
 
         # Apply structured filters (exact match, pre-BM25)
         if project and not cross_project:

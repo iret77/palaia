@@ -98,6 +98,22 @@ NUDGE_PATTERNS: dict[str, dict[str, str]] = {
         ),
         "cooldown": 604800,  # 7 days
     },
+    "prune_reminder": {
+        "message": (
+            "[palaia] Agent '{agent}' has {count} auto-captured entries. "
+            "After accepting a work package, clean up with: "
+            "palaia prune --agent {agent} --tags auto-capture --protect-type process"
+        ),
+        "cooldown": 86400,  # 1x per day
+    },
+    "isolation_scope_mismatch": {
+        "message": (
+            "[palaia] This agent has scopeVisibility: {visibility} but wrote "
+            "with --scope {scope}. This entry is invisible to you but visible to "
+            "other agents. Use --scope private for isolated agents."
+        ),
+        "cooldown": 3600,
+    },
 }
 
 # Graduation threshold: consecutive successes required

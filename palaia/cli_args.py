@@ -169,6 +169,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_gc.add_argument("--budget", action="store_true", help="Prune entries to meet configured budget limits")
     p_gc.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # prune
+    p_prune = sub.add_parser("prune", help="Selectively delete entries by agent + tags")
+    p_prune.add_argument("--agent", required=True, help="Agent name to prune entries for (required)")
+    p_prune.add_argument("--tags", required=True, help="Comma-separated tags to match (required, e.g. auto-capture)")
+    p_prune.add_argument("--protect-type", default=None, help="Comma-separated types to preserve (e.g. process,task)")
+    p_prune.add_argument("--dry-run", action="store_true", help="Show what would be deleted without changing anything")
+    p_prune.add_argument("--json", action="store_true", help="Output as JSON")
+
     # project
     _add_project_subparser(sub)
 

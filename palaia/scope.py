@@ -35,6 +35,7 @@ def can_access(
     entry_agent: str | None,
     projects: list[str] | None = None,
     agent_names: set[str] | None = None,
+    scope_visibility: list[str] | None = None,
 ) -> bool:
     """Check if an agent can access an entry based on scope rules.
 
@@ -42,7 +43,26 @@ def can_access(
         agent_names: Set of all agent names that should be treated as equivalent
                      (resolved via aliases). If provided, used for private scope
                      matching instead of exact agent_name comparison.
+        scope_visibility: If set, only entries whose scope is in this list are
+                          visible. This is a read-side filter for agent isolation
+                          (Issue #145). When None, default visibility rules apply.
     """
+    # Scope visibility filter: if set, entry scope must be in the allowed list.
+    # For shared:X scopes, check if "shared:X" is in the list literally,
+    # or if the base scope "shared" is allowed.
+    if scope_visibility is not None:
+        scope_allowed = False
+        for allowed in scope_visibility:
+            if entry_scope == allowed:
+                scope_allowed = True
+                break
+            # Allow "shared" to match any "shared:X"
+            if allowed == "shared" and entry_scope.startswith(SHARED_PREFIX):
+                scope_allowed = True
+                break
+        if not scope_allowed:
+            return False
+
     if entry_scope == "team":
         return True
     if entry_scope == "public":
