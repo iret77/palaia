@@ -48,11 +48,11 @@ class TestSearchEngineCacheInvalidation:
 
         # Build with include_cold=False
         engine.build_index(include_cold=False, agent=None)
-        assert engine._index_cache_key == (False, None)
+        assert engine._index_cache_key == (False, None, None)
 
         # Build with include_cold=True — cache key differs, should rebuild
         engine.build_index(include_cold=True, agent=None)
-        assert engine._index_cache_key == (True, None)
+        assert engine._index_cache_key == (True, None, None)
 
     def test_cache_miss_on_agent_change(self, store):
         store.write("Entry by agent-a", tags=["test"], agent="agent-a", title="A")
@@ -62,12 +62,12 @@ class TestSearchEngineCacheInvalidation:
         # Build for agent-a
         engine.build_index(include_cold=False, agent="agent-a")
         key_a = engine._index_cache_key
-        assert key_a == (False, "agent-a")
+        assert key_a == (False, "agent-a", None)
 
         # Build for agent-b — cache key changes, should rebuild
         engine.build_index(include_cold=False, agent="agent-b")
         key_b = engine._index_cache_key
-        assert key_b == (False, "agent-b")
+        assert key_b == (False, "agent-b", None)
         assert key_a != key_b
 
     def test_invalidate_index_forces_rebuild(self, store):
@@ -92,10 +92,10 @@ class TestSearchEngineCacheInvalidation:
         engine = SearchEngine(store)
 
         engine.build_index(include_cold=False, agent=None)
-        assert engine._index_cache_key == (False, None)
+        assert engine._index_cache_key == (False, None, None)
 
         engine.build_index(include_cold=True, agent="bot")
-        assert engine._index_cache_key == (True, "bot")
+        assert engine._index_cache_key == (True, "bot", None)
 
         engine.build_index(include_cold=False, agent="bot")
-        assert engine._index_cache_key == (False, "bot")
+        assert engine._index_cache_key == (False, "bot", None)
