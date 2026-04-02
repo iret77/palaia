@@ -468,10 +468,10 @@ export async function extractWithLLM(
   }
 
   const allTexts = extractMessageTexts(messages);
-  // Strip Palaia-injected recall context and private blocks from user messages
+  // Strip palaia-injected recall context and private blocks from user messages
   const cleanedTexts = allTexts.map(t =>
     t.role === "user"
-      ? { ...t, text: stripPrivateBlocks(stripPalaiaInjectedContext(t.text)) }
+      ? { ...t, text: stripPrivateBlocks(strippalaiaInjectedContext(t.text)) }
       : { ...t, text: stripPrivateBlocks(t.text) }
   );
   // Only extract from recent exchanges — full history causes LLM timeouts
@@ -722,22 +722,22 @@ export function extractSignificance(
 }
 
 /**
- * Strip Palaia-injected recall context from message text.
+ * Strip palaia-injected recall context from message text.
  * The recall block is prepended to user messages by before_prompt_build via prependContext.
  * OpenClaw merges it into the user message, so agent_end sees it as user content.
  * Without stripping, auto-capture re-captures the injected memories -> feedback loop.
  *
  * The block has a stable structure:
- * - Starts with "## Active Memory (Palaia)"
+ * - Starts with "## Active Memory (palaia)"
  * - Contains [t/m], [t/pr], [t/tk] prefixed entries
  * - Ends with "[palaia] auto-capture=on..." nudge line
  */
-export function stripPalaiaInjectedContext(text: string): string {
-  // Pattern: "## Active Memory (Palaia)" ... "[palaia] auto-capture=on..." + optional trailing newlines
+export function strippalaiaInjectedContext(text: string): string {
+  // Pattern: "## Active Memory (palaia)" ... "[palaia] auto-capture=on..." + optional trailing newlines
   // The nudge line is always present and marks the end of the injected block
-  const PALAIA_BLOCK_RE = /## Active Memory \(Palaia\)[\s\S]*?\[palaia\][^\n]*\n*/;
+  const PALAIA_BLOCK_RE = /## Active Memory \(palaia\)[\s\S]*?\[palaia\][^\n]*\n*/;
   // Also strip Session Briefing blocks
-  const BRIEFING_BLOCK_RE = /## Session Briefing \(Palaia\)[\s\S]*?(?=\n##|\n\n\n|$)/;
+  const BRIEFING_BLOCK_RE = /## Session Briefing \(palaia\)[\s\S]*?(?=\n##|\n\n\n|$)/;
   return text
     .replace(PALAIA_BLOCK_RE, '')
     .replace(BRIEFING_BLOCK_RE, '')

@@ -1,5 +1,5 @@
 /**
- * Palaia CLI subprocess runner.
+ * palaia CLI subprocess runner.
  *
  * Executes palaia CLI commands, parses JSON output, handles binary detection
  * and timeouts. This is the bridge between the OpenClaw plugin and the
@@ -92,7 +92,7 @@ export async function detectBinary(
   }
 
   throw new Error(
-    "Palaia binary not found. Install with: pip install palaia\n" +
+    "palaia binary not found. Install with: pip install palaia\n" +
       "Or set binaryPath in plugin config."
   );
 }
@@ -129,7 +129,7 @@ function execCommand(
       (error, stdout, stderr) => {
         if (error && (error as any).killed) {
           reject(
-            new Error(`Palaia command timed out after ${timeout}ms: ${cmd} ${args.join(" ")}`)
+            new Error(`palaia command timed out after ${timeout}ms: ${cmd} ${args.join(" ")}`)
           );
           return;
         }
@@ -184,7 +184,7 @@ export async function run(
 
   if (result.exitCode !== 0) {
     const errMsg = result.stderr.trim() || result.stdout.trim();
-    throw new Error(`Palaia CLI error (exit ${result.exitCode}): ${errMsg}`);
+    throw new Error(`palaia CLI error (exit ${result.exitCode}): ${errMsg}`);
   }
 
   return result.stdout;

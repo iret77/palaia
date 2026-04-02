@@ -50,7 +50,7 @@ Existing flat-file stores (pre-v2.0) migrate to SQLite automatically on first us
 
 ## Embedding Providers
 
-Palaia uses **hybrid search**: BM25 keyword matching (always active) combined with semantic vector embeddings (when a provider is configured).
+palaia uses **hybrid search**: BM25 keyword matching (always active) combined with semantic vector embeddings (when a provider is configured).
 
 ### Provider Chain
 

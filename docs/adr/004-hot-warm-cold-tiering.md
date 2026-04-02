@@ -13,7 +13,7 @@ Automatisches Tiering hält den aktiven Context klein ohne Daten zu verlieren.
 
 ## Entscheidung (Draft)
 
-**Drei-Tier-Dateistruktur, automatisch verwaltet von Palaia.**
+**Drei-Tier-Dateistruktur, automatisch verwaltet von palaia.**
 
 ```
 .palaia/
@@ -32,7 +32,7 @@ score = base_relevance * recency_factor * access_frequency
 recency_factor = exp(-lambda * days_since_last_access)
 ```
 
-Palaia verschiebt automatisch:
+palaia verschiebt automatisch:
 - HOT → WARM: Score < 0.5 UND > 7 Tage nicht zugegriffen
 - WARM → COLD: Score < 0.1 UND > 30 Tage nicht zugegriffen
 - COLD → WARM: Bei Zugriff (Promotion)

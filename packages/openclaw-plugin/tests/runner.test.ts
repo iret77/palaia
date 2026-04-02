@@ -95,7 +95,7 @@ describe("runner", () => {
       setupExecFile("", "Something failed", 1);
       await expect(
         run(["query", "test"], { binaryPath: "palaia" })
-      ).rejects.toThrow("Palaia CLI error");
+      ).rejects.toThrow("palaia CLI error");
     });
   });
 

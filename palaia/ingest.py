@@ -163,7 +163,7 @@ class _PageChunk:
 
 
 class DocumentIngestor:
-    """Ingest documents into Palaia as chunked, searchable entries."""
+    """Ingest documents into palaia as chunked, searchable entries."""
 
     def __init__(self, store: Store, config: dict | None = None):
         self.store = store
@@ -183,7 +183,7 @@ class DocumentIngestor:
 
         Args:
             source: File path, URL, or directory path.
-            project: Palaia project name (recommended).
+            project: palaia project name (recommended).
             scope: Scope for stored entries.
             chunk_size: Target words per chunk.
             chunk_overlap: Overlap words between chunks.
@@ -310,7 +310,7 @@ class DocumentIngestor:
         ingested_at: str,
         title: str | None,
     ) -> str:
-        """Store a single chunk as a Palaia entry with RAG frontmatter."""
+        """Store a single chunk as a palaia entry with RAG frontmatter."""
         import uuid
 
         from palaia.entry import _to_yaml_simple, content_hash

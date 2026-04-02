@@ -1,4 +1,4 @@
-"""Palaia UI — Modern CLI design system.
+"""palaia UI — Modern CLI design system.
 
 Zero external dependencies. ANSI colors with TTY detection and NO_COLOR support.
 All CLI output flows through this module for consistency.

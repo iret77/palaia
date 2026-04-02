@@ -115,7 +115,7 @@ class PackageManager:
         package = json.loads(pkg_path.read_text(encoding="utf-8"))
 
         if "palaia_package" not in package:
-            raise ValueError(f"Not a valid Palaia package: {input_path}")
+            raise ValueError(f"Not a valid palaia package: {input_path}")
 
         project = target_project or package.get("project", "imported")
         entries = package.get("entries", [])
@@ -199,7 +199,7 @@ class PackageManager:
         package = json.loads(pkg_path.read_text(encoding="utf-8"))
 
         if "palaia_package" not in package:
-            raise ValueError(f"Not a valid Palaia package: {input_path}")
+            raise ValueError(f"Not a valid palaia package: {input_path}")
 
         # Type breakdown
         type_counts: dict[str, int] = {}

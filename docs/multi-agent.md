@@ -1,6 +1,6 @@
 # Multi-Agent Setup
 
-Palaia supports multiple agents sharing a single store with controlled visibility.
+palaia supports multiple agents sharing a single store with controlled visibility.
 
 ## Agent Identity
 

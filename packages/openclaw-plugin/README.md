@@ -1,13 +1,13 @@
 # @byte5ai/palaia
 
-**Palaia memory backend for OpenClaw.**
+**palaia memory backend for OpenClaw.**
 
-Replace OpenClaw's built-in `memory-core` with Palaia — local, cloud-free, WAL-backed agent memory with tier routing and semantic search.
+Replace OpenClaw's built-in `memory-core` with palaia — local, cloud-free, WAL-backed agent memory with tier routing and semantic search.
 
 ## Installation
 
 ```bash
-# Install Palaia (Python CLI)
+# Install palaia (Python CLI)
 pip install palaia
 
 # Install the OpenClaw plugin
@@ -59,7 +59,7 @@ All options are optional — sensible defaults are used:
 
 ### `memory_search` (always available)
 
-Semantically search Palaia memory:
+Semantically search palaia memory:
 
 ```
 memory_search({ query: "deployment process", maxResults: 5, tier: "all" })

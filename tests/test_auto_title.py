@@ -89,11 +89,11 @@ def test_create_entry_no_title_empty_body():
 
 def test_store_write_auto_title(palaia_root):
     store = Store(palaia_root)
-    entry_id = store.write("# Release Process (Palaia)\n\n1. All CI tests...")
+    entry_id = store.write("# Release Process (palaia)\n\n1. All CI tests...")
     result = store.read(entry_id)
     assert result is not None
     meta, body = result
-    assert meta["title"] == "Release Process (Palaia)"
+    assert meta["title"] == "Release Process (palaia)"
 
 
 def test_store_write_explicit_title(palaia_root):

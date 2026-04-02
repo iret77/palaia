@@ -12,7 +12,7 @@ export interface RecallTypeWeights {
 export interface PalaiaPluginConfig {
   /** Path to palaia binary (default: auto-detect) */
   binaryPath?: string;
-  /** Palaia workspace path (default: agent workspace) */
+  /** palaia workspace path (default: agent workspace) */
   workspace?: string;
   /** Default tier filter: "hot" | "warm" | "all" */
   tier: string;

@@ -1,4 +1,4 @@
-"""First-class project management for Palaia (ADR-008).
+"""First-class project management for palaia (ADR-008).
 
 Projects are optional containers for grouping related entries.
 They are stored in .palaia/projects.json and add a 'project' field

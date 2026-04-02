@@ -160,7 +160,7 @@ class TestImportPackage:
         bad_file = tmp_path / "bad.json"
         bad_file.write_text('{"not": "a package"}')
         pm = PackageManager(populated_store)
-        with pytest.raises(ValueError, match="Not a valid Palaia package"):
+        with pytest.raises(ValueError, match="Not a valid palaia package"):
             pm.import_package(str(bad_file))
 
 

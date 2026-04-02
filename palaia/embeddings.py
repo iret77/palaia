@@ -10,7 +10,7 @@ Providers are detected automatically in this order:
 
 Embedding Chain:
   A configurable fallback chain lets you define a priority list of providers.
-  Palaia tries the first provider; if it fails (rate-limit, timeout, import error),
+  palaia tries the first provider; if it fails (rate-limit, timeout, import error),
   it moves to the next. BM25 is always the last resort.
 """
 

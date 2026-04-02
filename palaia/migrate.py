@@ -1,4 +1,4 @@
-"""Migration from external memory formats into Palaia (palaia migrate)."""
+"""Migration from external memory formats into palaia (palaia migrate)."""
 
 from __future__ import annotations
 
@@ -392,7 +392,7 @@ def migrate(
 
     Args:
         source: Path to source directory or file.
-        store: Target Palaia store.
+        store: Target palaia store.
         format_name: Force a specific format (None = auto-detect).
         scope_override: Override scope for all entries.
         dry_run: If True, report what would be imported.
@@ -498,7 +498,7 @@ def format_result(result: dict) -> str:
         lines.append("")
         for sf in system_files:
             lines.append(f"Warning: System file detected: {sf}")
-            lines.append("    This file is used at runtime by agents. It was copied to Palaia but NOT deleted.")
+            lines.append("    This file is used at runtime by agents. It was copied to palaia but NOT deleted.")
             lines.append("    Do not remove it manually.")
         lines.append("")
         lines.append("See: https://github.com/byte5ai/palaia/blob/main/docs/migration-guide.md")

@@ -324,7 +324,7 @@ export type SubagentEndReason = "deleted" | "completed" | "swept" | "released";
 /**
  * ContextEngine interface — matches OpenClaw v2026.3.28.
  *
- * This is the full interface. Palaia implements a subset;
+ * This is the full interface. palaia implements a subset;
  * optional methods are marked with `?`.
  */
 export interface ContextEngine {

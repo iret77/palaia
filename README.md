@@ -1,5 +1,5 @@
 ```
-.__         .__
+             .__         .__
 ___________  |  | _____  |__|____
 \____ \__  \ |  | \__  \ |  \__  \
 |  |_> > __ \|  |__/ __ \|  |/ __ \_
@@ -9,7 +9,7 @@ ___________  |  | _____  |__|____
 
 # The Knowledge System for AI Agent Teams
 
-**Your agents forget. Palaia doesn't.**
+**Your agents forget. palaia doesn't.**
 
 [![CI](https://github.com/byte5ai/palaia/actions/workflows/ci.yml/badge.svg)](https://github.com/byte5ai/palaia/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/palaia)](https://pypi.org/project/palaia/)
@@ -19,15 +19,15 @@ ___________  |  | _____  |__|____
 
 ---
 
-## What Palaia Does
+## What palaia Does
 
 AI agents are stateless by default. Every session starts from scratch — no memory of past decisions, no shared knowledge between agents, no context that survives a restart.
 
-Palaia gives your agents a persistent, searchable knowledge store. They save what they learn. They find it again by meaning, not keyword. They share it across tools and sessions — automatically.
+palaia gives your agents a persistent, searchable knowledge store. They save what they learn. They find it again by meaning, not keyword. They share it across tools and sessions — automatically.
 
 ---
 
-## What Palaia Is Not
+## What palaia Is Not
 
 - Not a chatbot or prompt manager
 - Not a cloud service (everything runs locally)
@@ -54,7 +54,7 @@ Palaia gives your agents a persistent, searchable knowledge store. They save wha
 
 ## Comparison
 
-| Feature | Palaia | claude-mem | Mem0 | Stock Memory |
+| Feature | palaia | claude-mem | Mem0 | Stock Memory |
 |---------|--------|-----------|------|--------------|
 | Local-first | Yes | Yes | No (cloud) | Yes |
 | Cross-tool (MCP) | Yes (any MCP client) | No (Claude Code only) | No | No |
@@ -74,7 +74,7 @@ Palaia gives your agents a persistent, searchable knowledge store. They save wha
 
 Paste this into your OpenClaw agent (works for install AND update):
 
-> Install or update the Palaia memory skill from ClawHub to the latest version (even if already present). Read the SKILL.md completely and follow it step by step. Run palaia init, then palaia doctor --fix and resolve all warnings — don't stop until the doctor report is clean. Set up completely.
+> Install or update the palaia memory skill from ClawHub to the latest version (even if already present). Read the SKILL.md completely and follow it step by step. Run palaia init, then palaia doctor --fix and resolve all warnings — don't stop until the doctor report is clean. Set up completely.
 
 The agent handles everything: ClawHub skill install, pip setup, plugin config, and verification.
 
@@ -162,7 +162,7 @@ pytest
 - [palaia.ai](https://palaia.ai) — Homepage
 - [PyPI](https://pypi.org/project/palaia/) — Package registry
 - [ClawHub](https://clawhub.com/skills/palaia) — Install via agent skill
-- [OpenClaw](https://openclaw.ai) — The agent platform Palaia is built for
+- [OpenClaw](https://openclaw.ai) — The agent platform palaia is built for
 - [CHANGELOG](CHANGELOG.md) — Release history
 
 ---

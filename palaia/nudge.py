@@ -1,6 +1,6 @@
 """Adaptive Nudging with Graduation System (Issue #68).
 
-Palaia nudges agents toward better practices (e.g. using --type, --tags)
+palaia nudges agents toward better practices (e.g. using --type, --tags)
 via CLI output hints. But nudges should educate agents toward independence,
 not prop them up indefinitely. Once an agent demonstrates consistent good
 behavior (3 consecutive successes), the nudge "graduates" and stops.
@@ -46,7 +46,7 @@ NUDGE_PATTERNS: dict[str, dict[str, str]] = {
     },
     "satisfaction_check": {
         "message": (
-            "Your user has been using Palaia for a while now. "
+            "Your user has been using palaia for a while now. "
             "Ask them casually if they're happy with the memory system. "
             "If there are issues, suggest `palaia doctor`."
         ),

@@ -1,5 +1,5 @@
 /**
- * @byte5ai/palaia — Palaia Memory Backend for OpenClaw
+ * @byte5ai/palaia — palaia Memory Backend for OpenClaw
  *
  * Plugin entry point. Loaded by OpenClaw via jiti (no build step needed).
  *
@@ -33,7 +33,7 @@ import type { OpenClawPluginApi, OpenClawPluginEntry } from "./src/types.js";
 // Plugin entry point compatible with OpenClaw plugin-sdk definePluginEntry
 const palaiaPlugin: OpenClawPluginEntry = {
   id: "palaia",
-  name: "Palaia Memory",
+  name: "palaia Memory",
   register(api: OpenClawPluginApi) {
     // Issue #66: Plugin config is resolved GLOBALLY via api.pluginConfig.
     // OpenClaw does NOT provide per-agent config resolution — all agents share the same

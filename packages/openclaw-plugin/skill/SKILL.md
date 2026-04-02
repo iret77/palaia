@@ -15,26 +15,26 @@ metadata:
         kind: pip
         package: "palaia[fastembed]"
         bins: ["palaia"]
-        label: "Install Palaia with semantic search (pip)"
+        label: "Install palaia with semantic search (pip)"
     postInstall:
       - command: "palaia init"
-        label: "Initialize Palaia store"
+        label: "Initialize palaia store"
       - command: "npm install -g @byte5ai/palaia@latest"
         label: "Install OpenClaw plugin (npm)"
     postUpdate:
       - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && (npm install -g @byte5ai/palaia@latest 2>/dev/null || true) && palaia doctor --fix && palaia warmup"
-        label: "Upgrade Palaia with semantic search (pip + npm plugin) and run health checks"
+        label: "Upgrade palaia with semantic search (pip + npm plugin) and run health checks"
     postUpdateMessage: >
-      Palaia has been updated to v2.5. New: agent isolation mode (--isolated), modern CLI
+      palaia has been updated to v2.5. New: agent isolation mode (--isolated), modern CLI
       design, backup-restore auto-fix. Run `palaia doctor --fix` to upgrade.
     plugin:
       slot: memory
       package: "@byte5ai/palaia"
 ---
 
-# Palaia v2.4 — Agent Memory Skill
+# palaia v2.4 — Agent Memory Skill
 
-Palaia is the memory system for OpenClaw agents. It gives you persistent, searchable, crash-safe memory across sessions. You don't need to understand how it works — just use the commands below.
+palaia is the memory system for OpenClaw agents. It gives you persistent, searchable, crash-safe memory across sessions. You don't need to understand how it works — just use the commands below.
 
 <!-- begin:install -->
 ## First-Time Setup
@@ -106,7 +106,7 @@ Single-agent systems work with the default name. For multi-agent setups:
 palaia init --agent YOUR_AGENT_NAME
 ```
 
-## Updating Palaia
+## Updating palaia
 
 When the user asks to update, or when `palaia status` shows a version mismatch:
 
@@ -141,7 +141,7 @@ After the manual update, `palaia upgrade` will be available for future updates.
 
 ## Auto-Check (run every time this skill is loaded)
 
-Before doing anything else with Palaia, run `palaia doctor` silently. If it reports ANY warnings, address them immediately by following `palaia doctor --fix` recommendations. Do not proceed with other Palaia tasks until doctor reports no issues.
+Before doing anything else with palaia, run `palaia doctor` silently. If it reports ANY warnings, address them immediately by following `palaia doctor --fix` recommendations. Do not proceed with other palaia tasks until doctor reports no issues.
 
 ---
 
@@ -189,7 +189,7 @@ palaia config set database_url postgresql://user:pass@host/db
 
 ### Semantic Vector Search
 
-Palaia uses **hybrid search**: BM25 keyword matching (always active) combined with semantic vector embeddings (when a provider is configured). This finds memories by meaning, not just keywords.
+palaia uses **hybrid search**: BM25 keyword matching (always active) combined with semantic vector embeddings (when a provider is configured). This finds memories by meaning, not just keywords.
 
 **Embedding providers** (checked in chain order, first available wins):
 
@@ -220,7 +220,7 @@ The OpenClaw plugin starts the embed-server automatically. For CLI-only usage, i
 
 ### MCP Server (Claude Desktop, Cursor, any MCP host)
 
-Palaia works as a standalone MCP memory server — **no OpenClaw required**. Any AI tool that supports MCP can use palaia as persistent local memory.
+palaia works as a standalone MCP memory server — **no OpenClaw required**. Any AI tool that supports MCP can use palaia as persistent local memory.
 
 ```bash
 pip install 'palaia[mcp]'
@@ -522,7 +522,7 @@ All commands support `--json` for machine-readable output.
 
 ## Smart Nudging
 
-Palaia's CLI output contains contextual hints prefixed with `[palaia]`. These are important guidance.
+palaia's CLI output contains contextual hints prefixed with `[palaia]`. These are important guidance.
 
 **As an agent, you should:**
 - Read and act on nudge messages in CLI output
@@ -723,7 +723,7 @@ Session continuity gives agents automatic context restoration across sessions. T
 Session briefings are injected automatically at session start. They contain your last session summary and any open tasks (sticky notes). Read the briefing carefully — it is your primary context for continuing previous work. Do not ask the user "where did we leave off?" when a briefing is present. Instead, acknowledge the context and continue seamlessly.
 
 ### Session Summaries
-When a session ends or resets, Palaia auto-saves a summary of what happened. These are stored as entries with the `session-summary` tag and can be queried:
+When a session ends or resets, palaia auto-saves a summary of what happened. These are stored as entries with the `session-summary` tag and can be queried:
 ```bash
 palaia query "session-summary" --tags session-summary
 ```
@@ -735,7 +735,7 @@ Wrap sensitive content in `<private>...</private>` blocks to exclude it from aut
 Fresh memories are ranked higher in recall results. The boost factor is configurable via `recallRecencyBoost` (default `0.3`, set to `0` to disable).
 
 ### Progressive Disclosure
-When result sets exceed 100 entries, Palaia uses compact mode to keep context manageable. Use `--limit` to control result size explicitly:
+When result sets exceed 100 entries, palaia uses compact mode to keep context manageable. Use `--limit` to control result size explicitly:
 ```bash
 palaia list --type task --status open --limit 5
 ```

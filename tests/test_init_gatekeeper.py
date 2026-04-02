@@ -288,10 +288,10 @@ class TestInstanceCLI:
         return main()
 
     def test_instance_set(self, palaia_root, monkeypatch, capsys):
-        self._run_palaia(palaia_root, ["instance", "set", "Claw-Palaia"], monkeypatch)
+        self._run_palaia(palaia_root, ["instance", "set", "Claw-palaia"], monkeypatch)
         captured = capsys.readouterr()
-        assert "Claw-Palaia" in captured.out
-        assert get_instance(palaia_root) == "Claw-Palaia"
+        assert "Claw-palaia" in captured.out
+        assert get_instance(palaia_root) == "Claw-palaia"
 
     def test_instance_get(self, palaia_root, monkeypatch, capsys):
         set_instance(palaia_root, "MySession")

@@ -1,4 +1,4 @@
-"""Palaia doctor — diagnose local instance and detect legacy memory systems."""
+"""palaia doctor — diagnose local instance and detect legacy memory systems."""
 
 from __future__ import annotations
 

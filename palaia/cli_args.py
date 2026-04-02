@@ -1,4 +1,4 @@
-"""Argparse setup for Palaia CLI — extracted from cli.py for maintainability."""
+"""Argparse setup for palaia CLI — extracted from cli.py for maintainability."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build and return the CLI argument parser with all subcommands."""
     parser = argparse.ArgumentParser(
         prog="palaia",
-        description="Palaia — Local, cloud-free memory for OpenClaw agents.",
+        description="palaia — Local, cloud-free memory for OpenClaw agents.",
     )
     parser.add_argument("--version", action="version", version=f"palaia {__version__}")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
@@ -206,7 +206,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_instance = sub.add_parser("instance", help="Manage session identity")
     instance_sub = p_instance.add_subparsers(dest="instance_action")
     p_instance_set = instance_sub.add_parser("set", help="Set session instance name")
-    p_instance_set.add_argument("name", help="Instance name (e.g. Claw-Palaia)")
+    p_instance_set.add_argument("name", help="Instance name (e.g. Claw-palaia)")
     p_instance_set.add_argument("--json", action="store_true", help="Output as JSON")
     p_instance_get = instance_sub.add_parser("get", help="Show current instance")
     p_instance_get.add_argument("--json", action="store_true", help="Output as JSON")
@@ -220,7 +220,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_setup.add_argument("--json", action="store_true", help="Output as JSON")
 
     # doctor
-    p_doctor = sub.add_parser("doctor", help="Diagnose Palaia instance and detect legacy systems")
+    p_doctor = sub.add_parser("doctor", help="Diagnose palaia instance and detect legacy systems")
     p_doctor.add_argument("--fix", action="store_true", help="Show guided fix instructions for each warning")
     p_doctor.add_argument("--json", action="store_true", help="Output as JSON")
 

@@ -1,8 +1,8 @@
-# Palaia Architecture
+# palaia Architecture
 
 ## Overview
 
-Palaia is a local, crash-safe memory and knowledge system for single- and multi-agent AI setups. It integrates natively with OpenClaw as a memory plugin (ContextEngine) and provides a standalone CLI for direct use.
+palaia is a local, crash-safe memory and knowledge system for single- and multi-agent AI setups. It integrates natively with OpenClaw as a memory plugin (ContextEngine) and provides a standalone CLI for direct use.
 
 **Key principles:**
 - Flat files for entry content (human-readable, debuggable)
@@ -187,7 +187,7 @@ StorageBackend Protocol
 ```
 OpenClaw Agent
   ↓ registerContextEngine("palaia")
-PalaiaContextEngine
+palaiaContextEngine
   ├── bootstrap()           → WAL recovery + embed-server start
   ├── ingest(messages)      → Auto-capture (LLM + rule-based extraction)
   ├── assemble(budget)      → Token-budget-aware contextual recall

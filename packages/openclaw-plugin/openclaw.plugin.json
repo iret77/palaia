@@ -1,6 +1,6 @@
 {
   "id": "palaia",
-  "name": "Palaia Memory",
+  "name": "palaia Memory",
   "kind": "memory",
   "skills": ["./skill"],
   "configSchema": {
@@ -12,7 +12,7 @@
       },
       "workspace": {
         "type": "string",
-        "description": "Palaia workspace path (default: agent workspace)"
+        "description": "palaia workspace path (default: agent workspace)"
       },
       "tier": {
         "type": "string",
@@ -106,7 +106,7 @@
   },
   "uiHints": {
     "binaryPath": {
-      "label": "Palaia Binary Path",
+      "label": "palaia Binary Path",
       "placeholder": "auto-detect"
     },
     "workspace": {

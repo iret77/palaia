@@ -1,7 +1,7 @@
 /**
  * Agent tools: memory_search, memory_get, memory_write.
  *
- * These tools are the core of the Palaia OpenClaw integration.
+ * These tools are the core of the palaia OpenClaw integration.
  * They shell out to the palaia CLI with --json and return results
  * in the format OpenClaw agents expect.
  */
@@ -62,7 +62,7 @@ function buildRunnerOpts(config: PalaiaPluginConfig): RunnerOpts {
 }
 
 /**
- * Register all Palaia agent tools on the given plugin API.
+ * Register all palaia agent tools on the given plugin API.
  */
 export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig): void {
   const opts = buildRunnerOpts(config);
@@ -71,7 +71,7 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
   api.registerTool({
     name: "memory_search",
     description:
-      "Semantically search Palaia memory for relevant notes and context.",
+      "Semantically search palaia memory for relevant notes and context.",
     parameters: Type.Object({
       query: Type.String({ description: "Search query" }),
       maxResults: Type.Optional(
@@ -171,7 +171,7 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
   // ── memory_get ─────────────────────────────────────────────────
   api.registerTool({
     name: "memory_get",
-    description: "Read a specific Palaia memory entry by path or id.",
+    description: "Read a specific palaia memory entry by path or id.",
     parameters: Type.Object({
       path: Type.String({ description: "Memory path or UUID" }),
       from: Type.Optional(
@@ -211,7 +211,7 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
     {
       name: "memory_write",
       description:
-        "Write a new memory entry to Palaia. WAL-backed, crash-safe.",
+        "Write a new memory entry to palaia. WAL-backed, crash-safe.",
       parameters: Type.Object({
         content: Type.String({ description: "Memory content to write" }),
         scope: Type.Optional(

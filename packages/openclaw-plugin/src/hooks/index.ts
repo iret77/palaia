@@ -1,5 +1,5 @@
 /**
- * Lifecycle hooks for the Palaia OpenClaw plugin.
+ * Lifecycle hooks for the palaia OpenClaw plugin.
  *
  * - before_prompt_build: Query-based contextual recall (Issue #65).
  *   Returns appendSystemContext with brain instruction when memory is used.
@@ -81,7 +81,7 @@ export {
   isNoiseContent,
   shouldAttemptCapture,
   extractSignificance,
-  stripPalaiaInjectedContext,
+  strippalaiaInjectedContext,
 } from "./capture.js";
 
 // Reaction exports
@@ -130,7 +130,7 @@ import {
   resolveCaptureModel,
   shouldAttemptCapture,
   extractSignificance,
-  stripPalaiaInjectedContext,
+  strippalaiaInjectedContext,
   trimToRecentExchanges,
   setLogger as setCaptureLogger,
   getLlmImportFailureLogged,
@@ -278,7 +278,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
   // ── /palaia status command ─────────────────────────────────────
   api.registerCommand({
     name: "palaia-status",
-    description: "Show Palaia memory status",
+    description: "Show palaia memory status",
     async handler(_args: string) {
       try {
         const state = await loadPluginState(config.workspace);
@@ -293,7 +293,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
 
         return { text: formatStatusResponse(state, stats, config) };
       } catch (error) {
-        return { text: `Palaia status error: ${error}` };
+        return { text: `palaia status error: ${error}` };
       }
     },
   });
@@ -488,7 +488,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
         // Build context string with char budget
         // Progressive disclosure: compact mode for large stores (title + first line + ID)
         const compact = shouldUseCompactMode(ranked.length);
-        let text = "## Active Memory (Palaia)\n\n";
+        let text = "## Active Memory (palaia)\n\n";
         if (compact) {
           text += "_Compact mode — use `memory_get <id>` for full details._\n\n";
         }
@@ -512,7 +512,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
           }
           const { nudges } = checkNudges(pluginState);
           if (nudges.length > 0) {
-            nudgeContext = "\n\n## Agent Nudge (Palaia)\n\n" + nudges.join("\n\n");
+            nudgeContext = "\n\n## Agent Nudge (palaia)\n\n" + nudges.join("\n\n");
           }
           await savePluginState(pluginState, resolved.workspace);
         } catch {
@@ -556,7 +556,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
         return {
           prependContext: briefingText + text,
           appendSystemContext: config.showMemorySources
-            ? "You used Palaia memory in this turn. Add \u{1f9e0} at the very end of your response (after everything else, on its own line)."
+            ? "You used palaia memory in this turn. Add \u{1f9e0} at the very end of your response (after everything else, on its own line)."
             : undefined,
         };
       } catch (error) {
@@ -609,7 +609,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
           collectedHints.push(...hints);
         }
 
-        // Strip Palaia-injected recall context and private blocks from messages.
+        // Strip palaia-injected recall context and private blocks from messages.
         // The recall block is prepended to user messages by before_prompt_build.
         // Without stripping, auto-capture would re-capture previously recalled memories.
         // Private blocks (<private>...</private>) must be excluded from capture.
@@ -617,7 +617,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
         const cleanedTexts = allTexts.map(t => ({
           ...t,
           text: stripPrivateBlocks(
-            t.role === "user" ? stripPalaiaInjectedContext(t.text) : t.text
+            t.role === "user" ? strippalaiaInjectedContext(t.text) : t.text
           ),
         }));
 

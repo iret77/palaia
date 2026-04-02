@@ -1,4 +1,4 @@
-"""Palaia CLI entry point."""
+"""palaia CLI entry point."""
 
 from __future__ import annotations
 
@@ -120,10 +120,10 @@ def _check_gatekeeper(command: str) -> bool:
 
     root = find_palaia_root()
     if root is None:
-        print("Palaia not initialized. Run: palaia init", file=sys.stderr)
+        print("palaia not initialized. Run: palaia init", file=sys.stderr)
         return False
     if not is_initialized(root):
-        print("Palaia not initialized. Run: palaia init", file=sys.stderr)
+        print("palaia not initialized. Run: palaia init", file=sys.stderr)
         return False
     return True
 
@@ -586,7 +586,7 @@ def cmd_prune(args):
 
 
 def cmd_doctor(args):
-    """Run diagnostics on the local Palaia instance."""
+    """Run diagnostics on the local palaia instance."""
     palaia_root = find_palaia_root()
 
     results = run_doctor(palaia_root)
@@ -1251,7 +1251,7 @@ def cmd_package(args):
             return 0
         print(f"Package: {args.file}")
         print(f"  Format: v{info['palaia_package']}")
-        print(f"  Palaia version: {info['palaia_version']}")
+        print(f"  palaia version: {info['palaia_version']}")
         print(f"  Project: {info['project']}")
         print(f"  Exported: {info['exported_at']}")
         print(f"  Entries: {info['entry_count']}")

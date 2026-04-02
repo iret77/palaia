@@ -46,7 +46,7 @@ def smart_memory_source(tmp_path):
     (mem / "active-context.md").write_text(
         "# Active Context\n\n"
         "## [OPEN] Clawsy Build Sprint\nDetails about clawsy sprint.\n\n"
-        "## [OPEN] Palaia Migration\nDetails about palaia migration.\n"
+        "## [OPEN] palaia Migration\nDetails about palaia migration.\n"
     )
     projects = mem / "projects" / "clawsy"
     projects.mkdir(parents=True)
@@ -73,7 +73,7 @@ def test_smart_memory_extract(smart_memory_source):
     titles = [e.title for e in entries]
     assert "MEMORY.md" in titles
     assert "Clawsy Build Sprint" in titles
-    assert "Palaia Migration" in titles
+    assert "palaia Migration" in titles
     assert "Project: clawsy" in titles
     assert "Agent: coding" in titles
     assert "Daily: 2026-03-10" in titles
