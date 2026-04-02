@@ -1,4 +1,8 @@
-"""Scope-Tag parsing and enforcement (ADR-002)."""
+"""Scope-Tag parsing and enforcement (ADR-002).
+
+Scopes: private, team, public.
+Legacy shared:X scopes are treated as team for backward compatibility.
+"""
 
 from __future__ import annotations
 
@@ -7,25 +11,34 @@ import logging
 logger = logging.getLogger(__name__)
 
 VALID_SCOPES = {"private", "team", "public"}
-SHARED_PREFIX = "shared:"
+# Legacy prefix — accepted but normalized to "team" on write.
+_LEGACY_SHARED_PREFIX = "shared:"
 
 
 def validate_scope(scope: str) -> bool:
     """Check if a scope string is valid."""
     if scope in VALID_SCOPES:
         return True
-    if scope.startswith(SHARED_PREFIX) and len(scope) > len(SHARED_PREFIX):
+    # Accept legacy shared:X for backward compat (migration, old entries)
+    if scope.startswith(_LEGACY_SHARED_PREFIX) and len(scope) > len(_LEGACY_SHARED_PREFIX):
         return True
     return False
 
 
 def normalize_scope(scope: str | None, default: str = "team") -> str:
-    """Normalize and validate a scope, returning default if None."""
+    """Normalize and validate a scope, returning default if None.
+
+    Legacy shared:X scopes are silently normalized to 'team'.
+    """
     if scope is None:
         return default
     scope = scope.strip().lower()
     if not validate_scope(scope):
-        raise ValueError(f"Invalid scope: '{scope}'. Valid: private, team, shared:<name>, public")
+        raise ValueError(f"Invalid scope: '{scope}'. Valid: private, team, public")
+    # Normalize legacy shared:X → team
+    if scope.startswith(_LEGACY_SHARED_PREFIX):
+        logger.info("Normalizing legacy scope '%s' to 'team'", scope)
+        return "team"
     return scope
 
 
@@ -48,20 +61,18 @@ def can_access(
                           (Issue #145). When None, default visibility rules apply.
     """
     # Scope visibility filter: if set, entry scope must be in the allowed list.
-    # For shared:X scopes, check if "shared:X" is in the list literally,
-    # or if the base scope "shared" is allowed.
     if scope_visibility is not None:
         scope_allowed = False
         for allowed in scope_visibility:
             if entry_scope == allowed:
                 scope_allowed = True
                 break
-            # Allow "shared" to match any "shared:X"
-            if allowed == "shared" and entry_scope.startswith(SHARED_PREFIX):
-                scope_allowed = True
-                break
         if not scope_allowed:
-            return False
+            # Legacy: treat shared:X as team for visibility purposes
+            if entry_scope.startswith(_LEGACY_SHARED_PREFIX) and "team" in scope_visibility:
+                pass  # Allow access via team visibility
+            else:
+                return False
 
     if entry_scope == "team":
         return True
@@ -73,9 +84,9 @@ def can_access(
         if agent_names:
             return entry_agent in agent_names
         return agent_name == entry_agent
-    if entry_scope.startswith(SHARED_PREFIX):
-        project = entry_scope[len(SHARED_PREFIX) :]
-        return projects is not None and project in projects
+    # Legacy shared:X entries are accessible like team entries
+    if entry_scope.startswith(_LEGACY_SHARED_PREFIX):
+        return True
     return False
 
 

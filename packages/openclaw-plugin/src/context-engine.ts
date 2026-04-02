@@ -174,7 +174,7 @@ async function buildMemoryContext(
   }
 
   // Apply type-weighted reranking and blocked filtering (Issue #121)
-  const rankedRaw = rerankByTypeWeight(entries, resolvedPrio.recallTypeWeight, config.recallRecencyBoost);
+  const rankedRaw = rerankByTypeWeight(entries, resolvedPrio.recallTypeWeight, config.recallRecencyBoost, config.manualEntryBoost);
   const ranked = filterBlocked(rankedRaw, resolvedPrio.blocked);
 
   // Build context string — progressive disclosure for large stores
@@ -193,7 +193,7 @@ async function buildMemoryContext(
   }
 
   // Build nudge text and check remaining budget before appending
-  const USAGE_NUDGE = "[palaia] auto-capture=on. Manual write: --type process (SOPs/checklists) or --type task (todos with assignee/deadline) only. Conversation knowledge is auto-captured — do not duplicate with manual writes.";
+  const USAGE_NUDGE = "[palaia] auto-capture=on. Manual writes rank higher in recall. Use --type process for reusable workflows, --type task for sticky-note reminders (auto-deleted when done), --type memory for important facts.";
   let agentNudges = "";
   try {
     const pluginState = await loadPluginState(config.workspace);
@@ -255,11 +255,17 @@ async function runAutoCapture(
   logger: { info(...a: unknown[]): void; warn(...a: unknown[]): void },
 ): Promise<boolean> {
   if (!config.autoCapture) return false;
-  if (!messages || messages.length === 0) return false;
+  if (!messages || messages.length === 0) {
+    logger.info("[palaia] Auto-capture skipped: no messages");
+    return false;
+  }
 
   const allTexts = extractMessageTexts(messages);
   const userTurns = allTexts.filter((t) => t.role === "user").length;
-  if (userTurns < config.captureMinTurns) return false;
+  if (userTurns < config.captureMinTurns) {
+    logger.info(`[palaia] Auto-capture skipped: ${userTurns} user turns < captureMinTurns=${config.captureMinTurns}`);
+    return false;
+  }
 
   // Parse capture hints
   const collectedHints: { project?: string; scope?: string }[] = [];
@@ -283,7 +289,10 @@ async function runAutoCapture(
   }
   const exchangeText = exchangeParts.join("\n");
 
-  if (!shouldAttemptCapture(exchangeText)) return false;
+  if (!shouldAttemptCapture(exchangeText)) {
+    logger.info(`[palaia] Auto-capture skipped: content did not pass significance filter (${exchangeText.length} chars)`);
+    return false;
+  }
 
   const hookOpts = buildRunnerOpts(config);
   const knownProjects = await loadProjects(hookOpts);
@@ -295,6 +304,7 @@ async function runAutoCapture(
   try {
     const results = await extractWithLLM(messages, api.config, {
       captureModel: config.captureModel,
+      workspace: config.workspace,
     }, knownProjects);
 
     for (const r of results) {
@@ -330,7 +340,10 @@ async function runAutoCapture(
   if (!llmHandled) {
     if (config.captureFrequency === "significant") {
       const significance = extractSignificance(exchangeText);
-      if (!significance) return false;
+      if (!significance) {
+        logger.info("[palaia] Auto-capture skipped: rule-based extraction found no significance (need ≥2 distinct tags)");
+        return false;
+      }
       const tags = [...significance.tags];
       if (!tags.includes("auto-capture")) tags.push("auto-capture");
       const scope = effectiveCaptureScope !== "team"

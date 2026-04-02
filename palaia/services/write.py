@@ -47,6 +47,27 @@ def write_entry(
                 ),
             }
 
+    # Similarity check for processes: warn before creating near-duplicates
+    process_similarity_nudge: str | None = None
+    if entry_type == "process":
+        try:
+            from palaia.search import SearchEngine
+
+            engine = SearchEngine(store)
+            results = engine.search(body, top_k=3, entry_type="process")
+            for r in results:
+                if r.get("score", 0) > 0.8:
+                    similar_title = r.get("title", "(untitled)")
+                    similar_id = r.get("id", "???")[:8]
+                    process_similarity_nudge = (
+                        f"[palaia] Similar process found: '{similar_title}' "
+                        f"(id: {similar_id}, score: {r['score']:.2f}). "
+                        f"Consider updating it with `palaia edit {similar_id}` instead."
+                    )
+                    break
+        except Exception:
+            pass  # Never block writes with nudge errors
+
     entry_id = store.write(
         body=body,
         scope=scope,
@@ -160,10 +181,7 @@ def write_entry(
             if vis:
                 written_scope = scope or "team"
                 # Check if written scope is visible to this agent
-                scope_visible = any(
-                    written_scope == v or (v == "shared" and written_scope.startswith("shared:"))
-                    for v in vis
-                )
+                scope_visible = any(written_scope == v for v in vis)
                 if scope_visible:
                     tracker.record_success("isolation_scope_mismatch", agent_for_nudge)
                 else:
@@ -213,6 +231,8 @@ def write_entry(
         "deduplicated": deduplicated,
         "recovered": recovered,
     }
+    if process_similarity_nudge:
+        nudge_messages.append(process_similarity_nudge)
     if nudge_messages:
         result["nudge"] = nudge_messages
     if significance_detected:
@@ -266,5 +286,15 @@ def edit_entry(
         )
     except (ValueError, PermissionError) as e:
         return {"error": str(e)}
+
+    # Task-as-Post-It: completed/cancelled tasks are ephemeral — delete on close
+    effective_status = status or meta.get("status")
+    effective_type = entry_type or meta.get("type")
+    if effective_type == "task" and effective_status in ("done", "wontfix"):
+        try:
+            store.delete(entry_id)
+            return {"id": entry_id, "deleted": True, "reason": "task completed"}
+        except Exception:
+            pass  # Fall through to normal return if delete fails
 
     return {"id": entry_id, "updated": True, "meta": meta}

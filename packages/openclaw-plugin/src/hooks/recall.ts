@@ -367,12 +367,17 @@ export function rerankByTypeWeight(
   results: QueryResult["results"],
   weights: Record<string, number>,
   recencyBoost = 0,
+  manualEntryBoost = 1.3,
 ): RankedEntry[] {
   return results
     .map((r) => {
       const type = r.type || "memory";
       const weight = weights[type] ?? 1.0;
       const recency = calcRecencyBoost(r.created, recencyBoost);
+      // Manual entries (no auto-capture tag) get a boost over auto-captured ones.
+      // This ensures intentionally stored knowledge ranks higher than conversation noise.
+      const isAutoCapture = r.tags?.includes("auto-capture") ?? false;
+      const sourceBoost = isAutoCapture ? 1.0 : manualEntryBoost;
       return {
         id: r.id,
         body: r.content || r.body || "",
@@ -383,7 +388,7 @@ export function rerankByTypeWeight(
         score: r.score,
         bm25Score: r.bm25_score,
         embedScore: r.embed_score,
-        weightedScore: r.score * weight * recency,
+        weightedScore: r.score * weight * recency * sourceBoost,
         created: r.created,
         tags: r.tags,
       };

@@ -338,10 +338,11 @@ const VALID_SCOPES = ["private", "team", "public"];
 
 /**
  * Check if a scope string is valid for palaia write.
- * Valid: "private", "team", "public", or any "shared:*" prefix.
+ * Valid: "private", "team", "public".
+ * Legacy shared:X is accepted but normalized to "team" by the CLI.
  */
 export function isValidScope(s: string): boolean {
-  return VALID_SCOPES.includes(s) || s.startsWith("shared:");
+  return VALID_SCOPES.includes(s);
 }
 
 /**

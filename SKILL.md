@@ -147,8 +147,13 @@ Before doing anything else with Palaia, run `palaia doctor` silently. If it repo
 
 ## Core Concepts
 
-### Auto-Capture
-Conversations are automatically captured when the OpenClaw plugin is active. You do NOT need to manually write things from conversations — Palaia handles it. Manual `palaia write` is only for structured knowledge: processes, tasks, and knowledge from external sources.
+### Auto-Capture vs. Manual Write
+Conversations are automatically captured when the OpenClaw plugin is active. Auto-capture handles routine knowledge extraction from conversations.
+
+**Manual writes (`palaia write`) are higher value.** When you or the user identify something as especially important — a key decision, a reusable workflow, a critical fact from an external source — write it manually. Manually written entries are ranked higher than auto-captured ones in recall results, so they surface more prominently in future sessions. Use manual writes for:
+- Important facts, decisions, or context from external sources
+- Reusable processes and workflows (team runbooks)
+- Sticky notes / reminders for future sessions (tasks)
 
 ### Three Tiers
 - **HOT** — Active memories (< 7 days or frequently accessed). Always searched.
@@ -162,8 +167,8 @@ Conversations are automatically captured when the OpenClaw plugin is active. You
 
 ### Entry Types
 - **memory** — Facts, decisions, learnings (default)
-- **process** — Workflows, checklists, SOPs
-- **task** — Action items with status, priority, assignee, due date
+- **process** — Workflows, checklists, SOPs (team runbooks)
+- **task** — Sticky notes / reminders for future sessions. Tasks are ephemeral: when marked done, they are automatically deleted. Never auto-captured — only created by explicit `palaia write --type task`.
 
 ---
 
@@ -265,21 +270,27 @@ palaia-mcp --read-only                  # No writes (untrusted hosts)
 
 ### `palaia write` — Save structured knowledge
 
-Only use for explicit process/task entries, or knowledge from external sources. Conversation knowledge is auto-captured.
+Use for important facts, reusable processes, sticky-note tasks, and knowledge from external sources. Manually written entries rank higher than auto-captured ones in recall.
 
 ```bash
-# Save a fact from outside the conversation
+# Save an important fact (ranks higher than auto-capture)
 palaia write "API rate limit is 100 req/min" --type memory --tags api,limits
 
-# Record a step-by-step process
-palaia write "1. Build 2. Test 3. Deploy" --type process --project myapp
+# Record a reusable team workflow (use specific, unique titles!)
+palaia write "Backend: Deploy to staging via Docker" --type process --project myapp --scope team
 
-# Create a task with structured fields
-palaia write "fix login bug" --type task --priority high --assignee Elliot --due-date 2026-04-01
+# Create a sticky note for a future session (deleted when done)
+palaia write "verify backup works after schema migration" --type task
 
 # Save to a specific project with scope
 palaia write "Use JWT for auth" --project backend --scope team --tags decision
 ```
+
+**Process naming convention:** Use the format `[Domain]: [What it does]` for process titles. Specific titles prevent duplicates and make processes findable.
+- Good: `"Release: PyPI publish + ClawHub sync"`, `"Backend: Deploy to staging via Docker"`
+- Bad: `"Deploy steps"`, `"Release process"` (too generic, will collide with other similar processes)
+
+Before writing a new process, search for existing ones: `palaia query "deploy" --type process`. If a similar process exists, update it with `palaia edit <id>` instead of creating a new one.
 
 ### `palaia query` — Semantic search
 
@@ -486,9 +497,12 @@ palaia project locks                      # List all active locks
 ### `palaia edit` — Modify existing entries
 
 ```bash
-palaia edit <id> --status done
+palaia edit <id> --status done         # For tasks: this DELETES the entry (sticky note completed)
+palaia edit <id> --status wontfix      # For tasks: also deletes (cancelled reminder)
 palaia edit <id> "updated content" --tags new,tags --priority high
 ```
+
+**Task lifecycle:** Tasks are sticky notes. When you mark a task as `done` or `wontfix`, it is automatically deleted — not archived. This is intentional: completed reminders have no long-term value. If the outcome of the task should be remembered, write a separate memory entry before marking the task done.
 
 ### Other commands
 
@@ -649,12 +663,12 @@ palaia write "## Dev-Agent Lifecycle
 
 | Situation | Command |
 |-----------|---------|
-| Remember a fact (not from conversation) | `palaia write "..." --type memory` |
-| Record a process/SOP | `palaia write "steps..." --type process` |
-| Create a task | `palaia write "fix bug" --type task --priority high` |
-| Mark task done | `palaia edit <id> --status done` |
+| Save an important fact or decision | `palaia write "..." --type memory` (ranks higher than auto-capture) |
+| Document a reusable workflow | `palaia write "Domain: Steps..." --type process --scope team` |
+| Leave a reminder for future sessions | `palaia write "check X after Y" --type task` (auto-deleted when done) |
+| Mark a reminder as done | `palaia edit <id> --status done` (deletes the task) |
 | Find something | `palaia query "..."` |
-| Find open tasks | `palaia list --type task --status open` |
+| Find open reminders | `palaia list --type task --status open` |
 | Check system health | `palaia status` |
 | Something is wrong | `palaia doctor --fix` |
 | Clean up old entries | `palaia gc` |
@@ -662,11 +676,11 @@ palaia write "## Dev-Agent Lifecycle
 | Review accumulated knowledge | `palaia curate analyze` |
 | Share knowledge | `palaia sync export` or `palaia package export` |
 | Check for messages | `palaia memo inbox` |
-| Start of session | Session briefing is now automatic. Just run `palaia doctor` and check `palaia memo inbox`. |
+| Start of session | Session briefing is automatic. Just run `palaia doctor` and check `palaia memo inbox`. |
 
-**Do NOT manually write:** facts, decisions, or preferences that came up in the current conversation. Auto-Capture handles these.
+**Auto-capture** handles routine conversation knowledge. **Manual writes rank higher** in recall — use them when something is especially important, reusable, or comes from an external source.
 
-**DO manually write:** processes, tasks with structured fields, knowledge from external sources, project setup.
+**DO manually write:** key decisions, reusable processes (team runbooks), sticky-note reminders (tasks), important facts from external sources.
 
 ---
 
@@ -706,7 +720,7 @@ palaia init --capture-level <off|minimal|normal|aggressive>
 Session continuity gives agents automatic context restoration across sessions. These features work out of the box with the OpenClaw plugin -- no manual setup needed.
 
 ### Session Briefings
-On session start, Palaia automatically injects a briefing with the last session summary and any open tasks. This means agents resume work without needing to manually search for context.
+Session briefings are injected automatically at session start. They contain your last session summary and any open tasks (sticky notes). Read the briefing carefully — it is your primary context for continuing previous work. Do not ask the user "where did we leave off?" when a briefing is present. Instead, acknowledge the context and continue seamlessly.
 
 ### Session Summaries
 When a session ends or resets, Palaia auto-saves a summary of what happened. These are stored as entries with the `session-summary` tag and can be queried:
@@ -750,6 +764,7 @@ Set in `openclaw.json` under `plugins.entries.palaia.config`:
 | `sessionBriefingMaxChars` | `1500` | Max chars for session briefing injection |
 | `captureToolObservations` | `true` | Track tool usage as session context |
 | `recallRecencyBoost` | `0.3` | Boost factor for fresh memories (0=off) |
+| `manualEntryBoost` | `1.3` | Boost factor for manually written entries vs auto-captured (1.0=off) |
 
 ---
 

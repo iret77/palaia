@@ -133,11 +133,9 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
       if (scopeVisibility) {
         filteredResults = filteredResults.filter((r) => {
           const scope = r.scope || "team";
-          return scopeVisibility!.some((allowed) => {
-            if (scope === allowed) return true;
-            if (allowed === "shared" && scope.startsWith("shared:")) return true;
-            return false;
-          });
+          // Legacy shared:X entries are treated as team
+          const effectiveScope = scope.startsWith("shared:") ? "team" : scope;
+          return scopeVisibility!.includes(effectiveScope);
         });
       }
 
@@ -218,7 +216,7 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
         content: Type.String({ description: "Memory content to write" }),
         scope: Type.Optional(
           Type.String({
-            description: "Scope: private|team|shared:X|public (default: team)",
+            description: "Scope: private|team|public (default: team)",
             default: "team",
           })
         ),
@@ -306,7 +304,7 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
               content: [
                 {
                   type: "text" as const,
-                  text: `Invalid scope "${params.scope}". Valid scopes: private, team, public, shared:<name>`,
+                  text: `Invalid scope "${params.scope}". Valid scopes: private, team, public`,
                 },
               ],
             };

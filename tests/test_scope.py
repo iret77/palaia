@@ -37,10 +37,12 @@ def test_can_access_private():
     assert can_access("private", None, "agent1") is False
 
 
-def test_can_access_shared():
+def test_can_access_shared_legacy():
+    """Legacy shared:X entries are accessible like team entries."""
     assert can_access("shared:proj1", "agent1", "agent2", ["proj1"]) is True
-    assert can_access("shared:proj1", "agent1", "agent2", ["proj2"]) is False
-    assert can_access("shared:proj1", "agent1", "agent2", None) is False
+    # Legacy shared:X is treated as team — always accessible regardless of projects
+    assert can_access("shared:proj1", "agent1", "agent2", ["proj2"]) is True
+    assert can_access("shared:proj1", "agent1", "agent2", None) is True
 
 
 def test_can_access_private_with_agent_names():
@@ -84,15 +86,12 @@ class TestScopeVisibility:
         assert can_access("team", "a", "b", scope_visibility=["private", "team"]) is True
         assert can_access("public", "a", "b", scope_visibility=["private", "team"]) is False
 
-    def test_shared_exact(self):
-        """Exact shared:X match in scopeVisibility."""
-        assert can_access("shared:proj1", "a", "b", ["proj1"], scope_visibility=["private", "shared:proj1"]) is True
-        assert can_access("shared:proj2", "a", "b", ["proj2"], scope_visibility=["private", "shared:proj1"]) is False
-
-    def test_shared_wildcard(self):
-        """'shared' in scopeVisibility matches any shared:X."""
-        assert can_access("shared:proj1", "a", "b", ["proj1"], scope_visibility=["private", "shared"]) is True
-        assert can_access("shared:proj2", "a", "b", ["proj2"], scope_visibility=["private", "shared"]) is True
+    def test_shared_legacy_as_team(self):
+        """Legacy shared:X entries are accessible when 'team' is in scopeVisibility."""
+        assert can_access("shared:proj1", "a", "b", ["proj1"], scope_visibility=["private", "team"]) is True
+        assert can_access("shared:proj2", "a", "b", ["proj2"], scope_visibility=["private", "team"]) is True
+        # Without team in visibility, legacy shared:X entries are blocked
+        assert can_access("shared:proj1", "a", "b", ["proj1"], scope_visibility=["private"]) is False
 
     def test_private_scope_still_enforced(self):
         """scopeVisibility allows private, but agent ownership still checked."""

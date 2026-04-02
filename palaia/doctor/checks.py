@@ -1315,6 +1315,85 @@ def _check_capture_model() -> dict[str, Any]:
     }
 
 
+def _check_capture_health(palaia_root: Path | None) -> dict[str, Any]:
+    """Detect silent auto-capture failure: autoCapture=true but no captured entries."""
+    if palaia_root is None:
+        return {
+            "name": "capture_health",
+            "label": "Capture health",
+            "status": "ok",
+            "message": "Not initialized (skipped)",
+        }
+
+    from palaia.config import load_config
+
+    config = load_config(palaia_root)
+    plugin_config = config.get("plugin_config")
+
+    # Only relevant when autoCapture is enabled
+    auto_capture = False
+    if plugin_config and isinstance(plugin_config, dict):
+        auto_capture = plugin_config.get("autoCapture", False)
+
+    if not auto_capture:
+        return {
+            "name": "capture_health",
+            "label": "Capture health",
+            "status": "ok",
+            "message": "autoCapture is off (skipped)",
+        }
+
+    # Count auto-captured entries
+    import sqlite3
+
+    db_path = palaia_root / "palaia.db"
+    capture_count = 0
+    if db_path.exists():
+        try:
+            conn = sqlite3.connect(str(db_path))
+            row = conn.execute(
+                "SELECT COUNT(*) FROM entries WHERE tags LIKE '%auto-capture%'"
+            ).fetchone()
+            capture_count = row[0] if row else 0
+            conn.close()
+        except Exception:
+            pass
+    else:
+        # Legacy flat-file: check for auto-capture tag in .md files
+        for tier in ("hot", "warm", "cold"):
+            tier_dir = palaia_root / tier
+            if tier_dir.exists():
+                for md_file in tier_dir.glob("*.md"):
+                    try:
+                        content = md_file.read_text(encoding="utf-8", errors="ignore")
+                        if "auto-capture" in content:
+                            capture_count += 1
+                            break  # One is enough to confirm it works
+                    except (PermissionError, OSError):
+                        pass
+                if capture_count > 0:
+                    break
+
+    if capture_count == 0:
+        return {
+            "name": "capture_health",
+            "label": "Capture health",
+            "status": "warn",
+            "message": (
+                "autoCapture=true but no auto-captured entries found. "
+                "Auto-capture may not be firing. "
+                "Check plugin config and agent workspace setup."
+            ),
+        }
+
+    return {
+        "name": "capture_health",
+        "label": "Capture health",
+        "status": "ok",
+        "message": f"autoCapture=true, {capture_count} auto-captured entries",
+    }
+
+
 def _check_embedding_model_integrity(palaia_root: Path | None) -> dict[str, Any]:
     """Check fastembed model cache integrity (corrupted symlinks cause ONNX errors)."""
     if palaia_root is None:
