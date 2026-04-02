@@ -117,9 +117,9 @@ class TestCreateEntry:
         assert "assignee" not in meta
 
     def test_instance_field(self):
-        text = create_entry("body", instance="Claw-Palaia")
+        text = create_entry("body", instance="Claw-palaia")
         meta, _ = parse_entry(text)
-        assert meta["instance"] == "Claw-Palaia"
+        assert meta["instance"] == "Claw-palaia"
 
     def test_instance_from_env(self, monkeypatch):
         monkeypatch.setenv("PALAIA_INSTANCE", "TestInstance")

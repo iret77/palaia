@@ -1,1 +1,1 @@
-"""Palaia service layer — business logic extracted from CLI."""
+"""palaia service layer — business logic extracted from CLI."""

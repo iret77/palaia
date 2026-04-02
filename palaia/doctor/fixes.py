@@ -1,4 +1,4 @@
-"""Palaia doctor fixes — apply_fixes and helper functions."""
+"""palaia doctor fixes — apply_fixes and helper functions."""
 
 from __future__ import annotations
 

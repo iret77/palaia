@@ -1,4 +1,4 @@
-"""Tests for Palaia MCP server tool handlers."""
+"""Tests for palaia MCP server tool handlers."""
 
 from __future__ import annotations
 

@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-As Palaia usage grows, entries accumulate across diverse topics — product work, research, personal notes. Users need a way to group related entries without breaking the existing flat model. Scopes (ADR-002) handle *access control* (private/team/public), but there's no mechanism for *organizational grouping*.
+As palaia usage grows, entries accumulate across diverse topics — product work, research, personal notes. Users need a way to group related entries without breaking the existing flat model. Scopes (ADR-002) handle *access control* (private/team/public), but there's no mechanism for *organizational grouping*.
 
 ## Decision
 

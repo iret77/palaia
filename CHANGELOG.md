@@ -145,7 +145,7 @@ If you need to revert to v2.1 after upgrading:
 ## [2.0.13] — 2026-03-22
 
 ### Fixed
-- **Auto-capture feedback loop**: `stripPalaiaInjectedContext()` strips the Palaia recall block from user messages before capture extraction, preventing re-captured memories from accumulating. Applied in `agent_end`, `extractWithLLM()`, and `buildRecallQuery()`.
+- **Auto-capture feedback loop**: `strippalaiaInjectedContext()` strips the palaia recall block from user messages before capture extraction, preventing re-captured memories from accumulating. Applied in `agent_end`, `extractWithLLM()`, and `buildRecallQuery()`.
 - **Doctor: feedback-loop artifact detection**: `palaia doctor` now detects entries that are re-captured recall context (feedback-loop artifacts). `palaia doctor --fix` marks them as done.
 
 ## [2.0.12] — 2026-03-22
@@ -159,7 +159,7 @@ If you need to revert to v2.1 after upgrading:
 
 ### Plugin-bundled SKILL.md
 
-- **SKILL.md included in npm package**: Agents installing Palaia via `npm install -g @byte5ai/palaia` now automatically get the SKILL.md in their `<available_skills>`. No ClawHub install required.
+- **SKILL.md included in npm package**: Agents installing palaia via `npm install -g @byte5ai/palaia` now automatically get the SKILL.md in their `<available_skills>`. No ClawHub install required.
 - Plugin manifest (`openclaw.plugin.json`) updated with `"skills": ["./skill"]` for automatic skill discovery.
 - The bundled SKILL.md is a usage-focused subset — installation steps are omitted since the plugin is already installed.
 
@@ -237,7 +237,7 @@ If you need to revert to v2.1 after upgrading:
 ## [2.0.2] — 2026-03-18
 
 ### Summary
-Consolidation release for Palaia 2.0. Includes the full v2.0 feature set (Auto-Capture, Auto-Recall, LLM-based extraction, session-isolated TurnState, significance tagging, knowledge packages, temporal queries, bounded GC) plus all post-release fixes.
+Consolidation release for palaia 2.0. Includes the full v2.0 feature set (Auto-Capture, Auto-Recall, LLM-based extraction, session-isolated TurnState, significance tagging, knowledge packages, temporal queries, bounded GC) plus all post-release fixes.
 
 ### Fixes since 2.0.0
 - SKILL.md plugin install step corrected.
@@ -250,7 +250,7 @@ Consolidation release for Palaia 2.0. Includes the full v2.0 feature set (Auto-C
 ## [2.0.0] — 2026-03-17
 
 ### Breaking Changes
-- **Palaia 2.0 is OpenClaw-specific.** Plugin architecture replaces standalone hooks. The CLI still works standalone for manual `palaia write`/`palaia query`, but Auto-Capture and Auto-Recall require the OpenClaw plugin.
+- **palaia 2.0 is OpenClaw-specific.** Plugin architecture replaces standalone hooks. The CLI still works standalone for manual `palaia write`/`palaia query`, but Auto-Capture and Auto-Recall require the OpenClaw plugin.
 - Plugin config path is now `plugins.entries.palaia.config` (not `plugins.config.palaia`).
 - Default `captureMinTurns` changed from 2 to 1 in plugin config.
 
@@ -284,7 +284,7 @@ Consolidation release for Palaia 2.0. Includes the full v2.0 feature set (Auto-C
 - **Gemini embedding provider** — `gemini-embedding-exp-03-07` via REST API, no SDK dependency. Cloud-based embeddings with local fallback support. (#34)
 - **Exact filtering for `palaia list`** — `--status`, `--tag`, `--priority` now use exact matching instead of embedding search. (#37)
 - **Doctor checks for unread memos** — `palaia doctor` warns when unread memos are waiting. (#42)
-- **Doctor checks for newer Palaia version on PyPI** — `palaia doctor` now detects when a newer version is available. (#45)
+- **Doctor checks for newer palaia version on PyPI** — `palaia doctor` now detects when a newer version is available. (#45)
 - **Improved OpenClaw config auto-detection** — Better detection on VPS installs where config paths differ from standard setups. (#51)
 - **Concurrent write safety validated** — 5 thread-based tests confirm WAL + file locking handles parallel writes correctly. (#52)
 
@@ -318,9 +318,9 @@ Consolidation release for Palaia 2.0. Includes the full v2.0 feature set (Auto-C
 ## [1.8.0] — 2026-03-13
 
 ### Added
-- **Process Nudge** — After `palaia write` and `palaia query`, Palaia now checks for relevant process entries and surfaces them: "Related process: Release Checklist (palaia get 74bba31a)". Uses hybrid matching (embedding similarity + tag overlap). Frequency-limited (max 1 nudge per process per hour). Suppressed in `--json` mode. Gracefully degrades to tag-only matching when no embedding provider is available.
-- **"What Goes Where" guide** in SKILL.md — Clear boundary between project files (static facts) and Palaia (dynamic knowledge). Helps agents avoid duplicating knowledge across files and Palaia entries.
-- **Reconciliation guide** in SKILL.md — Best practices for agents working in environments with pre-Palaia memory patterns (CONTEXT.md, MEMORY.md). Gradual migration without breaking existing workflows.
+- **Process Nudge** — After `palaia write` and `palaia query`, palaia now checks for relevant process entries and surfaces them: "Related process: Release Checklist (palaia get 74bba31a)". Uses hybrid matching (embedding similarity + tag overlap). Frequency-limited (max 1 nudge per process per hour). Suppressed in `--json` mode. Gracefully degrades to tag-only matching when no embedding provider is available.
+- **"What Goes Where" guide** in SKILL.md — Clear boundary between project files (static facts) and palaia (dynamic knowledge). Helps agents avoid duplicating knowledge across files and palaia entries.
+- **Reconciliation guide** in SKILL.md — Best practices for agents working in environments with pre-palaia memory patterns (CONTEXT.md, MEMORY.md). Gradual migration without breaking existing workflows.
 
 ## [1.7.3] — 2026-03-13
 
@@ -347,7 +347,7 @@ Consolidation release for Palaia 2.0. Includes the full v2.0 feature set (Auto-C
 - **Structured Task Fields** — `status` (open|in-progress|done|wontfix), `priority` (critical|high|medium|low), `assignee`, `due_date` for task entries.
 - **`palaia edit`** — Edit existing entries: content, tags, title, and all task fields. WAL-backed, scope-enforced.
 - **Session Identities** — New `instance` frontmatter field for distinguishing sessions of the same agent. Auto-set via `PALAIA_INSTANCE` env var.
-- **Structured Query Filters** — `palaia query --type task --status open --priority high --assignee Elliot --instance Claw-Palaia`. Exact match, not embeddings.
+- **Structured Query Filters** — `palaia query --type task --status open --priority high --assignee Elliot --instance Claw-palaia`. Exact match, not embeddings.
 - **Structured List Filters** — `palaia list --type task --status open --priority high --assignee --instance`.
 - **Agent Nudging** — CLI hints after writes without `--type`. `palaia status` shows entry class breakdown with task status summary. Hints are frequency-limited and suppressed in JSON output.
 - **`palaia migrate --suggest`** — Scan existing entries and suggest type assignments based on content heuristics.

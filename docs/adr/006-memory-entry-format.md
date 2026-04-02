@@ -8,7 +8,7 @@
 
 ## Kontext
 
-Palaia braucht ein konsistentes, menschenlesbares Format für Memory-Einträge.
+palaia braucht ein konsistentes, menschenlesbares Format für Memory-Einträge.
 Binärformate scheiden aus (Prinzip: Lokal first, Zero Dependencies).
 
 ## Entscheidung

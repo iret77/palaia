@@ -53,7 +53,7 @@ def workspace(tmp_path):
     return ws
 
 
-class TestCheckPalaiaInit:
+class TestCheckpalaiaInit:
     def test_not_initialized(self):
         result = _check_palaia_init(None)
         assert result["status"] == "error"
@@ -512,7 +512,7 @@ type: memory
 tags: documentation
 created: 2026-03-20T10:00:00+00:00
 scope: team
-title: Palaia docs
+title: palaia docs
 ---
 This is documentation about the tag format.
 Tags like [t/m] are used for memory entries in the recall block."""

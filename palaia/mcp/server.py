@@ -1,4 +1,4 @@
-"""Palaia MCP Server — tool definitions and server setup."""
+"""palaia MCP Server — tool definitions and server setup."""
 
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ logger = logging.getLogger(__name__)
 
 
 def create_server(root: Path, read_only: bool = False) -> FastMCP:
-    """Create and configure the Palaia MCP server."""
+    """Create and configure the palaia MCP server."""
 
     mcp = FastMCP(
         name="palaia",
         instructions=(
-            "Palaia is a local, crash-safe memory system for AI agents. "
+            "palaia is a local, crash-safe memory system for AI agents. "
             "Use palaia_search to find relevant memories before answering questions. "
             "Use palaia_store to save important context, decisions, and learnings. "
             "Memories persist across sessions and are available to all connected agents."

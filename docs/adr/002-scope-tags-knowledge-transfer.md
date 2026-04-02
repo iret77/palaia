@@ -38,7 +38,7 @@ scope: public            # exportierbar an andere Teams via git
 ### Cross-Team via Git
 
 - Git-Export erstellt Branch mit **nur** `scope: public` Memories
-- Beim Import: Palaia lehnt alles mit `scope: team` aus fremdem Workspace ab
+- Beim Import: palaia lehnt alles mit `scope: team` aus fremdem Workspace ab
 - Kein "alles oder nichts" — granulare Kontrolle
 
 ## Konsequenzen

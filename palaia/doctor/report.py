@@ -1,4 +1,4 @@
-"""Palaia doctor report formatting."""
+"""palaia doctor report formatting."""
 
 from __future__ import annotations
 

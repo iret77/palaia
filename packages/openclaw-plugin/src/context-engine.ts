@@ -33,7 +33,7 @@ import {
   extractWithLLM,
   shouldAttemptCapture,
   extractSignificance,
-  stripPalaiaInjectedContext,
+  strippalaiaInjectedContext,
   stripPrivateBlocks,
   trimToRecentExchanges,
   parsePalaiaHints,
@@ -179,7 +179,7 @@ async function buildMemoryContext(
 
   // Build context string — progressive disclosure for large stores
   const compact = shouldUseCompactMode(ranked.length);
-  let text = "## Active Memory (Palaia)\n\n";
+  let text = "## Active Memory (palaia)\n\n";
   if (compact) {
     text += "_Compact mode — use `memory_get <id>` for full details._\n\n";
   }
@@ -203,7 +203,7 @@ async function buildMemoryContext(
     }
     const { nudges } = checkNudges(pluginState);
     if (nudges.length > 0) {
-      agentNudges = "\n\n## Agent Nudge (Palaia)\n\n" + nudges.join("\n\n");
+      agentNudges = "\n\n## Agent Nudge (palaia)\n\n" + nudges.join("\n\n");
     }
     await savePluginState(pluginState, config.workspace);
   } catch {
@@ -278,7 +278,7 @@ async function runAutoCapture(
   const cleanedTexts = allTexts.map(t => ({
     ...t,
     text: stripPrivateBlocks(
-      t.role === "user" ? stripPalaiaInjectedContext(t.text) : t.text
+      t.role === "user" ? strippalaiaInjectedContext(t.text) : t.text
     ),
   }));
   const recentTexts = trimToRecentExchanges(cleanedTexts);
@@ -392,7 +392,7 @@ export function createPalaiaContextEngine(
   const engine: ContextEngine = {
     info: {
       id: "palaia",
-      name: "Palaia Memory",
+      name: "palaia Memory",
       version: "2.3",
     },
 

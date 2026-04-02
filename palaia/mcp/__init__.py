@@ -1,4 +1,4 @@
-"""Palaia MCP Server — expose palaia memory via Model Context Protocol.
+"""palaia MCP Server — expose palaia memory via Model Context Protocol.
 
 Works with Claude Desktop, Cursor, and any MCP-compatible host.
 Independent of OpenClaw — palaia as a standalone memory layer.
@@ -20,7 +20,7 @@ def main(argv: list[str] | None = None) -> None:
     """Entry point for `palaia-mcp` and `palaia mcp-server`."""
     parser = argparse.ArgumentParser(
         prog="palaia-mcp",
-        description="Palaia MCP Server — local memory for AI agents via MCP",
+        description="palaia MCP Server — local memory for AI agents via MCP",
     )
     parser.add_argument(
         "--root",

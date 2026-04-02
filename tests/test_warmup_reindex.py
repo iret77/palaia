@@ -212,7 +212,7 @@ def test_reindex_includes_private_entries(palaia_root):
 def test_reindex_includes_shared_entries(palaia_root):
     """Warmup indexes shared-scope entries (fix #60)."""
     _write_entry(palaia_root, "hot", "aaaa-1111", "Team Entry", "team content", scope="team")
-    _write_entry(palaia_root, "hot", "aaaa-2222", "Shared Palaia", "shared palaia", scope="shared:palaia")
+    _write_entry(palaia_root, "hot", "aaaa-2222", "Shared palaia", "shared palaia", scope="shared:palaia")
     _write_entry(palaia_root, "hot", "aaaa-3333", "Shared Kemia", "shared kemia", scope="shared:kemia")
     _write_entry(palaia_root, "warm", "aaaa-4444", "Shared Clawsy", "shared clawsy", scope="shared:clawsy")
 

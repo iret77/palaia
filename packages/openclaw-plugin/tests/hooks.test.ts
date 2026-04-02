@@ -32,7 +32,7 @@ import {
   registerHooks,
   setEmbeddedPiAgentLoader,
   trimToRecentExchanges,
-  stripPalaiaInjectedContext,
+  strippalaiaInjectedContext,
   resolvePerAgentContext,
   type ExtractionResult,
   type PalaiaHint,
@@ -821,7 +821,7 @@ describe("buildFootnote", () => {
     ];
     const response = "We completed the PostgreSQL migration successfully";
     const footnote = buildFootnote(entries, response);
-    expect(footnote).toContain("📎 Palaia:");
+    expect(footnote).toContain("📎 palaia:");
     expect(footnote).toContain('"PostgreSQL migration" (Mar 16)');
     expect(footnote).toContain("Redis");
   });
@@ -1301,11 +1301,11 @@ describe("agent_end reaction cleanup", () => {
 });
 
 // ============================================================================
-// stripPalaiaInjectedContext — feedback loop prevention
+// strippalaiaInjectedContext — feedback loop prevention
 // ============================================================================
 
-describe("stripPalaiaInjectedContext", () => {
-  const MEMORY_BLOCK = `## Active Memory (Palaia)
+describe("strippalaiaInjectedContext", () => {
+  const MEMORY_BLOCK = `## Active Memory (palaia)
 
 [t/m] User prefers dark mode
 [t/pr] Project palaia uses TypeScript
@@ -1315,22 +1315,22 @@ describe("stripPalaiaInjectedContext", () => {
 
   it("strips injected memory block, preserves user text", () => {
     const input = `${MEMORY_BLOCK}\n\nHey, can you fix the bug?`;
-    const result = stripPalaiaInjectedContext(input);
+    const result = strippalaiaInjectedContext(input);
     expect(result).toBe("Hey, can you fix the bug?");
   });
 
   it("returns text unchanged when no block present", () => {
     const input = "Just a normal user message";
-    expect(stripPalaiaInjectedContext(input)).toBe(input);
+    expect(strippalaiaInjectedContext(input)).toBe(input);
   });
 
   it("does not strip partial block without nudge line (no false positive)", () => {
-    const input = "## Active Memory (Palaia)\n\nSome text without nudge ending";
-    expect(stripPalaiaInjectedContext(input)).toBe(input);
+    const input = "## Active Memory (palaia)\n\nSome text without nudge ending";
+    expect(strippalaiaInjectedContext(input)).toBe(input);
   });
 
   it("strips block with accumulated bold markdown artifacts", () => {
-    const input = `## Active Memory (Palaia)
+    const input = `## Active Memory (palaia)
 
 ****[t/m] Some duplicated memory
 [t/pr] Project info
@@ -1338,18 +1338,18 @@ describe("stripPalaiaInjectedContext", () => {
 [palaia] auto-capture=on | recall=semantic
 
 What should I work on next?`;
-    const result = stripPalaiaInjectedContext(input);
+    const result = strippalaiaInjectedContext(input);
     expect(result).toBe("What should I work on next?");
   });
 
   it("strips block when it appears mid-message", () => {
     const input = `Previous context\n\n${MEMORY_BLOCK}\n\nActual question here`;
-    const result = stripPalaiaInjectedContext(input);
+    const result = strippalaiaInjectedContext(input);
     expect(result).toBe("Previous context\n\nActual question here");
   });
 
   it("handles empty string", () => {
-    expect(stripPalaiaInjectedContext("")).toBe("");
+    expect(strippalaiaInjectedContext("")).toBe("");
   });
 
   it("agent_end: extractMessageTexts + strip prevents feedback loop", () => {
@@ -1367,12 +1367,12 @@ What should I work on next?`;
 
     const texts = extractMessageTexts(messages);
     // Before stripping: user message contains the memory block
-    expect(texts[0].text).toContain("Active Memory (Palaia)");
+    expect(texts[0].text).toContain("Active Memory (palaia)");
 
     // After stripping (as agent_end now does):
     const cleaned = texts.map(t =>
       t.role === "user"
-        ? { ...t, text: stripPalaiaInjectedContext(t.text) }
+        ? { ...t, text: strippalaiaInjectedContext(t.text) }
         : t
     );
     expect(cleaned[0].text).toBe("Please summarize the project status");

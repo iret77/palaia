@@ -6,7 +6,7 @@
  */
 
 import type { RecallTypeWeights } from "../config.js";
-import { stripPalaiaInjectedContext } from "./capture.js";
+import { strippalaiaInjectedContext } from "./capture.js";
 
 // ============================================================================
 // Types
@@ -79,7 +79,7 @@ export function buildFootnote(
     const dateStr = formatShortDate(e.date);
     return dateStr ? `"${e.title}" (${dateStr})` : `"${e.title}"`;
   });
-  return `\n\n\u{1f4ce} Palaia: ${parts.join(", ")}`;
+  return `\n\n\u{1f4ce} palaia: ${parts.join(", ")}`;
 }
 
 // Re-export formatShortDate from state for use here
@@ -96,7 +96,7 @@ const TRANSPARENCY_RECALL_THRESHOLD = 50;
 const TRANSPARENCY_DAYS_THRESHOLD = 7;
 
 const SATISFACTION_NUDGE_TEXT =
-  "Your user has been using Palaia for a while now. " +
+  "Your user has been using palaia for a while now. " +
   "Ask them casually if they're happy with the memory system. " +
   "If there are issues, suggest `palaia doctor`.";
 
@@ -268,7 +268,7 @@ function isSystemOnlyContent(text: string): boolean {
 export function buildRecallQuery(messages: unknown[]): string {
   const texts = extractMessageTexts(messages).map(t =>
     t.role === "user"
-      ? { ...t, text: stripPalaiaInjectedContext(t.text) }
+      ? { ...t, text: strippalaiaInjectedContext(t.text) }
       : t
   );
 

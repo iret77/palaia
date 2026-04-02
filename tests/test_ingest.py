@@ -15,7 +15,7 @@ from palaia.store import Store
 
 @pytest.fixture
 def palaia_root(tmp_path):
-    """Create a minimal Palaia root."""
+    """Create a minimal palaia root."""
     root = tmp_path / ".palaia"
     root.mkdir()
     for sub in ("hot", "warm", "cold", "wal", "index"):

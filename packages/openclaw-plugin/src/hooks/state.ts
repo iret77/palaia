@@ -396,7 +396,7 @@ export function formatStatusResponse(
   stats: Record<string, unknown>,
   config: PalaiaPluginConfig,
 ): string {
-  const lines: string[] = ["Palaia Memory Status", ""];
+  const lines: string[] = ["palaia Memory Status", ""];
 
   // Recall count
   const sinceDate = state.firstRecallTimestamp

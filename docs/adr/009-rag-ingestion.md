@@ -4,12 +4,12 @@
 Accepted
 
 ## Context
-Agents need to search not just their own memories but also external documents — PDFs, web pages, text files, Markdown. This is the foundation for Retrieval-Augmented Generation (RAG) within Palaia.
+Agents need to search not just their own memories but also external documents — PDFs, web pages, text files, Markdown. This is the foundation for Retrieval-Augmented Generation (RAG) within palaia.
 
 ## Decision
 
 ### Core Principle: RAG as Additive Extension
-Document ingestion reuses the existing Store, entry format, and search infrastructure. Ingested documents are stored as regular Palaia entries with additional frontmatter for source attribution. No breaking changes to existing functionality.
+Document ingestion reuses the existing Store, entry format, and search infrastructure. Ingested documents are stored as regular palaia entries with additional frontmatter for source attribution. No breaking changes to existing functionality.
 
 ### Chunking Strategy
 - **Sliding window** with configurable `chunk_size` (words) and `chunk_overlap` (words).
@@ -51,7 +51,7 @@ pdf = ["pdfplumber>=0.7"]
 ### Scope and Project Isolation
 Ingested documents follow the same scope/project system as regular entries:
 - `--scope` controls visibility (default: `private`)
-- `--project` assigns to a Palaia project for isolated search
+- `--project` assigns to a palaia project for isolated search
 - All standard scope rules apply
 
 ### RAG Query Output

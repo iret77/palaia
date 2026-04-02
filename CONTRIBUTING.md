@@ -1,6 +1,6 @@
-# Contributing to Palaia
+# Contributing to palaia
 
-Thanks for your interest in contributing to Palaia!
+Thanks for your interest in contributing to palaia!
 
 ## Development Setup
 
@@ -43,7 +43,7 @@ Intentional patterns in the codebase:
 Open a [GitHub Issue](https://github.com/byte5ai/palaia/issues). Include:
 
 - Python version (`python --version`)
-- Palaia version (`palaia --version`)
+- palaia version (`palaia --version`)
 - `palaia doctor --json` output
 - Steps to reproduce
 - Expected vs actual behavior
@@ -102,7 +102,7 @@ dev: v2.4.dev1 — testing embed-server auto-start
 
 ## Versioning
 
-Palaia uses **two-level versioning** (Major.Minor):
+palaia uses **two-level versioning** (Major.Minor):
 
 ```
 2.3      Stable release (public, all channels)

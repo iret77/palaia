@@ -1,4 +1,4 @@
-"""Palaia doctor checks — all _check_* diagnostic functions."""
+"""palaia doctor checks — all _check_* diagnostic functions."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def _check_palaia_init(palaia_root: Path | None) -> dict[str, Any]:
     if palaia_root is None:
         return {
             "name": "palaia_init",
-            "label": "Palaia initialized",
+            "label": "palaia initialized",
             "status": "error",
             "message": ".palaia/ not found — run: palaia init",
         }
@@ -30,7 +30,7 @@ def _check_palaia_init(palaia_root: Path | None) -> dict[str, Any]:
             except (PermissionError, OSError) as e:
                 return {
                     "name": "palaia_init",
-                    "label": "Palaia initialized",
+                    "label": "palaia initialized",
                     "status": "warn",
                     "message": f".palaia/ found but {tier}/ not readable: {e}",
                     "details": {"path": str(palaia_root), "error": str(e)},
@@ -38,7 +38,7 @@ def _check_palaia_init(palaia_root: Path | None) -> dict[str, Any]:
 
     return {
         "name": "palaia_init",
-        "label": "Palaia initialized",
+        "label": "palaia initialized",
         "status": "ok",
         "message": f".palaia/ found, {total} entries",
         "details": {"path": str(palaia_root), "entries": total},
@@ -353,7 +353,7 @@ def _check_smart_memory_skill() -> dict[str, Any]:
             "label": "Smart-Memory skill",
             "status": "warn",
             "message": f"Detected: {skill_path}",
-            "fix": (f"Remove or archive after Palaia is verified working:\n  rm -rf {skill_path}"),
+            "fix": (f"Remove or archive after palaia is verified working:\n  rm -rf {skill_path}"),
             "details": {"path": str(skill_path)},
         }
 
@@ -442,7 +442,7 @@ def _check_heartbeat_legacy(workspace: Path | None = None) -> dict[str, Any]:
             "status": "warn",
             "message": f"Found {len(found)} legacy pattern(s)",
             "fix": (
-                "Replace legacy memory commands with Palaia equivalents:\n"
+                "Replace legacy memory commands with palaia equivalents:\n"
                 '  memory_search/memory_get → palaia query "search term"\n'
                 "  memory/*.md reads → palaia query / palaia write"
             ),
@@ -458,7 +458,7 @@ def _check_heartbeat_legacy(workspace: Path | None = None) -> dict[str, Any]:
 
 
 LOOP_ARTIFACT_PATTERNS = [
-    re.compile(r"## Active Memory \(Palaia\)"),
+    re.compile(r"## Active Memory \(palaia\)"),
     re.compile(r"\[t/(m|pr|tk)\]"),
     re.compile(r"\[palaia\] auto-capture=on"),
     re.compile(r"(?:^|\s)\*{4,}", re.MULTILINE),  # accumulated markdown (not inside words)
@@ -923,7 +923,7 @@ def _check_default_agent_alias(palaia_root: Path | None) -> dict[str, Any]:
 
 
 def _check_version_available(palaia_root: Path | None) -> dict[str, Any]:
-    """Check if a newer Palaia version is available on PyPI."""
+    """Check if a newer palaia version is available on PyPI."""
     from palaia import __version__
 
     try:
@@ -1115,7 +1115,7 @@ def _check_plugin_defaults_upgrade(palaia_root: Path | None) -> dict[str, Any]:
         "status": "warn",
         "message": f"v1.x defaults detected: {changes_summary}",
         "fix": (
-            "Palaia 2.0 has optimized defaults for zero-config UX.\n"
+            "palaia 2.0 has optimized defaults for zero-config UX.\n"
             f"  Run: palaia doctor --fix  to upgrade your config.\n"
             f"  Changes: {changes_summary}\n"
             "  Custom values you've set will NOT be touched."
@@ -1311,7 +1311,7 @@ def _check_capture_model() -> dict[str, Any]:
         "name": "capture_model",
         "label": "Capture model",
         "status": "ok",
-        "message": "OpenClaw/Palaia plugin not detected (skipped)",
+        "message": "OpenClaw/palaia plugin not detected (skipped)",
     }
 
 

@@ -20,7 +20,7 @@ import {
   type ToolObservation,
 } from "./state.js";
 import {
-  stripPalaiaInjectedContext,
+  strippalaiaInjectedContext,
   stripPrivateBlocks,
   trimToRecentExchanges,
   extractWithLLM,
@@ -111,7 +111,7 @@ export function formatBriefing(briefing: PendingBriefing, maxChars: number): str
   if (maxChars <= 0) return "";
   if (!briefing.summary && briefing.openTasks.length === 0) return "";
 
-  const parts: string[] = ["## Session Briefing (Palaia)\n"];
+  const parts: string[] = ["## Session Briefing (palaia)\n"];
 
   if (briefing.summary) {
     const agoMs = Date.now() - briefing.timestamp;
@@ -177,7 +177,7 @@ export async function captureSessionSummary(
       const cleaned = allTexts.map((t: { role: string; text: string }) => ({
         ...t,
         text: stripPrivateBlocks(
-          t.role === "user" ? stripPalaiaInjectedContext(t.text) : t.text
+          t.role === "user" ? strippalaiaInjectedContext(t.text) : t.text
         ),
       }));
       const recent = trimToRecentExchanges(cleaned, 3);

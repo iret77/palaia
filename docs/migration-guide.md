@@ -1,6 +1,6 @@
 # Migration Guide
 
-How to move your agent's memory into Palaia — from flat files, other memory systems, or a fresh start.
+How to move your agent's memory into palaia — from flat files, other memory systems, or a fresh start.
 
 ## Automatic Migration
 
@@ -29,7 +29,7 @@ find ~/. openclaw/workspace/memory -name "*.md" | wc -l
 
 ### 2. Ingest
 
-Bulk-import your existing files. Palaia chunks them automatically for search.
+Bulk-import your existing files. palaia chunks them automatically for search.
 
 ```bash
 # Single file
@@ -80,7 +80,7 @@ palaia doctor
 
 ### 5. Integration
 
-Point your agent to use Palaia for all memory operations:
+Point your agent to use palaia for all memory operations:
 
 ```bash
 # If using OpenClaw, the skill handles this automatically
@@ -101,7 +101,7 @@ palaia setup --multi-agent ~/.openclaw/agents/
 If you're coming from the OpenClaw smart-memory skill:
 
 ```bash
-# 1. Palaia can auto-detect and import smart-memory format
+# 1. palaia can auto-detect and import smart-memory format
 palaia migrate ~/.openclaw/workspace/memory/ --format smart-memory --dry-run
 
 # 2. If it looks good, run for real
@@ -130,4 +130,4 @@ palaia migrate ./data/ --format generic-md --scope private
 - **Start with `--dry-run`** on any bulk operation to preview what will happen.
 - **Use projects** to keep imported data organized and separate from new entries.
 - **Run `palaia doctor`** after migration to catch any leftover issues.
-- **Don't delete originals immediately** — archive them first, verify Palaia search works, then clean up.
+- **Don't delete originals immediately** — archive them first, verify palaia search works, then clean up.

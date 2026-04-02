@@ -1,4 +1,4 @@
-"""Palaia configuration management."""
+"""palaia configuration management."""
 
 from __future__ import annotations
 
@@ -135,7 +135,7 @@ def save_config(palaia_root: Path, config: dict) -> None:
 
 
 def is_initialized(palaia_root: Path | None = None) -> bool:
-    """Check if Palaia has been initialized.
+    """Check if palaia has been initialized.
 
     Returns True if .palaia/config.json exists (agent field is optional).
     """

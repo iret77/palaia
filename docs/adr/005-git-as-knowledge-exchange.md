@@ -58,10 +58,10 @@ palaia export                        palaia import <git-url>
 **Negativ:**
 - Kein Real-Time-Sync (Pull-basiert)
 - Git-Kenntnisse für Advanced-Use-Cases nötig
-- Konfliktauflösung bei gleichzeitigen Edits (→ Palaia-Merge-Strategie definieren)
+- Konfliktauflösung bei gleichzeitigen Edits (→ palaia-Merge-Strategie definieren)
 
 ## Alternativen verworfen
 
-- **Palaia Cloud Sync:** Verletzt Zero-Dependency für Core, bleibt als opt-in Enterprise-Feature
+- **palaia Cloud Sync:** Verletzt Zero-Dependency für Core, bleibt als opt-in Enterprise-Feature
 - **rsync/SCP:** Kein Versioning, kein Audit-Trail
 - **CRDTs:** Zu komplex für den Use Case
