@@ -17,11 +17,14 @@ from palaia.cli_helpers import (
 from palaia.config import get_aliases, get_root, load_config
 from palaia.store import Store
 from palaia.ui import (
+    bold,
+    dim,
     format_size,
     print_header,
     relative_time,
     score_display,
     section,
+    success,
     table_kv,
     table_multi,
     truncate,
@@ -170,16 +173,16 @@ def cmd_query(args):
             pass
 
     if not results:
-        print_header()
         # M5: guide on first query with empty store
         try:
             store = Store(root)
             all_entries = store.all_entries(include_cold=True)
             if len(all_entries) == 0:
-                print("[palaia] Your memory is empty. Knowledge will be auto-captured from conversations, or write explicitly: palaia write 'your text'", file=sys.stderr)
+                print(f"\n  {dim('Your memory is empty. Knowledge will be auto-captured, or write explicitly:')}", file=sys.stderr)
+                print("  palaia write 'your text'\n", file=sys.stderr)
         except Exception:
             pass
-        print("\nNo results found.")
+        print(f"\n  No results for {bold(args.query)}\n")
         return 0
 
     if getattr(args, "rag", False):
@@ -187,26 +190,23 @@ def cmd_query(args):
         print(format_rag_output(args.query, enriched))
         return 0
 
-    print_header()
-    print(section(f"Results for: {args.query}"))
+    search_tier = "hybrid" if has_embeddings else "BM25"
+    print(f"\n  {bold(f'{len(results)} results')} for {bold(args.query)} {dim(f'({search_tier})')}\n")
 
     rows = []
     for r in results:
         title = r["title"] or "(untitled)"
         score_str = score_display(r["score"])
-        body_preview = truncate(r["body"].replace("\n", " "), 50)
-        rows.append((r["id"][:8], score_str, r["tier"], title, body_preview))
+        age = relative_time(r.get("accessed") or r.get("created", ""))
+        rows.append((score_str, title, r["tier"], age, r["id"][:8]))
 
     print(
         table_multi(
-            headers=("ID", "Score", "Tier", "Title", "Preview"),
+            headers=("Score", "Title", "Tier", "Age", "ID"),
             rows=rows,
-            min_widths=(8, 18, 4, 16, 20),
+            min_widths=(5, 20, 4, 8, 8),
         )
     )
-
-    search_tier = "hybrid" if has_embeddings else "BM25"
-    print(f"\n{len(results)} result(s) found. (Search tier: {search_tier})")
 
     for nudge_msg in query_nudge_messages:
         print(f"\nHint: {nudge_msg}", file=sys.stderr)
@@ -316,12 +316,10 @@ def cmd_list(args):
         return 0
 
     if not entries_with_tier:
-        print_header()
-        print(f"\nNo entries in {tier_label}.")
+        print(f"\n  No entries in {tier_label}.\n")
         return 0
 
-    print_header()
-    print(section(f"Entries ({tier_label})"))
+    print(f"\n  {bold(f'{len(entries_with_tier)} entries')} {dim(f'({tier_label})')}\n")
 
     rows = []
     for meta, body, t in entries_with_tier:
@@ -350,8 +348,6 @@ def cmd_list(args):
                 min_widths=(8, 6, 20, 8),
             )
         )
-
-    print(f"\n{len(entries_with_tier)} entries in {tier_label}.")
     return 0
 
 
@@ -367,7 +363,6 @@ def cmd_status(args):
         return 0
 
     print_header()
-
     entries_str = f"{info['entries']['hot']} hot"
     if info["entries"]["warm"]:
         entries_str += f" / {info['entries']['warm']} warm"
@@ -444,17 +439,26 @@ def cmd_status(args):
             budget_rows.append(("  Usage", budget_info.get("chars_usage", "?")))
         print(table_kv(budget_rows))
 
+    from palaia.ui import status_label
+
     if info.get("embed_server_running"):
+        es_sym = status_label("ok")
         embed_server_status = "running"
     elif info.get("backend", {}).get("vector_search", "").startswith("sqlite-vec"):
+        es_sym = status_label("info")
         embed_server_status = "not running (auto-starts on next query)"
     else:
+        es_sym = status_label("warn")
         embed_server_status = "not running"
+
+    plugin_sym = status_label("ok") if info["plugin_detected"] else status_label("warn")
     plugin_status = "active" if info["plugin_detected"] else "not detected"
     upgrade_spec = info.get("upgrade_spec", "palaia[fastembed]")
-    print(f"\nEmbed server: {embed_server_status}")
-    print(f"OpenClaw Plugin: {plugin_status}")
-    print(f"Upgrade command: pip install --upgrade \"{upgrade_spec}\"")
+
+    print(f"\n    {es_sym}  Embed server: {embed_server_status}")
+    print(f"    {plugin_sym}  OpenClaw plugin: {plugin_status}")
+    upgrade_str = f'Upgrade: pip install --upgrade "{upgrade_spec}"'
+    print(f"    {dim(upgrade_str)}")
 
     # --- curate_reminder nudge (v2.2) ---
     try:
@@ -506,6 +510,7 @@ def cmd_detect(args):
             ]
         )
     )
+
 
     available = []
     provider_rows = []
@@ -724,12 +729,12 @@ def cmd_project(args):
         proj = result["project"]
         if json_out(proj, args):
             return 0
-        print(f"Created project: {proj['name']}")
+        print(success(f"Created project: {bold(proj['name'])}"))
         if proj.get("owner"):
-            print(f"  Owner: {proj['owner']}")
+            print(f"    Owner: {proj['owner']}")
         if proj.get("description"):
-            print(f"  Description: {proj['description']}")
-        print(f"  Default scope: {proj['default_scope']}")
+            print(f"    Description: {proj['description']}")
+        print(f"    Default scope: {proj['default_scope']}")
         return 0
 
     elif action == "list":
@@ -738,11 +743,9 @@ def cmd_project(args):
         if json_out({"projects": projects}, args):
             return 0
         if not projects:
-            print_header()
-            print("\nNo projects.")
+            print("\n  No projects.\n")
             return 0
-        print_header()
-        print(section("Projects"))
+        print(f"\n  {bold(f'{len(projects)} project(s)')}\n")
         rows = []
         for p in projects:
             rows.append((p["name"], p["default_scope"], p.get("owner", ""), p.get("description", "")))
@@ -753,7 +756,6 @@ def cmd_project(args):
                 min_widths=(12, 6, 8, 20),
             )
         )
-        print(f"\n{len(projects)} project(s).")
         return 0
 
     elif action == "show":
@@ -766,7 +768,6 @@ def cmd_project(args):
         if json_out(result, args):
             return 0
         proj = result["project"]
-        print_header()
         print(section(f"Project: {proj['name']}"))
         info_rows = [
             ("Name", proj["name"]),
@@ -829,11 +830,9 @@ def cmd_project(args):
         if json_out({"results": results, "project": args.name}, args):
             return 0
         if not results:
-            print_header()
-            print(f"\nNo results in project '{args.name}'.")
+            print(f"\n  No results in project '{args.name}'.\n")
             return 0
-        print_header()
-        print(section(f"Results in project '{args.name}'"))
+        print(f"\n  {bold(f'{len(results)} results')} in project {bold(args.name)}\n")
         rows = []
         for r in results:
             title = r["title"] or "(untitled)"
@@ -847,7 +846,6 @@ def cmd_project(args):
                 min_widths=(8, 18, 4, 16, 20),
             )
         )
-        print(f"\n{len(results)} result(s) in project '{args.name}'.")
         return 0
 
     elif action == "set-scope":

@@ -6,14 +6,17 @@ from typing import Any
 
 
 def format_doctor_report(results: list[dict[str, Any]], show_fix: bool = False) -> str:
-    """Format doctor results as a human-readable report using box-drawing tables."""
-    from palaia.ui import header, section, table_multi
+    """Format doctor results as a modern, symbol-based report."""
+    from palaia.ui import (
+        bold,
+        dim,
+        header,
+        status_label,
+        sym_arrow,
+    )
 
-    lines = [header()]
-    lines.append(section("Health Report"))
+    lines = [f"\n  {header()}", f"\n  {bold('Health Report')}\n"]
 
-    # Build table rows
-    table_rows = []
     warnings = 0
     errors = 0
 
@@ -21,47 +24,43 @@ def format_doctor_report(results: list[dict[str, Any]], show_fix: bool = False) 
         status = r["status"]
         label = r["label"]
         message = r["message"]
-        status_str = f"[{status}]"
-        table_rows.append((status_str, label, message))
+
+        sym = status_label(status)
+        # Pad label for alignment
+        label_str = label.ljust(24)
+        lines.append(f"  {sym}  {label_str}{dim(message)}")
 
         if status == "warn":
             warnings += 1
         elif status == "error":
             errors += 1
 
-    lines.append(
-        table_multi(
-            headers=("Status", "Check", "Details"),
-            rows=table_rows,
-            min_widths=(8, 22, 30),
-        )
-    )
-
-    # Show fix details below table if requested
+    # Fix guidance
     if show_fix:
         fix_lines = []
         for r in results:
-            if r["status"] == "warn" and "fix" in r:
-                fix_lines.append(f"\n  {r['label']}:")
+            if r["status"] in ("warn", "error") and "fix" in r:
+                fix_lines.append(f"\n    {r['label']}:")
                 for fl in r["fix"].split("\n"):
-                    fix_lines.append(f"    {fl}")
+                    fix_lines.append(f"      {fl}")
         if fix_lines:
-            lines.append("\nFix guidance:")
+            lines.append(f"\n  {bold('Fix guidance:')}")
             lines.extend(fix_lines)
     else:
-        # Show inline fix hints for warnings
         for r in results:
-            if r["status"] == "warn" and "fix" in r:
+            if r["status"] in ("warn", "error") and "fix" in r:
                 first_fix = r["fix"].split("\n")[0]
-                lines.append(f"  {r['label']}: {first_fix}")
+                lines.append(f"    {sym_arrow()} {r['label']}: {dim(first_fix)}")
 
     # Summary
-    if errors:
-        lines.append(f"\nErrors: {errors} — fix before using Palaia")
+    if errors and warnings:
+        lines.append(f"\n  {errors} error(s), {warnings} warning(s) {dim('— run')} palaia doctor --fix")
+    elif errors:
+        lines.append(f"\n  {errors} error(s) {dim('— fix before using palaia')}")
     elif warnings:
-        suffix = " — see fixes above" if show_fix else " — run with --fix for guided cleanup"
-        lines.append(f"\nAction required: {warnings} warning(s){suffix}")
+        suffix = dim("— see fixes above") if show_fix else dim("— run") + " palaia doctor --fix"
+        lines.append(f"\n  {warnings} warning(s) {suffix}")
     else:
-        lines.append("\nAll clear. Palaia is healthy.")
+        lines.append(f"\n  {status_label('ok')} All clear")
 
     return "\n".join(lines)

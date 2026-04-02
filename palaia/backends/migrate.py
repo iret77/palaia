@@ -51,7 +51,13 @@ def _should_rename(error_count: int, total_count: int) -> bool:
 
 
 def needs_migration(palaia_root: Path) -> bool:
-    """Check if there are flat-file indexes that should be migrated."""
+    """Check if there are flat-file indexes that should be migrated.
+
+    Detects three scenarios:
+    1. Old-style metadata.json / embeddings.json exist (pre-SQLite migration)
+    2. WAL JSON files exist
+    3. Entries on disk but 0 in the database (e.g. backup restore into hot/)
+    """
     metadata_json = palaia_root / "index" / "metadata.json"
     embeddings_json = palaia_root / "index" / "embeddings.json"
     wal_dir = palaia_root / "wal"
@@ -59,7 +65,37 @@ def needs_migration(palaia_root: Path) -> bool:
     has_json = metadata_json.exists() or embeddings_json.exists()
     has_wal_files = wal_dir.exists() and any(wal_dir.glob("*.json"))
 
-    return has_json or has_wal_files
+    if has_json or has_wal_files:
+        return True
+
+    # Scenario 3: Disk entries exist but DB is empty (backup restore)
+    disk_count = 0
+    for tier in ("hot", "warm", "cold"):
+        tier_dir = palaia_root / tier
+        if tier_dir.exists():
+            try:
+                disk_count += sum(1 for _ in tier_dir.glob("*.md"))
+            except (PermissionError, OSError):
+                pass
+        if disk_count > 0:
+            break  # At least one entry found, check DB
+
+    if disk_count > 0:
+        import sqlite3
+
+        db_path = palaia_root / "palaia.db"
+        if db_path.exists():
+            try:
+                conn = sqlite3.connect(str(db_path))
+                row = conn.execute("SELECT COUNT(*) FROM entries").fetchone()
+                db_count = row[0] if row else 0
+                conn.close()
+                if db_count == 0:
+                    return True
+            except Exception:
+                pass
+
+    return False
 
 
 def migrate_to_backend(palaia_root: Path, backend: object) -> MigrationResult:
