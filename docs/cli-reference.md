@@ -151,7 +151,14 @@ Show system health, entry counts, backend type, vector search method, embed-serv
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--fix` | — | Show guided fix instructions |
+| `--fix` | — | Auto-fix detected issues |
+
+Detects and fixes:
+- Missing or broken embedding chains
+- Orphaned entries on disk with empty database (e.g. after backup restore)
+- Stale embedding indexes
+- Version mismatches
+- Unread memos
 
 ### `palaia upgrade`
 

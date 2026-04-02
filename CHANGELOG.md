@@ -1,5 +1,50 @@
 # Changelog
 
+## v2.5.1 — 2026-04-02
+
+### Fixed
+- **Doctor report alignment** — Long check labels ("Embedding model integrity", "HEARTBEAT.md legacy patterns") no longer overlap with values. Column width increased from 24 to 30 characters.
+- **SKILL.md postUpdateMessage** — Updated from v2.4 to v2.5 feature summary.
+
+---
+
+## v2.5 — 2026-04-02
+
+### New Features
+- **Agent Isolation Mode** — `--isolated` flag on `palaia init` enables scope-based memory filtering between agents. Agents can operate with isolated memory scopes via `scopeVisibility` and `captureScope` in `priorities.json`. Pre-configured profiles: Isolated Worker, Orchestrator, Lean Worker.
+- **Modern CLI Design System** — Borderless column-aligned tables replace box-drawing. ANSI colors with full TTY detection. Respects `NO_COLOR` and `FORCE_COLOR` env vars. Unicode symbols (✓ ✗ ⚠ ℹ → ▸). Zero new dependencies.
+- **Backup-Restore Fix** — Auto-detect orphaned entries on disk (e.g. after restoring a backup). `palaia doctor --fix` rebuilds metadata index from flat files. Migration auto-triggers on `Store()` init when entries are orphaned but database is empty.
+
+### Infrastructure
+- CI stabilization: flaky concurrent write tests marked `xfail(strict=False)`.
+- Matrix `fail-fast: false` for complete test coverage across Python 3.9–3.12.
+- AGENTS.md and pre-push hook for branch protection.
+
+### Migration from v2.4
+- `pip install --upgrade palaia` — no manual steps required.
+- Existing stores work as-is. New CLI output is purely cosmetic.
+
+---
+
+## v2.4 — 2026-03-28
+
+### New Features
+- **Session Continuity** — Automatic briefings and summaries across agent sessions. Agents resume where they left off.
+- **Privacy Markers** — Fine-grained control over which parts of conversations get captured.
+- **Recency Boost** — Recent entries rank higher in recall queries.
+- **Progressive Disclosure** — CLI nudges adapt based on agent experience level.
+- **`palaia skill` strips install section** — Saves context window tokens when agents read SKILL.md.
+
+### Improvements
+- OpenClaw v2026.3.28 compatibility (updated plugin SDK types).
+- Codex review fixes: 8 findings addressed, 20 new tests.
+- README restructured for better first impression.
+
+### Migration from v2.2
+- `pip install --upgrade palaia && palaia doctor --fix` — handles everything automatically.
+
+---
+
 ## v2.2.0 — 2026-03-26
 
 ### Breaking Changes

@@ -103,6 +103,44 @@ When a new agent joins an existing workspace:
 
 Agents without palaia will not auto-capture conversations, not benefit from shared knowledge, and may duplicate work.
 
+## Agent Isolation Mode
+
+For strict memory separation between agents, use isolation mode:
+
+```bash
+palaia init --agent alice --isolated
+```
+
+This configures the agent with:
+- **`captureScope: private`** — all captured entries are private by default
+- **`scopeVisibility: own`** — agent only sees its own entries in recall
+
+### Pre-configured Profiles
+
+Configure via `priorities.json`:
+
+| Profile | `captureScope` | `scopeVisibility` | Use case |
+|---------|---------------|-------------------|----------|
+| **Isolated Worker** | `private` | `own` | Default for `--isolated`. Agent works alone. |
+| **Orchestrator** | `team` | `all` | Coordinator that reads all, writes team-visible. |
+| **Lean Worker** | `private` | `team` | Reads team knowledge, captures privately. |
+
+### Example: Mixed team
+
+```bash
+# Worker agents — isolated
+palaia init --agent coder --isolated
+palaia init --agent reviewer --isolated
+
+# Orchestrator — sees everything
+palaia init --agent lead
+# Then in priorities.json: set scopeVisibility: "all" for lead
+```
+
+Isolation mode is purely additive — it doesn't affect existing entries or other agents.
+
+---
+
 ## Project-Level Isolation
 
 Entries can be scoped to projects:
