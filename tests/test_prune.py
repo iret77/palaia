@@ -51,7 +51,7 @@ class TestPrune:
     def test_prune_filters_by_agent(self, tmp_path):
         """Only entries from the specified agent are pruned."""
         store = _make_store(tmp_path)
-        id1 = store.write("Worker note", agent="worker", tags=["auto-capture"])
+        store.write("Worker note", agent="worker", tags=["auto-capture"])
         id2 = store.write("Other note", agent="orchestrator", tags=["auto-capture"])
 
         result = store.prune(agent="worker", tags=["auto-capture"])
@@ -111,7 +111,7 @@ class TestPrune:
         warm_path.write_text(hot_path.read_text())
         hot_path.unlink()
 
-        id_hot2 = store.write("Hot note 2", agent="worker", tags=["auto-capture"])
+        store.write("Hot note 2", agent="worker", tags=["auto-capture"])
 
         result = store.prune(agent="worker", tags=["auto-capture"])
         assert result["pruned"] == 2
