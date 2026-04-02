@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.5.1 — 2026-04-02
+
+### Fixed
+- **Doctor report alignment** — Long check labels ("Embedding model integrity", "HEARTBEAT.md legacy patterns") no longer overlap with values. Column width increased from 24 to 30 characters.
+- **SKILL.md postUpdateMessage** — Updated from v2.4 to v2.5 feature summary.
+
+---
+
 ## v2.5 — 2026-04-02
 
 ### New Features

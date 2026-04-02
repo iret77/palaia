@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "2.5"
+version: "2.5.1"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   SQLite-backed by default. Semantic search, projects, scopes, auto-capture.
@@ -25,8 +25,8 @@ metadata:
       - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && (npm install -g @byte5ai/palaia@latest 2>/dev/null || true) && palaia doctor --fix && palaia warmup"
         label: "Upgrade Palaia with semantic search (pip + npm plugin) and run health checks"
     postUpdateMessage: >
-      Palaia has been updated to v2.4. New: session continuity (automatic briefings and
-      summaries), privacy markers, recency boost, progressive disclosure. Run `palaia doctor --fix` to upgrade.
+      Palaia has been updated to v2.5. New: agent isolation mode (--isolated), modern CLI
+      design, backup-restore auto-fix. Run `palaia doctor --fix` to upgrade.
     plugin:
       slot: memory
       package: "@byte5ai/palaia"

@@ -27,7 +27,7 @@ def format_doctor_report(results: list[dict[str, Any]], show_fix: bool = False) 
 
         sym = status_label(status)
         # Pad label for alignment
-        label_str = label.ljust(24)
+        label_str = label.ljust(30)
         lines.append(f"  {sym}  {label_str}{dim(message)}")
 
         if status == "warn":
