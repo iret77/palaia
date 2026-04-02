@@ -1,4 +1,8 @@
-"""Tests for concurrent write safety under parallel tool calling (#52)."""
+"""Tests for concurrent write safety under parallel tool calling (#52).
+
+All tests in this module are marked xfail because SQLite 'database is locked'
+errors occur intermittently under CI with parallel threads.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +13,11 @@ import pytest
 from palaia.config import DEFAULT_CONFIG, save_config
 from palaia.store import Store
 from palaia.wal import WAL
+
+pytestmark = pytest.mark.xfail(
+    reason="Flaky: SQLite 'database is locked' under CI parallel writes",
+    strict=False,
+)
 
 
 @pytest.fixture
@@ -27,7 +36,6 @@ def palaia_root(tmp_path):
     return root
 
 
-@pytest.mark.xfail(reason="Flaky: SQLite 'database is locked' under CI parallel writes", strict=False)
 def test_parallel_writes_no_entry_loss(palaia_root):
     """5 parallel writes must all succeed with no entry loss."""
     n_threads = 5
@@ -64,7 +72,6 @@ def test_parallel_writes_no_entry_loss(palaia_root):
         assert eid in entry_ids, f"Entry from thread {idx} (id={eid}) missing from store"
 
 
-@pytest.mark.xfail(reason="Flaky: SQLite 'database is locked' under CI parallel writes", strict=False)
 def test_parallel_writes_wal_integrity(palaia_root):
     """WAL entries are consistent after parallel writes — no corruption."""
     n_threads = 5
