@@ -36,6 +36,7 @@ Palaia gives your agents a persistent, searchable knowledge store. They save wha
 | **Zero-config local setup** | SQLite with native SIMD vector search — no separate database process |
 | **Works everywhere via MCP** | One memory store for OpenClaw, Claude Desktop, Cursor, and more |
 | **Multi-agent ready** | Private, team, and public scopes — agents see what they should |
+| **Agent isolation** | `--isolated` mode for strict per-agent memory boundaries |
 | **Crash-safe by default** | SQLite WAL mode survives power loss, kills, OOM |
 | **Fast** | Embed server keeps model in RAM — CLI queries ~1.5s, MCP/Plugin <500ms |
 | **Scales when needed** | Swap to PostgreSQL + pgvector for distributed teams, no code changes |
