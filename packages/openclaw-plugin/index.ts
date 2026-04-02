@@ -34,7 +34,7 @@ import type { OpenClawPluginApi, OpenClawPluginEntry } from "./src/types.js";
 const palaiaPlugin: OpenClawPluginEntry = {
   id: "palaia",
   name: "Palaia Memory",
-  async register(api: OpenClawPluginApi) {
+  register(api: OpenClawPluginApi) {
     // Issue #66: Plugin config is resolved GLOBALLY via api.pluginConfig.
     // OpenClaw does NOT provide per-agent config resolution — all agents share the same
     // plugin config from openclaw.json → plugins.entries.palaia.config.

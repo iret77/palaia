@@ -70,6 +70,24 @@ def apply_fixes(palaia_root: Path | None, results: list[dict[str, Any]]) -> list
     config = load_config(palaia_root)
     ran_warmup = False
 
+    # Fix: storage_backend "entries on disk but 0 in database" — rebuild index
+    for r in results:
+        if r.get("name") == "storage_backend" and r.get("status") == "error":
+            msg = r.get("message", "")
+            if "entries on disk but 0 in database" in msg:
+                try:
+                    from palaia.entry import parse_entry
+                    from palaia.store import Store
+
+                    store = Store(palaia_root)
+                    count = store.metadata_index.rebuild(parse_entry)
+                    if count > 0:
+                        actions.append(f"Rebuilt metadata index from disk: {count} entries indexed")
+                    else:
+                        actions.append("No entries found on disk to rebuild")
+                except Exception as e:
+                    actions.append(f"Index rebuild failed: {e}")
+
     for r in results:
         if r.get("status") != "warn":
             continue

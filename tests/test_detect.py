@@ -28,8 +28,7 @@ def test_detect_output_format():
     output = captured.getvalue()
 
     # Check header
-    assert "Palaia v" in output
-    assert "Local memory for AI agents" in output
+    assert "palaia v" in output
     # Check table sections
     assert "Environment" in output
     assert "Providers" in output

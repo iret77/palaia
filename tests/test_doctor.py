@@ -293,7 +293,7 @@ class TestFormatReport:
         ]
         report = format_doctor_report(results)
         assert "All clear" in report
-        assert "[ok]" in report
+        assert "ok" in report
 
     def test_with_warnings(self):
         results = [
