@@ -25,7 +25,7 @@ def palaia_root(tmp_path):
     config = {"version": 1, "agent": "test", "embedding_chain": ["bm25"]}
     (root / "config.json").write_text(json.dumps(config))
     # Initialise DB with correct schema by creating a Store
-    store = Store(root)
+    Store(root)  # initialise DB schema
     # Ensure the DB exists and has the entries table
     db_path = root / "palaia.db"
     assert db_path.exists(), f"DB not at {db_path}"

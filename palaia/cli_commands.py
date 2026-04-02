@@ -19,14 +19,12 @@ from palaia.store import Store
 from palaia.ui import (
     bold,
     dim,
-    error_msg,
     format_size,
     print_header,
     relative_time,
     score_display,
     section,
     success,
-    sym_arrow,
     table_kv,
     table_multi,
     truncate,
@@ -142,7 +140,7 @@ def cmd_query(args):
             all_entries = store.all_entries(include_cold=True)
             if len(all_entries) == 0:
                 print(f"\n  {dim('Your memory is empty. Knowledge will be auto-captured, or write explicitly:')}", file=sys.stderr)
-                print(f"  palaia write 'your text'\n", file=sys.stderr)
+                print("  palaia write 'your text'\n", file=sys.stderr)
         except Exception:
             pass
         print(f"\n  No results for {bold(args.query)}\n")
@@ -420,7 +418,8 @@ def cmd_status(args):
 
     print(f"\n    {es_sym}  Embed server: {embed_server_status}")
     print(f"    {plugin_sym}  OpenClaw plugin: {plugin_status}")
-    print(f"    {dim(f'Upgrade: pip install --upgrade \"{upgrade_spec}\"')}")
+    upgrade_str = f'Upgrade: pip install --upgrade "{upgrade_spec}"'
+    print(f"    {dim(upgrade_str)}")
 
     # --- curate_reminder nudge (v2.2) ---
     try:
@@ -705,7 +704,7 @@ def cmd_project(args):
         if json_out({"projects": projects}, args):
             return 0
         if not projects:
-            print(f"\n  No projects.\n")
+            print("\n  No projects.\n")
             return 0
         print(f"\n  {bold(f'{len(projects)} project(s)')}\n")
         rows = []

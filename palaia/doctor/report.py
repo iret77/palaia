@@ -13,7 +13,6 @@ def format_doctor_report(results: list[dict[str, Any]], show_fix: bool = False) 
         header,
         status_label,
         sym_arrow,
-        truncate,
     )
 
     lines = [f"\n  {header()}", f"\n  {bold('Health Report')}\n"]

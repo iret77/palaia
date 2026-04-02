@@ -122,12 +122,12 @@ def check_version_nag():
         store_version = config.get("store_version", "")
 
         if not store_version:
-            from palaia.ui import dim, sym_warn
+            from palaia.ui import sym_warn
             print(f"  {sym_warn()} Store has no version stamp. Run: palaia doctor --fix", file=sys.stderr)
             return
 
         if store_version != __version__:
-            from palaia.ui import dim, sym_warn
+            from palaia.ui import sym_warn
             print(
                 f"  {sym_warn()} CLI is v{__version__} but store is v{store_version}. Run: palaia doctor --fix",
                 file=sys.stderr,

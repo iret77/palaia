@@ -755,7 +755,7 @@ def cmd_setup(args):
 
     # Print action details
     if not getattr(args, "json", False):
-        from palaia.ui import status_label, warn_msg
+        from palaia.ui import status_label
         for action in result.get("actions", []):
             label = action["action"]
             agent = action["agent"]
