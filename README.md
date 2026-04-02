@@ -1,4 +1,13 @@
-# Palaia — The Knowledge System for AI Agent Teams
+```
+         .__         .__
+___________  |  | _____  |__|____
+\____ \__  \ |  | \__  \ |  \__  \
+|  |_> > __ \|  |__/ __ \|  |/ __ \_
+|   __(____  /____(____  /__(____  /
+|__|       \/          \/        \/
+```
+
+# The Knowledge System for AI Agent Teams
 
 **Your agents forget. Palaia doesn't.**
 
