@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "2.4"
+version: "2.5"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   SQLite-backed by default. Semantic search, projects, scopes, auto-capture.
@@ -583,6 +583,66 @@ Distinguish sessions of the same agent:
 palaia instance set Claw-Main
 ```
 
+### Agent Isolation Mode
+
+For focused agents (Sonnet/Codex) that should only see their own memories:
+
+**1. Configure in `priorities.json`:**
+```json
+{
+  "agents": {
+    "dev-worker": {
+      "scopeVisibility": ["private"],
+      "captureScope": "private",
+      "maxInjectedChars": 2000,
+      "recallMinScore": 0.85
+    }
+  }
+}
+```
+Or via CLI:
+```bash
+palaia priorities set scopeVisibility private --agent dev-worker
+palaia priorities set captureScope private --agent dev-worker
+palaia priorities set maxInjectedChars 2000 --agent dev-worker
+palaia priorities set recallMinScore 0.85 --agent dev-worker
+```
+
+**2. Set agent identity:**
+```bash
+export PALAIA_AGENT=dev-worker
+```
+
+**3. Auto-capture stays on** (crash safety net). Cleanup happens after the work package.
+
+**4. After accepting work:**
+```bash
+palaia prune --agent dev-worker --tags auto-capture --protect-type process
+```
+This removes session noise while preserving learned SOPs.
+
+#### Pre-configured Agent Profiles
+
+| Profile | scopeVisibility | captureScope | maxInjectedChars | recallMinScore | autoCapture |
+|---------|----------------|--------------|-----------------|----------------|-------------|
+| **Isolated Worker** | `["private"]` | `private` | 2000 | 0.85 | true |
+| **Orchestrator** | `["private","team","public"]` | `team` | 4000 | 0.7 | true |
+| **Lean Worker** | `["private"]` | `private` | 1000 | 0.9 | false |
+
+#### Orchestrator Lifecycle (process template)
+
+Save this as a process entry for the orchestrator to recall:
+```bash
+palaia write "## Dev-Agent Lifecycle
+1. Create agent identity: export PALAIA_AGENT=dev-worker-{task-id}
+2. Configure isolation: palaia priorities set scopeVisibility private --agent dev-worker-{task-id}
+3. Configure capture: palaia priorities set captureScope private --agent dev-worker-{task-id}
+4. Assign work package via prompt
+5. After acceptance: palaia prune --agent dev-worker-{task-id} --tags auto-capture --protect-type process
+6. Verify: palaia list --agent dev-worker-{task-id} --type process
+7. Process knowledge persists for future tasks" --type process --tags workflow,orchestration --scope private
+```
+
 ---
 
 ## When to Use What
@@ -598,6 +658,7 @@ palaia instance set Claw-Main
 | Check system health | `palaia status` |
 | Something is wrong | `palaia doctor --fix` |
 | Clean up old entries | `palaia gc` |
+| Clean up agent session noise | `palaia prune --agent NAME --tags auto-capture --protect-type process` |
 | Review accumulated knowledge | `palaia curate analyze` |
 | Share knowledge | `palaia sync export` or `palaia package export` |
 | Check for messages | `palaia memo inbox` |

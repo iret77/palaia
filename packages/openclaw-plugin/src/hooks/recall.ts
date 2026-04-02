@@ -344,6 +344,7 @@ export interface RankedEntry {
   embedScore?: number;
   weightedScore: number;
   created?: string;
+  tags?: string[];
 }
 
 /**
@@ -364,7 +365,7 @@ function calcRecencyBoost(created: string | undefined, boostFactor: number): num
 
 export function rerankByTypeWeight(
   results: QueryResult["results"],
-  weights: RecallTypeWeights,
+  weights: Record<string, number>,
   recencyBoost = 0,
 ): RankedEntry[] {
   return results
@@ -384,6 +385,7 @@ export function rerankByTypeWeight(
         embedScore: r.embed_score,
         weightedScore: r.score * weight * recency,
         created: r.created,
+        tags: r.tags,
       };
     })
     .sort((a, b) => b.weightedScore - a.weightedScore);

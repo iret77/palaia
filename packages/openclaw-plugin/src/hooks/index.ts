@@ -419,6 +419,7 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
                     text: userMessage,
                     top_k: limit,
                     include_cold: resolvedPrio.tier === "all",
+                    ...(resolvedPrio.scopeVisibility ? { scope_visibility: resolvedPrio.scopeVisibility } : {}),
                   }, config.timeoutMs || 3000);
                   if (resp?.result?.results && Array.isArray(resp.result.results)) {
                     entries = resp.result.results;
@@ -636,6 +637,23 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
 
         const knownProjects = await loadProjects(hookOpts);
 
+        // Resolve effective capture scope from priorities (per-agent override, #147)
+        let effectiveCaptureScope = config.captureScope || "";
+        try {
+          const prio = await loadPriorities(resolved.workspace);
+          const resolvedCapturePrio = resolvePriorities(prio, {
+            recallTypeWeight: config.recallTypeWeight,
+            recallMinScore: config.recallMinScore,
+            maxInjectedChars: config.maxInjectedChars,
+            tier: config.tier,
+          }, agentName);
+          if (resolvedCapturePrio.captureScope) {
+            effectiveCaptureScope = resolvedCapturePrio.captureScope;
+          }
+        } catch {
+          // Fall through to config default
+        }
+
         // Helper: build CLI args with metadata
         const buildWriteArgs = (
           content: string,
@@ -651,9 +669,9 @@ export function registerHooks(api: OpenClawPluginApi, config: PalaiaPluginConfig
             "--tags", tags.join(",") || "auto-capture",
           ];
 
-          // Scope guardrail: config.captureScope overrides everything; otherwise max team (no public)
-          const scope = config.captureScope
-            ? sanitizeScope(config.captureScope, "team", true)
+          // Scope guardrail: priorities captureScope > config.captureScope > hint/LLM scope
+          const scope = effectiveCaptureScope
+            ? sanitizeScope(effectiveCaptureScope, "team", true)
             : sanitizeScope(itemScope, "team", false);
           args.push("--scope", scope);
 

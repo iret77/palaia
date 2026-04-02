@@ -226,6 +226,23 @@ def run_gc(root: Path, *, dry_run: bool = False, budget: bool = False) -> dict:
     return store.gc(dry_run=dry_run, budget=budget)
 
 
+def run_prune(
+    root: Path,
+    *,
+    agent: str,
+    tags: list[str],
+    protect_types: list[str] | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Selectively delete entries matching agent + tags.
+
+    Returns dict with pruned count and entry details.
+    """
+    store = Store(root)
+    store.recover()
+    return store.prune(agent=agent, tags=tags, protect_types=protect_types, dry_run=dry_run)
+
+
 # ---------------------------------------------------------------------------
 # config
 # ---------------------------------------------------------------------------
