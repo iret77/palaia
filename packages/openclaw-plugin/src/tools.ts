@@ -7,7 +7,7 @@
  */
 
 import { Type } from "@sinclair/typebox";
-import { run, runJson, type RunnerOpts } from "./runner.js";
+import { run, runJson, getEmbedServerManager, type RunnerOpts } from "./runner.js";
 import type { PalaiaPluginConfig } from "./config.js";
 import { sanitizeScope, isValidScope } from "./hooks/index.js";
 import { loadPriorities, resolvePriorities } from "./priorities.js";
@@ -114,19 +114,39 @@ export function registerTools(api: OpenClawPluginApi, config: PalaiaPluginConfig
       }
 
       const limit = params.maxResults || config.maxResults || 5;
-      const args: string[] = ["query", params.query, "--limit", String(limit)];
+      const includeCold = params.tier === "all" || config.tier === "all";
 
-      // --all flag includes cold tier
-      if (params.tier === "all" || config.tier === "all") {
-        args.push("--all");
+      // Try embed server first — its queue correctly handles concurrent requests
+      // without counting wait time against the timeout.
+      let result: QueryResult | null = null;
+      if (config.embeddingServer) {
+        try {
+          const mgr = getEmbedServerManager(opts);
+          const resp = await mgr.query({
+            text: params.query,
+            top_k: limit,
+            include_cold: includeCold,
+            ...(params.type ? { type: params.type } : {}),
+          }, config.timeoutMs || 3000);
+          if (resp?.result?.results && Array.isArray(resp.result.results)) {
+            result = { results: resp.result.results };
+          }
+        } catch {
+          // Fall through to CLI
+        }
       }
 
-      // Type filter (Issue #82)
-      if (params.type) {
-        args.push("--type", params.type);
+      // CLI fallback — longer timeout since it includes process spawn overhead
+      if (!result) {
+        const args: string[] = ["query", params.query, "--limit", String(limit)];
+        if (includeCold) {
+          args.push("--all");
+        }
+        if (params.type) {
+          args.push("--type", params.type);
+        }
+        result = await runJson<QueryResult>(args, { ...opts, timeoutMs: 15000 });
       }
-
-      const result = await runJson<QueryResult>(args, opts);
 
       // Apply scope visibility filter (Issue #145: agent isolation)
       let filteredResults = result.results || [];

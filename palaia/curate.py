@@ -668,13 +668,17 @@ def merge_entries(entries: list[ClusterEntry]) -> dict:
     base = sorted_entries[0]
     others = sorted_entries[1:]
 
-    # Combine content
+    # Combine content — process entries are never truncated
+    has_process = any(e.entry_type == "process" for e in entries)
     combined_content = base.content
     if others:
         bullets = []
         for o in others:
             title = o.title or "(untitled)"
-            bullets.append(f"- **{title}**: {o.content[:200]}")
+            if has_process:
+                bullets.append(f"- **{title}**:\n{o.content}")
+            else:
+                bullets.append(f"- **{title}**: {o.content[:200]}")
         combined_content = base.content + "\n\n---\n\n" + "\n".join(bullets)
 
     # Tags: union
@@ -705,10 +709,17 @@ def merge_entries(entries: list[ClusterEntry]) -> dict:
     }
 
 
-def apply_report(report: CurateReport, store) -> dict:
+class ProcessSafetyError(ValueError):
+    """Raised when a destructive action targets process-type entries without --force."""
+
+
+def apply_report(report: CurateReport, store, *, force: bool = False) -> dict:
     """Process an edited curation report and produce package-compatible entries.
 
     Returns dict with keys: kept, merged, dropped, total_output, entries.
+
+    Raises ProcessSafetyError if MERGE or DROP targets process-type entries
+    unless force=True.
     """
     kept = 0
     merged = 0
@@ -756,6 +767,21 @@ def apply_report(report: CurateReport, store) -> dict:
 
     for cluster in report.clusters:
         rec = cluster.recommendation.upper()
+        has_process = any(e.entry_type == "process" for e in cluster.entries)
+
+        # Guard: process entries must not be silently merged or dropped
+        if has_process and rec in ("DROP", "MERGE") and not force:
+            process_titles = [
+                e.title or e.full_id or "(untitled)"
+                for e in cluster.entries
+                if e.entry_type == "process"
+            ]
+            raise ProcessSafetyError(
+                f"Cannot {rec} cluster containing process entries: "
+                f"{', '.join(process_titles)}. "
+                f"Process entries contain critical operational knowledge. "
+                f"Use --force to override."
+            )
 
         if rec == "DROP":
             dropped += len(cluster.entries)

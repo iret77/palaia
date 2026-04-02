@@ -685,13 +685,19 @@ def cmd_curate(args):
         return 0
 
     elif action == "apply":
+        from palaia.curate import ProcessSafetyError
         from palaia.services.curate import apply_svc
 
-        result = apply_svc(
-            root,
-            report_path=args.report,
-            output=getattr(args, "output", None),
-        )
+        try:
+            result = apply_svc(
+                root,
+                report_path=args.report,
+                output=getattr(args, "output", None),
+                force=getattr(args, "force", False),
+            )
+        except ProcessSafetyError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
         if _json_out(result, args):
             return 0
         print(f"Curation applied: {result['output_path']}")
