@@ -378,8 +378,20 @@ def _check_legacy_memory_files() -> dict[str, Any]:
             "message": "No memory/ directory found",
         }
 
-    md_files = list(memory_dir.rglob("*.md"))
-    if not md_files:
+    # OpenClaw system files that MUST stay in memory/ (spawn injection, agent
+    # profiles, project context).  These are not palaia-migratable.
+    SYSTEM_DIRS = {"agents", "projects"}
+    SYSTEM_FILES = {"CONTEXT.md", "active-context.md"}
+
+    all_md = list(memory_dir.rglob("*.md"))
+    migratable = [
+        f for f in all_md
+        if f.name not in SYSTEM_FILES
+        and not any(part in SYSTEM_DIRS for part in f.relative_to(memory_dir).parts[:-1])
+    ]
+    system_count = len(all_md) - len(migratable)
+
+    if not all_md:
         return {
             "name": "legacy_memory_files",
             "label": "Legacy memory files",
@@ -387,15 +399,28 @@ def _check_legacy_memory_files() -> dict[str, Any]:
             "message": "memory/ exists but no .md files",
         }
 
+    if not migratable:
+        return {
+            "name": "legacy_memory_files",
+            "label": "Legacy memory files",
+            "status": "ok",
+            "message": f"{system_count} OpenClaw system files in memory/ (expected)",
+        }
+
     return {
         "name": "legacy_memory_files",
         "label": "Legacy memory files",
         "status": "warn",
         "message": (
-            f"{len(md_files)} .md files in memory/ — not imported into palaia. "
+            f"{len(migratable)} .md files in memory/ — not imported into palaia. "
             "Run: palaia migrate memory/"
+            + (f" ({system_count} system files excluded)" if system_count else "")
         ),
-        "details": {"count": len(md_files), "path": str(memory_dir)},
+        "details": {
+            "migratable": len(migratable),
+            "system": system_count,
+            "path": str(memory_dir),
+        },
     }
 
 
