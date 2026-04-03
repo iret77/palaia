@@ -83,8 +83,21 @@ The agent handles everything: ClawHub skill install, pip setup, plugin config, a
 ```bash
 pip install "palaia[fastembed]"
 palaia init
+openclaw plugins install @byte5ai/palaia
 palaia doctor --fix
 ```
+
+Then activate the memory slot in your OpenClaw config:
+```json5
+// openclaw.json
+{
+  plugins: {
+    slots: { memory: "palaia" }
+  }
+}
+```
+
+Restart the gateway: `openclaw gateway restart`
 
 Optional extras:
 ```bash
