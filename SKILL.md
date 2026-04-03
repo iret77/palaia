@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "2.5.1"
+version: "2.6"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   SQLite-backed by default. Semantic search, projects, scopes, auto-capture.
@@ -25,14 +25,16 @@ metadata:
       - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && (npm install -g @byte5ai/palaia@latest 2>/dev/null || true) && palaia doctor --fix && palaia warmup"
         label: "Upgrade palaia with semantic search (pip + npm plugin) and run health checks"
     postUpdateMessage: >
-      palaia has been updated to v2.5. New: agent isolation mode (--isolated), modern CLI
-      design, backup-restore auto-fix. Run `palaia doctor --fix` to upgrade.
+      palaia has been updated to v2.6. New: usage-data-driven optimization (task-as-post-it,
+      manual entry boost), auto-capture workspace fix for sub-agents, capture health check,
+      CLI/plugin version mismatch detection, process safety in curate.
+      Run `palaia doctor --fix` to upgrade.
     plugin:
       slot: memory
       package: "@byte5ai/palaia"
 ---
 
-# palaia v2.4 — Agent Memory Skill
+# palaia v2.6 — Agent Memory Skill
 
 palaia is the memory system for OpenClaw agents. It gives you persistent, searchable, crash-safe memory across sessions. You don't need to understand how it works — just use the commands below.
 
