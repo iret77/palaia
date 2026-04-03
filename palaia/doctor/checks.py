@@ -652,8 +652,6 @@ def _check_binary_path(palaia_root: Path | None) -> dict[str, Any]:
 
 def _check_plugin_version_match() -> dict[str, Any]:
     """Detect CLI/plugin version mismatch (#99)."""
-    import os as _os
-
     from palaia import __version__
     from palaia.config import VPS_OPENCLAW_BASE
 
