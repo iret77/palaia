@@ -1,5 +1,30 @@
 # Changelog
 
+## v2.6 — 2026-04-03
+
+### New Features
+- **Usage-Data-Driven Optimization** — Based on analysis of real-world usage data (1,903 entries). Shared scope removed (normalized to team), task-as-post-it model (auto-capture never creates tasks, `--status done` deletes), manual entry boost (1.3x ranking for intentionally stored knowledge).
+- **Capture Health Check** — `palaia doctor` now warns when `autoCapture=true` but zero entries have been captured. Detects silent auto-capture failures before they cause memory gaps.
+- **CLI/Plugin Version Mismatch Detection** — New doctor check detects when CLI and plugin versions diverge (e.g. plugin v2.6 but CLI v1.8). Nudges the correct upgrade command.
+- **Process Safety in Curate** — `merge_entries()` preserves full content for process entries (no truncation). `apply_report()` raises `ProcessSafetyError` on MERGE/DROP for processes unless `--force` is passed.
+
+### Fixed
+- **Auto-capture workspace bug** — `extractWithLLM` used global workspace instead of per-agent resolved workspace. Sub-agent auto-capture now works correctly (#157).
+- **memory_search timeout on parallel queries** — Uses embed server directly instead of spawning CLI processes. Fixes timeouts when agents fire multiple concurrent `memory_search` calls (#144).
+- **Auto-capture diagnostic logging** — Silent return paths now log the reason (min turns, significance filter, rule-based rejection). Previously invisible.
+- **Doctor severity bumps** — `captureModel` missing and legacy memory files promoted from `[info]` to `[warn]` so agent auto-check catches them after upgrades (#99, #101).
+
+### Chores
+- ASCII logo added to README.
+- Brand name lowercased ("Palaia" → "palaia") across 67 files.
+
+### Migration from v2.5.1
+- `pip install --upgrade palaia && palaia doctor --fix` — no manual steps required.
+- Existing `shared:X` scoped entries are automatically treated as `team`. No data loss.
+- Tasks created by auto-capture are now classified as `memory` type instead of `task`.
+
+---
+
 ## v2.5.1 — 2026-04-02
 
 ### Fixed
