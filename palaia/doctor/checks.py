@@ -390,8 +390,11 @@ def _check_legacy_memory_files() -> dict[str, Any]:
     return {
         "name": "legacy_memory_files",
         "label": "Legacy memory files",
-        "status": "info",
-        "message": f"{len(md_files)} .md files in memory/",
+        "status": "warn",
+        "message": (
+            f"{len(md_files)} .md files in memory/ — not imported into palaia. "
+            "Run: palaia migrate memory/"
+        ),
         "details": {"count": len(md_files), "path": str(memory_dir)},
     }
 
@@ -644,6 +647,63 @@ def _check_binary_path(palaia_root: Path | None) -> dict[str, Any]:
             "cli_version": cli_version,
             "lib_version": __version__,
         },
+    }
+
+
+def _check_plugin_version_match() -> dict[str, Any]:
+    """Detect CLI/plugin version mismatch (#99)."""
+    from palaia import __version__
+    from palaia.config import VPS_OPENCLAW_BASE
+
+    _home = Path.home()
+    _base_dirs = [_home / ".openclaw"]
+    if VPS_OPENCLAW_BASE != _home / ".openclaw" and VPS_OPENCLAW_BASE.is_dir():
+        _base_dirs.append(VPS_OPENCLAW_BASE)
+
+    # Find plugin package.json
+    for base in _base_dirs:
+        for candidate in [
+            base / "node_modules" / "@byte5ai" / "palaia" / "package.json",
+            base / "plugins" / "palaia" / "package.json",
+        ]:
+            if not candidate.exists():
+                continue
+            try:
+                with open(candidate) as f:
+                    pkg = json.load(f)
+                plugin_version = pkg.get("version", "unknown")
+
+                if plugin_version == __version__:
+                    return {
+                        "name": "plugin_version_match",
+                        "label": "Plugin/CLI version",
+                        "status": "ok",
+                        "message": f"v{__version__} (CLI = plugin)",
+                    }
+
+                return {
+                    "name": "plugin_version_match",
+                    "label": "Plugin/CLI version",
+                    "status": "warn",
+                    "message": (
+                        f"Version mismatch: CLI v{__version__}, "
+                        f"plugin v{plugin_version}. "
+                        "Run: pip install --upgrade palaia && palaia doctor --fix"
+                    ),
+                    "details": {
+                        "cli_version": __version__,
+                        "plugin_version": plugin_version,
+                        "plugin_path": str(candidate),
+                    },
+                }
+            except (json.JSONDecodeError, OSError):
+                continue
+
+    return {
+        "name": "plugin_version_match",
+        "label": "Plugin/CLI version",
+        "status": "ok",
+        "message": "Plugin not found locally (skipped)",
     }
 
 
@@ -1297,11 +1357,11 @@ def _check_capture_model() -> dict[str, Any]:
             return {
                 "name": "capture_model",
                 "label": "Capture model",
-                "status": "info",
+                "status": "warn",
                 "message": (
-                    "No captureModel set — using primary model. "
-                    "Consider setting a cheaper model (e.g. claude-haiku-4-5) "
-                    "in openclaw.json \u2192 plugins.entries.palaia.config.captureModel"
+                    "No captureModel set — auto-capture uses the primary model, "
+                    "wasting tokens. Set a cheap model (e.g. claude-haiku-4-5) "
+                    "in openclaw.json → plugins.entries.palaia.config.captureModel"
                 ),
             }
         except (json.JSONDecodeError, OSError, KeyError):
