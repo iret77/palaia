@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from palaia.config import load_config
 from palaia.store import Store
@@ -294,7 +297,7 @@ def edit_entry(
         try:
             store.delete(entry_id)
             return {"id": entry_id, "deleted": True, "reason": "task completed"}
-        except Exception:
-            pass  # Fall through to normal return if delete fails
+        except Exception as exc:
+            logger.warning("Task deletion failed for %s: %s", entry_id, exc)
 
     return {"id": entry_id, "updated": True, "meta": meta}
