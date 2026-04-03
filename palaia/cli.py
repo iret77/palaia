@@ -1376,17 +1376,17 @@ def cmd_upgrade(args):
     print("\nRunning health checks...")
     subprocess.run([sys.executable, "-m", "palaia", "doctor", "--fix"])
 
-    # Check for OpenClaw plugin
-    npm_bin = shutil.which("npm")
-    if npm_bin:
+    # Check for OpenClaw plugin and upgrade via openclaw plugins install
+    openclaw_bin = shutil.which("openclaw")
+    if openclaw_bin:
         try:
-            npm_check = subprocess.run(
-                ["npm", "list", "-g", "@byte5ai/palaia"],
+            oc_check = subprocess.run(
+                ["openclaw", "plugins", "info", "palaia"],
                 capture_output=True, text=True,
             )
-            if "@byte5ai/palaia" in npm_check.stdout:
+            if oc_check.returncode == 0 and "palaia" in oc_check.stdout:
                 print("\nUpgrading OpenClaw plugin...")
-                subprocess.run(["npm", "install", "-g", "@byte5ai/palaia@latest"])
+                subprocess.run(["openclaw", "plugins", "install", "@byte5ai/palaia"])
         except Exception:
             pass
 
