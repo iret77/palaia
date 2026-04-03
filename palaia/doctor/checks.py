@@ -423,10 +423,10 @@ def _check_legacy_memory_files() -> dict[str, Any]:
     return {
         "name": "legacy_memory_files",
         "label": "Legacy memory files",
-        "status": "warn",
+        "status": "info",
         "message": (
-            f"{len(migratable)} .md files in memory/ — not imported into palaia. "
-            "Run: palaia migrate memory/"
+            f"{len(migratable)} .md files in memory/ — "
+            "run `palaia migrate memory/` if not yet imported"
             + (f" ({system_count} system files excluded)" if system_count else "")
         ),
         "details": {
