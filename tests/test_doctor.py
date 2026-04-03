@@ -328,7 +328,7 @@ class TestRunDoctor:
     def test_run_all_checks(self, palaia_root, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))
         results = run_doctor(palaia_root)
-        assert len(results) == 28  # +3: native_vector_search, mcp_server, capture_health
+        assert len(results) == 29  # +4: native_vector_search, mcp_server, capture_health, plugin_version_match
         assert all("status" in r for r in results)
         assert all("name" in r for r in results)
 
