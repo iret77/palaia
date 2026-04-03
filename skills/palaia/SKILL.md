@@ -19,11 +19,11 @@ metadata:
     postInstall:
       - command: "palaia init"
         label: "Initialize palaia store"
-      - command: "npm install -g @byte5ai/palaia@latest"
-        label: "Install OpenClaw plugin (npm)"
+      - command: "openclaw plugins install @byte5ai/palaia"
+        label: "Install OpenClaw plugin"
     postUpdate:
-      - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && (npm install -g @byte5ai/palaia@latest 2>/dev/null || true) && palaia doctor --fix && palaia warmup"
-        label: "Upgrade palaia with semantic search (pip + npm plugin) and run health checks"
+      - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && (openclaw plugins install @byte5ai/palaia 2>/dev/null || true) && palaia doctor --fix && palaia warmup"
+        label: "Upgrade palaia with semantic search + plugin and run health checks"
     postUpdateMessage: >
       palaia has been updated to v2.6. New: usage-data-driven optimization (task-as-post-it,
       manual entry boost), auto-capture workspace fix for sub-agents, capture health check,
@@ -75,22 +75,15 @@ Note: `palaia[fastembed]` already includes sqlite-vec for native SIMD vector sea
 After the CLI is installed, wire it into OpenClaw:
 
 ```bash
-npm install -g @byte5ai/palaia@latest
+openclaw plugins install @byte5ai/palaia
 ```
 
-Then activate in OpenClaw config (read existing values first, never overwrite arrays):
-```bash
-PALAIA_PATH="$(npm root -g)/@byte5ai/palaia"
-```
-
-Add to `openclaw.json`:
-```json
+Then activate the memory slot in OpenClaw config:
+```json5
+// openclaw.json
 {
-  "plugins": {
-    "load": { "paths": ["<PALAIA_PATH>"] },
-    "allow": ["..existing..", "palaia"],
-    "slots": { "memory": "palaia" },
-    "entries": { "palaia": { "enabled": true } }
+  plugins: {
+    slots: { memory: "palaia" }
   }
 }
 ```
@@ -135,7 +128,7 @@ pipx install "palaia[fastembed]" --force
 palaia doctor --fix
 
 # Step 4: Update OpenClaw plugin (if installed)
-npm install -g @byte5ai/palaia@latest
+openclaw plugins install @byte5ai/palaia
 ```
 
 After the manual update, `palaia upgrade` will be available for future updates.
