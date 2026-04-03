@@ -380,15 +380,28 @@ def _check_legacy_memory_files() -> dict[str, Any]:
 
     # OpenClaw system files that MUST stay in memory/ (spawn injection, agent
     # profiles, project context).  These are not palaia-migratable.
-    SYSTEM_DIRS = {"agents", "projects"}
-    SYSTEM_FILES = {"CONTEXT.md", "active-context.md"}
+    # Pattern: agents/*.md, systems/*.md → all system
+    #          projects/*/CONTEXT.md → system, other project files → migratable
+    #          active-context.md, CONTEXT.md (root) → system
+    SYSTEM_ONLY_DIRS = {"agents", "systems"}
+    SYSTEM_ROOT_FILES = {"CONTEXT.md", "active-context.md"}
+
+    def _is_system_file(f: Path) -> bool:
+        rel = f.relative_to(memory_dir)
+        parts = rel.parts
+        # Root-level system files
+        if len(parts) == 1 and parts[0] in SYSTEM_ROOT_FILES:
+            return True
+        # All files under agents/ and systems/ are system files
+        if parts[0] in SYSTEM_ONLY_DIRS:
+            return True
+        # Only CONTEXT.md under projects/*/ is system
+        if parts[0] == "projects" and f.name == "CONTEXT.md":
+            return True
+        return False
 
     all_md = list(memory_dir.rglob("*.md"))
-    migratable = [
-        f for f in all_md
-        if f.name not in SYSTEM_FILES
-        and not any(part in SYSTEM_DIRS for part in f.relative_to(memory_dir).parts[:-1])
-    ]
+    migratable = [f for f in all_md if not _is_system_file(f)]
     system_count = len(all_md) - len(migratable)
 
     if not all_md:
