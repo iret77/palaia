@@ -378,8 +378,33 @@ def _check_legacy_memory_files() -> dict[str, Any]:
             "message": "No memory/ directory found",
         }
 
-    md_files = list(memory_dir.rglob("*.md"))
-    if not md_files:
+    # OpenClaw system files that MUST stay in memory/ (spawn injection, agent
+    # profiles, project context).  These are not palaia-migratable.
+    # Pattern: agents/*.md, systems/*.md → all system
+    #          projects/*/CONTEXT.md → system, other project files → migratable
+    #          active-context.md, CONTEXT.md (root) → system
+    SYSTEM_ONLY_DIRS = {"agents", "systems"}
+    SYSTEM_ROOT_FILES = {"CONTEXT.md", "active-context.md"}
+
+    def _is_system_file(f: Path) -> bool:
+        rel = f.relative_to(memory_dir)
+        parts = rel.parts
+        # Root-level system files
+        if len(parts) == 1 and parts[0] in SYSTEM_ROOT_FILES:
+            return True
+        # All files under agents/ and systems/ are system files
+        if parts[0] in SYSTEM_ONLY_DIRS:
+            return True
+        # Only CONTEXT.md under projects/*/ is system
+        if parts[0] == "projects" and f.name == "CONTEXT.md":
+            return True
+        return False
+
+    all_md = list(memory_dir.rglob("*.md"))
+    migratable = [f for f in all_md if not _is_system_file(f)]
+    system_count = len(all_md) - len(migratable)
+
+    if not all_md:
         return {
             "name": "legacy_memory_files",
             "label": "Legacy memory files",
@@ -387,15 +412,28 @@ def _check_legacy_memory_files() -> dict[str, Any]:
             "message": "memory/ exists but no .md files",
         }
 
+    if not migratable:
+        return {
+            "name": "legacy_memory_files",
+            "label": "Legacy memory files",
+            "status": "ok",
+            "message": f"{system_count} OpenClaw system files in memory/ (expected)",
+        }
+
     return {
         "name": "legacy_memory_files",
         "label": "Legacy memory files",
-        "status": "warn",
+        "status": "info",
         "message": (
-            f"{len(md_files)} .md files in memory/ — not imported into palaia. "
-            "Run: palaia migrate memory/"
+            f"{len(migratable)} .md files in memory/ — "
+            "run `palaia migrate memory/` if not yet imported"
+            + (f" ({system_count} system files excluded)" if system_count else "")
         ),
-        "details": {"count": len(md_files), "path": str(memory_dir)},
+        "details": {
+            "migratable": len(migratable),
+            "system": system_count,
+            "path": str(memory_dir),
+        },
     }
 
 
