@@ -22,7 +22,7 @@ metadata:
       - command: "openclaw plugins install @byte5ai/palaia"
         label: "Install OpenClaw plugin"
     postUpdate:
-      - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && (openclaw plugins install @byte5ai/palaia 2>/dev/null || true) && palaia doctor --fix && palaia warmup"
+      - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && openclaw plugins install @byte5ai/palaia && palaia doctor --fix && palaia warmup"
         label: "Upgrade palaia with semantic search + plugin and run health checks"
     postUpdateMessage: >
       palaia has been updated to v2.6. New: usage-data-driven optimization (task-as-post-it,
