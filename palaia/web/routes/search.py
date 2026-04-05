@@ -17,6 +17,11 @@ router = APIRouter(tags=["search"])
 
 SEARCH_TIMEOUT_SECONDS = 5.0
 
+# Persistent executor so we can *abandon* slow workers instead of blocking on
+# their shutdown. A `with ThreadPoolExecutor(...)` would call
+# shutdown(wait=True) on exit, which undoes the whole point of the timeout.
+_SEARCH_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="palaia-search")
+
 
 @router.get("/search")
 def search(
@@ -30,7 +35,13 @@ def search(
     include_cold: bool = Query(False),
     timeout: float = Query(SEARCH_TIMEOUT_SECONDS, ge=0.5, le=30),
 ) -> dict:
-    """Hybrid search (BM25 + embeddings) with graceful BM25 fallback."""
+    """Hybrid search (BM25 + embeddings) with graceful BM25 fallback.
+
+    If the full search does not return within `timeout` seconds, we abandon
+    that worker (leaving it to finish in the background) and run a fresh
+    BM25-only search synchronously. This guarantees the response time stays
+    bounded regardless of embed-server cold starts.
+    """
     from palaia.services.query import search_entries
 
     root = request.app.state.palaia_root
@@ -48,12 +59,15 @@ def search(
         )
 
     timed_out = False
+    future = _SEARCH_EXECUTOR.submit(_run)
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-            result = ex.submit(_run).result(timeout=timeout)
+        result = future.result(timeout=timeout)
     except (concurrent.futures.TimeoutError, TimeoutError):
         logger.warning("search exceeded %.1fs, falling back to BM25", timeout)
         timed_out = True
+        # Abandon the slow worker: don't wait for it, don't cancel
+        # (Python can't interrupt running threads). It will complete and
+        # its result will be discarded when the future is garbage collected.
         try:
             result = _bm25_only(
                 root, q,

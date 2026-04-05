@@ -299,7 +299,7 @@ def patch_entry(request: Request, entry_id: str, payload: EntryPatch) -> dict:
 
 @router.delete("/entries/{entry_id}")
 def delete_entry(request: Request, entry_id: str) -> dict:
-    """Delete an entry by ID."""
+    """Delete an entry by ID. Returns 404 if the entry does not exist."""
     from palaia.store import Store
 
     root = request.app.state.palaia_root
@@ -307,8 +307,14 @@ def delete_entry(request: Request, entry_id: str) -> dict:
     store.recover()
 
     try:
-        store.delete(entry_id)
+        deleted = store.delete(entry_id)
     except ValueError as exc:
         return JSONResponse(status_code=404, content={"error": str(exc)})
+
+    if not deleted:
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"Entry not found: {entry_id}"},
+        )
 
     return {"id": entry_id, "status": "deleted"}

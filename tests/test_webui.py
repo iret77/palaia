@@ -262,3 +262,49 @@ def test_search_route_returns_structure(client):
     assert "count" in data
     assert "bm25_only" in data
     assert "timed_out" in data
+
+
+# ── Regression: codex audit findings ───────────────────────────────────────
+
+def test_delete_missing_entry_returns_404(client):
+    """Regression (codex P2): deleting a non-existent entry must return 404,
+    not 200. Store.delete() returns False (not ValueError) when the ID is
+    absent — the route must translate that to an HTTP error."""
+    r = client.delete("/api/entries/does-not-exist-abc123")
+    assert r.status_code == 404
+    assert "error" in r.json()
+
+
+def test_search_timeout_does_not_block_on_slow_worker(client, monkeypatch):
+    """Regression (codex P1): when the search worker exceeds the timeout,
+    the handler must return the BM25 fallback quickly instead of waiting
+    for the slow worker to finish (which is what happens when you use
+    `with ThreadPoolExecutor(...)` because exit calls shutdown(wait=True)).
+
+    We fake a slow search by monkeypatching search_entries to sleep."""
+    import time as _time
+
+    from palaia.services import query as query_mod
+
+    slow_duration = 3.0  # simulate a 3-second cold start
+    client_timeout = 0.5  # but we only wait 0.5s
+
+    def _slow_search(*args, **kwargs):
+        _time.sleep(slow_duration)
+        return {"results": [{"id": "slow-hit", "body": "should never return"}],
+                "has_embeddings": True, "bm25_only": False}
+
+    monkeypatch.setattr(query_mod, "search_entries", _slow_search)
+
+    start = _time.monotonic()
+    r = client.get(f"/api/search?q=anything&timeout={client_timeout}")
+    elapsed = _time.monotonic() - start
+
+    assert r.status_code == 200
+    # Must not have waited for the slow worker to complete
+    # (allow some headroom for BM25 fallback itself, but well under slow_duration)
+    assert elapsed < slow_duration - 0.5, (
+        f"Handler blocked for {elapsed:.2f}s waiting on slow worker "
+        f"(expected < {slow_duration - 0.5:.1f}s)"
+    )
+    assert r.json()["timed_out"] is True
