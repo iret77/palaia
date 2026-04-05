@@ -1405,6 +1405,7 @@ def cmd_ui(args):
         print("Install with: pip install 'palaia[ui]'", file=sys.stderr)
         return 1
 
+    import os as _os
     import socket
     import threading
     import webbrowser
@@ -1416,7 +1417,24 @@ def cmd_ui(args):
         print("palaia not initialized. Run: palaia init", file=sys.stderr)
         return 1
 
-    host = getattr(args, "host", None) or "127.0.0.1"
+    # Security: WebUI has no auth. Default to loopback only. A power user who
+    # understands the risk can opt out via the PALAIA_UI_UNSAFE_BIND env var.
+    # We intentionally do not expose this as a CLI flag to prevent accidental
+    # network exposure from copy-pasted commands.
+    unsafe_bind = _os.environ.get("PALAIA_UI_UNSAFE_BIND", "").strip()
+    if unsafe_bind:
+        host = unsafe_bind
+        print(
+            f"⚠  PALAIA_UI_UNSAFE_BIND={unsafe_bind}: binding WebUI to a "
+            f"non-loopback address.\n   The UI has NO authentication. "
+            f"Anyone who can reach this host on the network can read and "
+            f"modify your entire memory store.\n   Use an SSH tunnel or a "
+            f"reverse proxy with auth instead.",
+            file=sys.stderr,
+        )
+    else:
+        host = "127.0.0.1"
+
     requested_port = getattr(args, "port", None) or 8384
     no_browser = getattr(args, "no_browser", False)
 

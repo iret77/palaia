@@ -275,6 +275,30 @@ def test_delete_missing_entry_returns_404(client):
     assert "error" in r.json()
 
 
+def test_cli_ui_has_no_host_flag():
+    """Regression (codex run #2 P1): the ui command must not accept --host.
+
+    The WebUI has no authentication. Letting users pass --host 0.0.0.0 would
+    publish the memory store on the network unauthenticated. The only escape
+    hatch is the PALAIA_UI_UNSAFE_BIND env var, intentionally not a CLI flag.
+    """
+    from palaia.cli_args import build_parser
+
+    parser = build_parser()
+    # --host should be rejected
+    with pytest.raises(SystemExit):
+        parser.parse_args(["ui", "--host", "0.0.0.0"])
+
+
+def test_cli_ui_port_flag_still_works():
+    """Positive case: --port is still accepted."""
+    from palaia.cli_args import build_parser
+
+    parser = build_parser()
+    args = parser.parse_args(["ui", "--port", "9999"])
+    assert args.port == 9999
+
+
 def test_search_timeout_does_not_block_on_slow_worker(client, monkeypatch):
     """Regression (codex P1): when the search worker exceeds the timeout,
     the handler must return the BM25 fallback quickly instead of waiting
