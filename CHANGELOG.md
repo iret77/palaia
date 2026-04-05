@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### New Features
+- **WebUI — local memory explorer** (`palaia ui`) — Browser-based UI for browsing, searching, creating, and managing palaia entries. v2.6-aligned: manual entries visually highlighted (gold border + badge) to reflect the 1.3× recall boost; tasks are post-its (clicking ✓ deletes them); dedicated Active Tasks sidebar; health pill shows doctor status with actionable banner. Runs on 127.0.0.1 only, no auth, auto-opens the browser. Install with `pip install 'palaia[ui]'`, then `palaia ui`.
+- **New doctor route `/api/doctor`** — surfaces health checks directly in the WebUI banner, no context switch to the CLI.
+
+### Fixed
+- **Legacy memory files check** — now excludes OpenClaw system files (`agents/`, `systems/`, `projects/*/CONTEXT.md`, `active-context.md`) and downgrades from warn to info to avoid post-migration loops (#166).
+- **postUpdate plugin install** — removed `2>/dev/null || true` that silently swallowed plugin install failures when upgrading from pre-2.5 npm-based installs. Doctor now also warns (not info) when palaia is not registered as the OpenClaw memory slot (#170).
+
+---
+
 ## v2.6 — 2026-04-03
 
 ### New Features

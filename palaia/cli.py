@@ -89,6 +89,7 @@ GATED_COMMANDS = frozenset(
         "priorities",
         "curate",
         "sync",
+        "ui",
     }
 )
 
@@ -1394,6 +1395,78 @@ def cmd_upgrade(args):
     return 0
 
 
+def cmd_ui(args):
+    """Launch the palaia WebUI (local memory explorer)."""
+    try:
+        import uvicorn  # noqa: F401
+        from fastapi import FastAPI  # noqa: F401
+    except ImportError:
+        print("WebUI requires fastapi + uvicorn.", file=sys.stderr)
+        print("Install with: pip install 'palaia[ui]'", file=sys.stderr)
+        return 1
+
+    import socket
+    import threading
+    import webbrowser
+
+    from palaia.web.app import create_app
+
+    root = find_palaia_root()
+    if not root:
+        print("palaia not initialized. Run: palaia init", file=sys.stderr)
+        return 1
+
+    host = getattr(args, "host", None) or "127.0.0.1"
+    requested_port = getattr(args, "port", None) or 8384
+    no_browser = getattr(args, "no_browser", False)
+
+    # Find a free port starting at the requested one (try up to +10)
+    def _port_free(p: int) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind((host, p))
+                return True
+            except OSError:
+                return False
+
+    port = requested_port
+    for candidate in range(requested_port, requested_port + 11):
+        if _port_free(candidate):
+            port = candidate
+            break
+    else:
+        print(f"No free port in range {requested_port}-{requested_port + 10}", file=sys.stderr)
+        return 1
+
+    if port != requested_port:
+        print(f"Port {requested_port} busy, using {port} instead.")
+
+    try:
+        app = create_app(root)
+    except RuntimeError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    url = f"http://{host}:{port}"
+    print(f"palaia WebUI → {url}")
+    print("Press Ctrl+C to stop")
+
+    if not no_browser:
+        def _open():
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+        threading.Timer(0.5, _open).start()
+
+    import uvicorn as _uvicorn
+    try:
+        _uvicorn.run(app, host=host, port=port, log_level="warning")
+    except KeyboardInterrupt:
+        print("\nWebUI stopped.")
+    return 0
+
+
 def cmd_skill(args):
     """Print the embedded SKILL.md documentation."""
     from palaia.services.misc import get_skill_content
@@ -1467,6 +1540,7 @@ def main():
         "priorities": cmd_priorities,
         "curate": cmd_curate,
         "sync": cmd_sync,
+        "ui": cmd_ui,
     }
     try:
         return commands[args.command](args)
