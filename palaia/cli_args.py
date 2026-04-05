@@ -279,6 +279,12 @@ def build_parser() -> argparse.ArgumentParser:
     # upgrade
     sub.add_parser("upgrade", help="Upgrade palaia to latest version (auto-detects install method and extras)")
 
+    # ui — local WebUI memory explorer
+    p_ui = sub.add_parser("ui", help="Launch the palaia WebUI in the browser")
+    p_ui.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1, localhost only)")
+    p_ui.add_argument("--port", type=int, default=8384, help="Port to bind (default: 8384, will fall back if busy)")
+    p_ui.add_argument("--no-browser", action="store_true", help="Do not auto-open the browser")
+
     # embed-server
     p_embed = sub.add_parser("embed-server", help="Start long-lived embedding server (JSON-RPC)")
     p_embed.add_argument("--socket", action="store_true", help="Use Unix socket transport instead of stdio")

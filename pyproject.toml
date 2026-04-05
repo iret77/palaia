@@ -48,12 +48,13 @@ sqlite-vec = ["sqlite-vec>=0.1.3"]
 postgres = ["psycopg[binary]>=3.1"]
 curate = ["scikit-learn>=1.3.0"]
 mcp = ["mcp>=1.0.0"]
+ui = ["fastapi>=0.100", "uvicorn>=0.20"]
 
 [tool.setuptools.packages.find]
 include = ["palaia*"]
 
 [tool.setuptools.package-data]
-palaia = ["SKILL.md"]
+palaia = ["SKILL.md", "web/static/*.html", "web/static/*.js", "web/static/*.css"]
 
 [tool.ruff]
 target-version = "py39"
