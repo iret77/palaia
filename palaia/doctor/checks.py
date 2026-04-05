@@ -290,7 +290,12 @@ def _check_openclaw_plugin() -> dict[str, Any]:
                     "label": "OpenClaw plugin",
                     "status": "warn",
                     "message": f"{memory_plugin} is active (not palaia)",
-                    "fix": "openclaw plugins install @byte5ai/palaia",
+                    "fix": (
+                        "openclaw plugins install @byte5ai/palaia\n"
+                        "  If the warning persists after a restart, also set "
+                        "plugins.slots.memory to \"palaia\" in "
+                        f"{config_path}."
+                    ),
                     "details": {"plugin": memory_plugin, "config_path": str(config_path)},
                 }
             else:
@@ -299,7 +304,12 @@ def _check_openclaw_plugin() -> dict[str, Any]:
                     "label": "OpenClaw plugin",
                     "status": "warn",
                     "message": "No memory plugin registered (palaia not active)",
-                    "fix": "openclaw plugins install @byte5ai/palaia",
+                    "fix": (
+                        "openclaw plugins install @byte5ai/palaia\n"
+                        "  If the warning persists after a restart, also set "
+                        "plugins.slots.memory to \"palaia\" in "
+                        f"{config_path}."
+                    ),
                     "details": {"config_path": str(config_path)},
                 }
         except (json.JSONDecodeError, OSError, KeyError):

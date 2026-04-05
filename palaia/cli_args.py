@@ -279,9 +279,8 @@ def build_parser() -> argparse.ArgumentParser:
     # upgrade
     sub.add_parser("upgrade", help="Upgrade palaia to latest version (auto-detects install method and extras)")
 
-    # ui — local WebUI memory explorer
+    # ui — local WebUI memory explorer (localhost only, no auth)
     p_ui = sub.add_parser("ui", help="Launch the palaia WebUI in the browser")
-    p_ui.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1, localhost only)")
     p_ui.add_argument("--port", type=int, default=8384, help="Port to bind (default: 8384, will fall back if busy)")
     p_ui.add_argument("--no-browser", action="store_true", help="Do not auto-open the browser")
 
