@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v2.7 — 2026-04-05
 
 ### New Features
 - **WebUI — local memory explorer** (`palaia ui`) — Browser-based UI for browsing, searching, creating, and managing palaia entries. v2.6-aligned: manual entries visually highlighted (gold border + badge) to reflect the 1.3× recall boost; tasks are post-its (clicking ✓ deletes them); dedicated Active Tasks sidebar; health pill shows doctor status with actionable banner. Runs on 127.0.0.1 only, no auth, auto-opens the browser. Install with `pip install 'palaia[ui]'`, then `palaia ui`.
