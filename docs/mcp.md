@@ -1,6 +1,6 @@
 # MCP Server
 
-palaia works as a standalone MCP memory server for Claude Desktop, Cursor, and any MCP-compatible host. **No OpenClaw required** — palaia as a standalone memory layer.
+palaia includes an MCP memory server that works with any MCP-compatible host. Claude Code uses it via `palaia setup claude-code` (see [Claude Code docs](claude-code.md)). For Claude Desktop, Cursor, and other MCP hosts, add the config manually as described below.
 
 ## Installation
 

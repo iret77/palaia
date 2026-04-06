@@ -2,7 +2,7 @@
 
 ## Installation
 
-### With OpenClaw (recommended)
+### With OpenClaw
 
 Copy this prompt into your OpenClaw agent's chat:
 
@@ -31,7 +31,7 @@ After restart, read the CLAUDE.md and follow its instructions.
 
 See [Claude Code Integration](claude-code.md) for details.
 
-### With MCP (Claude Desktop, Cursor)
+### Other MCP Clients (Claude Desktop, Cursor)
 
 ```bash
 pip install "palaia[mcp,fastembed]"

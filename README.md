@@ -32,7 +32,7 @@ palaia gives your agents a persistent, searchable knowledge store. They save wha
 - Not a chatbot or prompt manager
 - Not a cloud service (everything runs locally)
 - Not a vector database you manage yourself (it manages itself)
-- Not limited to one tool — fully autonomous on OpenClaw and Claude Code, MCP-compatible with any other client
+- Not limited to one tool — works across OpenClaw, Claude Code, and any MCP client
 
 ---
 
@@ -43,7 +43,7 @@ palaia gives your agents a persistent, searchable knowledge store. They save wha
 | **Agents remember across sessions** | Knowledge survives restarts, tool switches, and team handoffs |
 | **Find anything by meaning** | Hybrid BM25 + vector search across 6 embedding providers |
 | **Zero-config local setup** | SQLite with native SIMD vector search — no separate database process |
-| **Works everywhere via MCP** | Fully autonomous on OpenClaw and Claude Code, MCP-compatible with any other client |
+| **Works everywhere via MCP** | OpenClaw and Claude Code: paste a prompt, done. Claude Desktop, Cursor, any MCP host: manual config. |
 | **Multi-agent ready** | Private, team, and public scopes — agents see what they should |
 | **Agent isolation** | `--isolated` mode for strict per-agent memory boundaries |
 | **Crash-safe by default** | SQLite WAL mode survives power loss, kills, OOM |
@@ -55,16 +55,16 @@ palaia gives your agents a persistent, searchable knowledge store. They save wha
 
 ## Comparison
 
-| Feature | palaia | claude-mem | Mem0 | Claude Built-in Memory |
-|---------|--------|-----------|------|------------------------|
+| Feature | palaia | claude-mem | Mem0 | OpenClaw Built-in |
+|---------|--------|-----------|------|-------------------|
 | Local-first | Yes | Yes | No (cloud) | Yes |
-| Cross-tool (MCP) | Yes (any MCP client) | No (Claude Code only) | No | No |
+| Cross-tool (MCP) | Yes (any MCP client) | No (Claude Code only) | No | No (OpenClaw only) |
 | Native Vector Search | sqlite-vec / pgvector | ChromaDB (separate) | Cloud | No |
 | Structured Types | memory/process/task | decisions/bugfixes | No | No |
 | Multi-Agent Scopes | private/team/public | No | Per-user | No |
 | Smart Tiering | HOT/WARM/COLD | No | No | No |
 | Embedding Providers | 6 (configurable) | 1 (fixed) | Cloud | None |
-| Open Source | MIT | AGPL-3.0 | Partial | N/A |
+| Open Source | MIT | AGPL-3.0 | Partial | MIT |
 | Crash-safe (WAL) | Yes | Partial | N/A | No |
 
 ---
