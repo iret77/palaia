@@ -509,7 +509,19 @@ Replay pending WAL entries.
 
 Print the embedded SKILL.md documentation.
 
-### `palaia setup`
+### `palaia setup claude-code`
+
+Configure Claude Code to use palaia as MCP server. Writes `~/.claude/settings.json` and generates a CLAUDE.md with agent instructions.
+
+| Flag | Description |
+|------|-------------|
+| `--global` | Write CLAUDE.md to `~/.claude/` instead of current directory |
+| `--dry-run` | Preview planned actions without writing files |
+| `--json` | Output result as JSON |
+
+See [Claude Code Integration](claude-code.md) for the full guide.
+
+### `palaia setup --multi-agent`
 
 | Flag | Description |
 |------|-------------|
