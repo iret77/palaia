@@ -57,7 +57,9 @@ from palaia.ui import (  # noqa: E402
     section,
     success,
     sym_arrow,
+    sym_info,
     table_multi,
+    warn_msg,
 )
 
 
@@ -82,7 +84,6 @@ GATED_COMMANDS = frozenset(
         "package",
         "lock",
         "unlock",
-        "setup",
         "warmup",
         "migrate",
         "embed-server",
@@ -101,6 +102,7 @@ UNGATED_COMMANDS = frozenset(
         "doctor",
         "config",
         "instance",
+        "setup",
         "skill",
         "mcp-server",
         "upgrade",
@@ -792,12 +794,73 @@ def _cmd_migrate_suggest(store, root, args):
 
 
 def cmd_setup(args):
+    """Setup integrations: claude-code or multi-agent."""
+    setup_target = getattr(args, "setup_target", None)
+
+    if setup_target == "claude-code":
+        return _cmd_setup_claude_code(args)
+
+    # Legacy / multi-agent path
+    if not getattr(args, "multi_agent", None):
+        print("Usage: palaia setup claude-code [--global] [--dry-run]", file=sys.stderr)
+        print("       palaia setup --multi-agent <agents-dir>", file=sys.stderr)
+        return 1
+
+    return _cmd_setup_multi_agent(args)
+
+
+def _cmd_setup_claude_code(args):
+    """Configure Claude Code to use palaia as MCP server."""
+    from palaia.services.admin import setup_claude_code
+
+    root = find_palaia_root()
+    if root is None:
+        print("palaia not initialized. Run: palaia init", file=sys.stderr)
+        return 1
+
+    result = setup_claude_code(
+        root,
+        global_config=getattr(args, "global_config", False),
+        dry_run=getattr(args, "dry_run", False),
+    )
+
+    if "error" in result:
+        if _json_out(result, args):
+            return 1
+        print(f"Error: {result['error']}", file=sys.stderr)
+        return 1
+
+    if not getattr(args, "json", False):
+        dry = result.get("dry_run", False)
+        if dry:
+            print(bold("Dry run — no changes made:\n"))
+
+        for action in result.get("actions", []):
+            label = action["action"]
+            target = action.get("target", "")
+            detail = action.get("detail", "")
+            if label == "skip":
+                print(f"  {sym_info()} {dim(detail)}")
+            elif label == "plan":
+                print(f"  {sym_info()} Would: {detail}")
+                print(f"       {dim(target)}")
+            elif label in ("configured", "created", "appended"):
+                print(success(f"{detail}"))
+                print(f"       {dim(target)}")
+
+        for w in result.get("warnings", []):
+            print(warn_msg(w))
+
+        if not dry and not result.get("already_configured"):
+            print(f"\n{bold('Next step:')} Restart Claude Code to activate palaia tools.")
+
+    _json_out(result, args)
+    return 0
+
+
+def _cmd_setup_multi_agent(args):
     """Multi-agent setup: create .palaia symlinks for agent directories."""
     from palaia.services.admin import setup_multi_agent
-
-    if not args.multi_agent:
-        print("Usage: palaia setup --multi-agent <agents-dir>", file=sys.stderr)
-        return 1
 
     root = get_root()
     result = setup_multi_agent(

@@ -56,7 +56,17 @@ Or add to `.cursor/mcp.json`:
 
 ### Claude Code
 
-Add to `~/.claude/settings.json`:
+The easiest way to set up Claude Code is the automated setup command:
+
+```bash
+palaia setup claude-code --global
+```
+
+This configures `~/.claude/settings.json` and generates a CLAUDE.md with agent instructions. Restart Claude Code after setup.
+
+See [Claude Code Integration](claude-code.md) for the full guide, including the paste-this prompt for fully autonomous setup.
+
+For manual configuration, add to `~/.claude/settings.json`:
 ```json
 {
   "mcpServers": {
@@ -66,19 +76,6 @@ Add to `~/.claude/settings.json`:
   }
 }
 ```
-
-If palaia is installed in a virtualenv, use the full path:
-```json
-{
-  "mcpServers": {
-    "palaia": {
-      "command": "/path/to/.venv/bin/palaia-mcp"
-    }
-  }
-}
-```
-
-Restart Claude Code after adding the config. palaia tools (`palaia_search`, `palaia_store`, etc.) will be available automatically.
 
 ### Other MCP Hosts
 

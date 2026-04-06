@@ -214,7 +214,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_instance_clear.add_argument("--json", action="store_true", help="Output as JSON")
 
     # setup
-    p_setup = sub.add_parser("setup", help="Multi-agent setup")
+    p_setup = sub.add_parser("setup", help="Setup integrations (claude-code, multi-agent)")
+    setup_sub = p_setup.add_subparsers(dest="setup_target")
+
+    # setup claude-code
+    p_setup_cc = setup_sub.add_parser("claude-code", help="Configure Claude Code to use palaia")
+    p_setup_cc.add_argument(
+        "--global", action="store_true", dest="global_config",
+        help="Write CLAUDE.md to ~/.claude/ instead of current directory",
+    )
+    p_setup_cc.add_argument("--dry-run", action="store_true", help="Preview without writing files")
+    p_setup_cc.add_argument("--json", action="store_true", help="Output as JSON")
+
+    # setup multi-agent (backwards compat)
     p_setup.add_argument("--multi-agent", default=None, help="Path to agents directory")
     p_setup.add_argument("--dry-run", action="store_true", help="Preview without creating symlinks")
     p_setup.add_argument("--json", action="store_true", help="Output as JSON")

@@ -102,4 +102,4 @@ def test_version_check_count(palaia_root):
         mock_urlopen.return_value = _mock_pypi_response(__version__)
         results = run_doctor(palaia_root)
 
-    assert len(results) == 29  # +4: native_vector_search, mcp_server, capture_health, plugin_version_match
+    assert len(results) == 30  # +5: native_vector_search, mcp_server, claude_code_config, capture_health, plugin_version_match

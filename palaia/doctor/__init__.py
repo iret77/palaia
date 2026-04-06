@@ -12,6 +12,7 @@ from palaia.doctor.checks import (
     _check_capture_health,
     _check_capture_level,
     _check_capture_model,
+    _check_claude_code_config,
     _check_default_agent_alias,
     _check_deprecated_config,
     _check_embedding_chain,
@@ -79,6 +80,7 @@ def run_doctor(palaia_root: Path | None = None) -> list[dict[str, Any]]:
         _check_storage_backend(palaia_root),
         _check_native_vector_search(palaia_root),
         _check_mcp_server(palaia_root),
+        _check_claude_code_config(palaia_root),
     ]
     return results
 
@@ -93,6 +95,7 @@ __all__ = [
     "_check_capture_health",
     "_check_capture_level",
     "_check_capture_model",
+    "_check_claude_code_config",
     "_check_default_agent_alias",
     "_check_deprecated_config",
     "_check_embedding_chain",

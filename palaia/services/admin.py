@@ -709,6 +709,212 @@ def migrate_suggest(root: Path) -> dict:
 # setup
 # ---------------------------------------------------------------------------
 
+
+# ── CLAUDE.md template (injected into project or global config) ────────────
+CLAUDE_CODE_TEMPLATE = """\
+# palaia — Persistent Memory
+
+You have access to palaia, a persistent knowledge store that survives across sessions.
+Use it to remember decisions, context, patterns, and tasks — so every session builds
+on the last instead of starting from scratch.
+
+## First session after setup
+
+Run `palaia_status` to confirm palaia is active. If the store is empty, that's
+normal — start storing knowledge as you work. It accumulates over time.
+
+## Session start routine
+
+1. Run `palaia_search` with the current project or topic to load relevant context.
+2. Run `palaia_list(tier="hot")` to see recent active memories.
+3. If there are results, read the most relevant ones before proceeding.
+4. If the store is empty or has no matches, proceed normally — store what you learn.
+
+## When to store knowledge
+
+Store proactively — don't wait for the user to ask. Good triggers:
+
+- **Decisions**: "We chose X because Y" — store as `entry_type: "memory"`
+- **Discoveries**: Bugs found, API quirks, undocumented behavior — `entry_type: "memory"`
+- **Tasks**: Work items for later sessions — `entry_type: "task"`, `status: "open"`
+- **Processes**: Step-by-step workflows, deploy procedures — `entry_type: "process"`
+- **Architecture**: System design, module responsibilities, data flows — `entry_type: "memory"`
+
+```
+palaia_store(
+  content="<what you learned>",
+  title="<short title>",
+  tags=["<relevant>", "<tags>"],
+  entry_type="memory",
+)
+```
+
+## When NOT to store
+
+- Code that's already in the repo (use git)
+- Temporary debugging state (clutters the store)
+- Anything sensitive (API keys, passwords)
+
+## Tool reference
+
+| Tool | When to use |
+|------|-------------|
+| `palaia_search(query=...)` | Find relevant memories by meaning |
+| `palaia_store(content=..., title=..., tags=..., entry_type=...)` | Save knowledge |
+| `palaia_list(tier="hot")` | Browse recent entries |
+| `palaia_read(entry_id=...)` | Read full entry details |
+| `palaia_edit(entry_id=..., status="done")` | Update entries (e.g. close tasks) |
+| `palaia_status()` | Check store health |
+| `palaia_gc(dry_run=True)` | Preview tier rotation |
+
+## palaia vs. built-in memory
+
+| Use palaia for | Use built-in memory for |
+|----------------|------------------------|
+| Project decisions & architecture | Personal preferences (editor settings, style) |
+| Learnings that apply across sessions | Ephemeral conversation context |
+| Tasks and processes | User interaction patterns |
+| Knowledge shared between tools (Cursor, Claude Desktop) | Tool-specific configuration |
+"""
+
+
+def setup_claude_code(
+    root: Path,
+    *,
+    global_config: bool = False,
+    dry_run: bool = False,
+) -> dict:
+    """Configure Claude Code to use palaia as MCP server.
+
+    1. Writes mcpServers entry to ~/.claude/settings.json
+    2. Generates a CLAUDE.md snippet (project-local or global)
+
+    Returns dict with actions taken and any warnings.
+    """
+    import shutil
+
+    actions: list[dict] = []
+    warnings: list[str] = []
+
+    # ── Step 1: Determine palaia-mcp binary path ──────────────────
+    palaia_mcp_bin = shutil.which("palaia-mcp")
+    if not palaia_mcp_bin:
+        # Fallback: try to find it relative to the running Python
+        import sys
+
+        candidate = Path(sys.executable).parent / "palaia-mcp"
+        if candidate.exists():
+            palaia_mcp_bin = str(candidate)
+        else:
+            return {"error": "palaia-mcp binary not found. Install with: pip install 'palaia[mcp]'"}
+
+    # ── Step 2: Write MCP config to ~/.claude/settings.json ───────
+    settings_path = Path.home() / ".claude" / "settings.json"
+    settings_dir = settings_path.parent
+
+    if not settings_dir.exists():
+        if dry_run:
+            actions.append({"action": "plan", "target": str(settings_dir), "detail": "create directory"})
+        else:
+            settings_dir.mkdir(parents=True, exist_ok=True)
+            actions.append({"action": "created", "target": str(settings_dir)})
+
+    # Load existing settings (preserve everything else)
+    settings: dict = {}
+    if settings_path.exists():
+        try:
+            import json as _json
+
+            settings = _json.loads(settings_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            warnings.append(f"Could not parse {settings_path} — creating fresh config")
+
+    mcp_servers = settings.setdefault("mcpServers", {})
+    already_configured = "palaia" in mcp_servers
+
+    if already_configured:
+        existing_cmd = mcp_servers["palaia"].get("command", "")
+        actions.append({
+            "action": "skip",
+            "target": str(settings_path),
+            "detail": f"palaia MCP already configured (command: {existing_cmd})",
+        })
+    else:
+        mcp_servers["palaia"] = {"command": palaia_mcp_bin}
+        if dry_run:
+            actions.append({
+                "action": "plan",
+                "target": str(settings_path),
+                "detail": f"add palaia MCP server (command: {palaia_mcp_bin})",
+            })
+        else:
+            import json as _json
+
+            settings_path.write_text(
+                _json.dumps(settings, indent=2) + "\n", encoding="utf-8",
+            )
+            actions.append({
+                "action": "configured",
+                "target": str(settings_path),
+                "detail": f"palaia MCP server added (command: {palaia_mcp_bin})",
+            })
+
+    # ── Step 3: Generate CLAUDE.md snippet ────────────────────────
+    if global_config:
+        claude_md_path = Path.home() / ".claude" / "CLAUDE.md"
+    else:
+        claude_md_path = Path.cwd() / "CLAUDE.md"
+
+    if claude_md_path.exists():
+        existing = claude_md_path.read_text(encoding="utf-8")
+        if "palaia" in existing.lower():
+            actions.append({
+                "action": "skip",
+                "target": str(claude_md_path),
+                "detail": "CLAUDE.md already mentions palaia",
+            })
+        else:
+            if dry_run:
+                actions.append({
+                    "action": "plan",
+                    "target": str(claude_md_path),
+                    "detail": "append palaia section to existing CLAUDE.md",
+                })
+            else:
+                with open(claude_md_path, "a", encoding="utf-8") as f:
+                    f.write("\n\n" + CLAUDE_CODE_TEMPLATE)
+                actions.append({
+                    "action": "appended",
+                    "target": str(claude_md_path),
+                    "detail": "palaia section appended to existing CLAUDE.md",
+                })
+    else:
+        if dry_run:
+            actions.append({
+                "action": "plan",
+                "target": str(claude_md_path),
+                "detail": "create CLAUDE.md with palaia instructions",
+            })
+        else:
+            claude_md_path.write_text(CLAUDE_CODE_TEMPLATE, encoding="utf-8")
+            actions.append({
+                "action": "created",
+                "target": str(claude_md_path),
+                "detail": "CLAUDE.md created with palaia instructions",
+            })
+
+    return {
+        "status": "ok",
+        "actions": actions,
+        "warnings": warnings,
+        "settings_path": str(settings_path),
+        "claude_md_path": str(claude_md_path),
+        "palaia_mcp_bin": palaia_mcp_bin,
+        "already_configured": already_configured,
+        "dry_run": dry_run,
+    }
+
+
 def setup_multi_agent(
     root: Path,
     agents_dir_path: str,
