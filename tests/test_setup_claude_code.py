@@ -96,7 +96,7 @@ class TestSetupClaudeCode:
             "customSetting": True,
         }))
 
-        result = setup_claude_code(palaia_root)
+        setup_claude_code(palaia_root)
 
         settings = json.loads((settings_dir / "settings.json").read_text())
         assert "palaia" in settings["mcpServers"]
@@ -111,7 +111,7 @@ class TestSetupClaudeCode:
         existing = "# My Project\n\nExisting instructions.\n"
         (tmp_path / "CLAUDE.md").write_text(existing)
 
-        result = setup_claude_code(palaia_root)
+        setup_claude_code(palaia_root)
 
         content = (tmp_path / "CLAUDE.md").read_text()
         assert content.startswith("# My Project")
@@ -125,7 +125,7 @@ class TestSetupClaudeCode:
         existing = "# My Project\n\nUse palaia for memory.\n"
         (tmp_path / "CLAUDE.md").write_text(existing)
 
-        result = setup_claude_code(palaia_root)
+        setup_claude_code(palaia_root)
 
         content = (tmp_path / "CLAUDE.md").read_text()
         assert content == existing
