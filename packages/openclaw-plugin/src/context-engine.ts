@@ -394,6 +394,7 @@ export function createPalaiaContextEngine(
       id: "palaia",
       name: "palaia Memory",
       version: "2.3",
+      ownsCompaction: true,
     },
 
     /**
