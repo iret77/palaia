@@ -1823,7 +1823,12 @@ def _check_mcp_server(palaia_root: Path | None) -> dict[str, Any]:
 
 
 def _check_stale_unassigned_tasks(palaia_root: Path | None) -> dict[str, Any]:
-    """Check for auto-captured tasks without assignee/due_date older than 7 days."""
+    """Check for auto-captured tasks without assignee/due_date older than 7 days.
+
+    Uses Store.all_entries_unfiltered() to ensure consistent entry discovery
+    with `palaia list`. Previous implementation scanned .md files directly,
+    which could report entries invisible to the user (scope filtering mismatch).
+    """
     if palaia_root is None:
         return {
             "name": "stale_unassigned_tasks",
@@ -1834,36 +1839,43 @@ def _check_stale_unassigned_tasks(palaia_root: Path | None) -> dict[str, Any]:
 
     from datetime import datetime, timezone
 
-    from palaia.entry import parse_entry
+    from palaia.store import Store
 
     now = datetime.now(tz=timezone.utc)
     stale_ids: list[str] = []
 
-    for tier in ("hot", "warm"):
-        tier_dir = palaia_root / tier
-        if not tier_dir.exists():
-            continue
-        for p in tier_dir.glob("*.md"):
-            try:
-                text = p.read_text(encoding="utf-8")
-                meta, _body = parse_entry(text)
-                if meta.get("type") != "task":
-                    continue
-                if meta.get("assignee") or meta.get("due_date"):
-                    continue
-                raw_tags = meta.get("tags", [])
-                tags = raw_tags if isinstance(raw_tags, list) else str(raw_tags).split(",")
-                tags = [t.strip() for t in tags]
-                if "auto-capture" not in tags:
-                    continue
-                created = meta.get("created", "")
-                if not created:
-                    continue
-                created_dt = datetime.fromisoformat(created)
-                if (now - created_dt).days >= 7:
-                    stale_ids.append(p.stem)
-            except Exception:
+    try:
+        store = Store(palaia_root)
+        all_entries = store.all_entries_unfiltered(include_cold=False)
+    except Exception:
+        return {
+            "name": "stale_unassigned_tasks",
+            "label": "Stale unassigned tasks",
+            "status": "ok",
+            "message": "Could not read store",
+        }
+
+    for meta, _body, _tier in all_entries:
+        try:
+            if meta.get("type") != "task":
                 continue
+            if meta.get("assignee") or meta.get("due_date"):
+                continue
+            raw_tags = meta.get("tags", [])
+            tags = raw_tags if isinstance(raw_tags, list) else str(raw_tags).split(",")
+            tags = [t.strip() for t in tags]
+            if "auto-capture" not in tags:
+                continue
+            created = meta.get("created", "")
+            if not created:
+                continue
+            created_dt = datetime.fromisoformat(created)
+            if (now - created_dt).days >= 7:
+                entry_id = meta.get("id", "")
+                if entry_id:
+                    stale_ids.append(entry_id)
+        except Exception:
+            continue
 
     if not stale_ids:
         return {
