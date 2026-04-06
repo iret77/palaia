@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "2.7"
+version: "2.7.1"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   SQLite-backed by default. Semantic search, projects, scopes, auto-capture.
@@ -444,6 +444,17 @@ palaia upgrade
 
 Auto-detects the install method (pip/uv/pipx/brew), preserves all installed extras (fastembed, mcp, sqlite-vec, curate), runs `palaia doctor --fix`, and upgrades the OpenClaw npm plugin if present. Always use this instead of manual pip commands.
 
+### `palaia ui` — Local memory explorer (NEW in v2.7)
+
+```bash
+pip install 'palaia[ui]'   # One-time: install FastAPI + uvicorn
+palaia ui                  # Opens browser at http://127.0.0.1:8384
+palaia ui --port 9000      # Custom port (auto-fallback if busy)
+palaia ui --no-browser     # Don't auto-open browser
+```
+
+Browse, search, create, edit, and delete entries in the browser. Manual entries are highlighted with a gold border (1.3× recall boost). Tasks are post-its: clicking ✓ deletes them. The health pill in the header shows doctor status with actionable warnings. Localhost only — no authentication, no network exposure.
+
 ### `palaia doctor` — Diagnostics and auto-fix
 
 ```bash
@@ -461,6 +472,15 @@ palaia gc                  # Tier rotation (HOT -> WARM -> COLD)
 palaia gc --dry-run         # Preview what would change
 palaia gc --aggressive      # Also clears COLD tier
 palaia gc --budget 200      # Keep max N entries
+```
+
+### `palaia prune` — Selective cleanup (NEW in v2.5)
+
+```bash
+palaia prune --agent moneypenny     # Remove auto-captured entries by agent
+palaia prune --tags auto-capture    # Remove all auto-captured entries
+palaia prune --dry-run              # Preview what would be removed
+palaia prune --protect-type process # Never delete process entries
 ```
 
 ### `palaia config` — Configuration
