@@ -71,15 +71,26 @@ palaia gives your agents a persistent, searchable knowledge store. They save wha
 
 ## Install
 
-### Recommended: Tell your agent
+### Recommended: Paste into your agent
 
-Paste this into your OpenClaw agent (works for install AND update):
+Both OpenClaw and Claude Code support fully autonomous setup — paste the prompt, the agent does the rest.
+
+**OpenClaw:**
 
 > Install or update the palaia memory skill from ClawHub to the latest version (even if already present). Read the SKILL.md completely and follow it step by step. Run palaia init, then palaia doctor --fix and resolve all warnings — don't stop until the doctor report is clean. Set up completely.
 
-The agent handles everything: ClawHub skill install, pip setup, plugin config, and verification.
+**Claude Code:**
+
+> Install palaia for persistent memory in this Claude Code environment.
+> Run: `pip install "palaia[mcp,fastembed]" && palaia init && palaia setup claude-code --global`
+> Then tell me to restart Claude Code so the MCP tools become active.
+> After restart, read the CLAUDE.md and follow its instructions.
+
+See [Claude Code Integration](docs/claude-code.md) for the full guide.
 
 ### Manual Setup
+
+**OpenClaw:**
 
 ```bash
 pip install "palaia[fastembed]"
@@ -100,29 +111,17 @@ Then activate the memory slot in your OpenClaw config:
 
 Restart the gateway: `openclaw gateway restart`
 
-Optional extras:
+**Claude Code:**
+
 ```bash
-pip install "palaia[mcp]"          # MCP server for any MCP client
-pip install "palaia[curate]"       # Knowledge curation
-pip install "palaia[postgres]"     # PostgreSQL + pgvector backend
+pip install "palaia[mcp,fastembed]"
+palaia init
+palaia setup claude-code --global
 ```
 
-Note: `palaia[fastembed]` already includes sqlite-vec for native vector search and the embed-server auto-starts on first query. No manual optimization needed.
+Restart Claude Code after setup.
 
-**Upgrading?** `palaia upgrade` — auto-detects install method, preserves extras, runs doctor.
-
-### Claude Code
-
-Paste this into Claude Code:
-
-> Install palaia for persistent memory in this Claude Code environment.
-> Run: `pip install "palaia[mcp,fastembed]" && palaia init && palaia setup claude-code --global`
-> Then tell me to restart Claude Code so the MCP tools become active.
-> After restart, read the CLAUDE.md and follow its instructions.
-
-See [Claude Code Integration](docs/claude-code.md) for the full guide.
-
-### MCP Setup (Claude Desktop, Cursor — no OpenClaw needed)
+### Other MCP Clients (Claude Desktop, Cursor)
 
 ```bash
 pip install "palaia[mcp,fastembed]"
@@ -141,6 +140,19 @@ Add to your MCP config:
   }
 }
 ```
+
+Note: These clients require manual MCP configuration. palaia provides the memory tools, but you need to instruct the agent yourself.
+
+### Optional Extras
+
+```bash
+pip install "palaia[curate]"       # Knowledge curation
+pip install "palaia[postgres]"     # PostgreSQL + pgvector backend
+```
+
+Note: `palaia[fastembed]` already includes sqlite-vec for native vector search and the embed-server auto-starts on first query. No manual optimization needed.
+
+**Upgrading?** `palaia upgrade` — auto-detects install method, preserves extras, runs doctor.
 
 ## Quick Start
 
