@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.7.2 — 2026-04-06
+
+### Fixed
+- **ContextEngine: `ownsCompaction: true`** — palaia now declares compaction ownership, preventing OpenClaw's built-in Pi auto-compaction from running in parallel with `palaia gc`. Without this flag, both compaction mechanisms could interfere with each other, leading to unpredictable context truncation.
+
+---
+
 ## v2.7.1 — 2026-04-06
 
 ### Fixed
