@@ -1,6 +1,6 @@
 ---
 name: palaia
-version: "2.7.1"
+version: "2.7.2"
 description: >
   Local, crash-safe persistent memory for OpenClaw agents.
   SQLite-backed by default. Semantic search, projects, scopes, auto-capture.
@@ -25,9 +25,9 @@ metadata:
       - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && openclaw plugins install @byte5ai/palaia && palaia doctor --fix && palaia warmup"
         label: "Upgrade palaia with semantic search + plugin and run health checks"
     postUpdateMessage: >
-      palaia has been updated to v2.7. New: WebUI memory explorer (`palaia ui`),
-      improved doctor checks (legacy files, plugin registration), search timeout
-      fix, security hardening (localhost-only UI).
+      palaia has been updated to v2.7.2. New: `palaia setup claude-code` for
+      one-command Claude Code integration (MCP config + agent instructions),
+      doctor check for Claude Code config.
       Run `palaia doctor --fix` to upgrade.
     plugin:
       slot: memory

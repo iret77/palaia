@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.7.2 — 2026-04-06
+
+### New Features
+- **Claude Code onboarding** — `palaia setup claude-code` auto-configures Claude Code as a first-class integration: writes MCP server config to `~/.claude/settings.json`, generates CLAUDE.md with session-start routine and proactive storage guidance. Supports `--global` (recommended), `--dry-run`, `--json`.
+- **Doctor check for Claude Code** — `palaia doctor` now checks whether Claude Code is configured to use palaia as MCP server. Suggests `palaia setup claude-code` if missing.
+- **Dedicated Claude Code docs** — New `docs/claude-code.md` guide with paste-this prompt for fully autonomous install.
+
+### Docs
+- README, getting-started.md, mcp.md updated with Claude Code sections and paste-this prompt.
+- cli-reference.md updated with `setup claude-code` subcommand.
+
+---
+
 ## v2.7.1 — 2026-04-06
 
 ### Fixed
