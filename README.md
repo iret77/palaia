@@ -32,7 +32,7 @@ palaia gives your agents a persistent, searchable knowledge store. They save wha
 - Not a chatbot or prompt manager
 - Not a cloud service (everything runs locally)
 - Not a vector database you manage yourself (it manages itself)
-- Not limited to one tool — works with OpenClaw, Claude Desktop, Cursor, and any MCP client
+- Not limited to one tool — fully autonomous on OpenClaw and Claude Code, MCP-compatible with any other client
 
 ---
 
@@ -43,7 +43,7 @@ palaia gives your agents a persistent, searchable knowledge store. They save wha
 | **Agents remember across sessions** | Knowledge survives restarts, tool switches, and team handoffs |
 | **Find anything by meaning** | Hybrid BM25 + vector search across 6 embedding providers |
 | **Zero-config local setup** | SQLite with native SIMD vector search — no separate database process |
-| **Works everywhere via MCP** | One memory store for OpenClaw, Claude Desktop, Cursor, and more |
+| **Works everywhere via MCP** | Fully autonomous on OpenClaw and Claude Code, MCP-compatible with any other client |
 | **Multi-agent ready** | Private, team, and public scopes — agents see what they should |
 | **Agent isolation** | `--isolated` mode for strict per-agent memory boundaries |
 | **Crash-safe by default** | SQLite WAL mode survives power loss, kills, OOM |
@@ -102,7 +102,7 @@ Restart the gateway: `openclaw gateway restart`
 
 Optional extras:
 ```bash
-pip install "palaia[mcp]"          # MCP server for Claude Desktop, Cursor
+pip install "palaia[mcp]"          # MCP server for any MCP client
 pip install "palaia[curate]"       # Knowledge curation
 pip install "palaia[postgres]"     # PostgreSQL + pgvector backend
 ```
