@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.7.1 — 2026-04-06
+
+### Fixed
+- **SKILL.md**: Added missing `palaia ui` and `palaia prune` command documentation.
+- **README.md**: WebUI added to feature table.
+- **docs/cli-reference.md**: `palaia ui`, `palaia prune` flags documented.
+- **docs/multi-agent.md**: Capture health check section added, removed obsolete `shared:<name>` scope.
+
+---
+
 ## v2.7 — 2026-04-05
 
 ### New Features

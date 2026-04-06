@@ -14,6 +14,8 @@ palaia edit <id> [--status done] [--title T]         Edit entry
 palaia status                                         System health
 palaia doctor [--fix]                                 Diagnose + fix
 palaia upgrade                                        Update palaia
+palaia ui [--port] [--no-browser]                     WebUI explorer
+palaia prune [--agent] [--tags] [--dry-run]           Selective cleanup
 palaia project create|list|show|write|query|...      Projects
 palaia memo send|inbox|ack|broadcast|gc              Messaging
 palaia priorities [block|unblock|set|list-blocked]   Injection control
@@ -163,6 +165,28 @@ Detects and fixes:
 ### `palaia upgrade`
 
 Update palaia to latest version. Auto-detects install method, preserves extras, runs doctor, upgrades OpenClaw plugin.
+
+### `palaia ui`
+
+Launch the local WebUI memory explorer in the browser. Requires `pip install 'palaia[ui]'`.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--port` | 8384 | Port to bind (auto-fallback if busy, tries +10) |
+| `--no-browser` | off | Don't auto-open the browser |
+
+Binds to 127.0.0.1 only (no auth). Features: browse/search/create/edit/delete entries, manual/auto-capture highlighting, task post-it sidebar, doctor health banner.
+
+### `palaia prune`
+
+Selective cleanup of auto-captured entries.
+
+| Flag | Description |
+|------|-------------|
+| `--agent NAME` | Remove entries by specific agent |
+| `--tags TAG,...` | Remove entries with matching tags |
+| `--protect-type TYPE` | Never delete entries of this type |
+| `--dry-run` | Preview what would be removed |
 
 ### `palaia detect`
 

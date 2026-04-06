@@ -48,6 +48,7 @@ palaia gives your agents a persistent, searchable knowledge store. They save wha
 | **Agent isolation** | `--isolated` mode for strict per-agent memory boundaries |
 | **Crash-safe by default** | SQLite WAL mode survives power loss, kills, OOM |
 | **Fast** | Embed server keeps model in RAM — CLI queries ~1.5s, MCP/Plugin <500ms |
+| **WebUI memory explorer** | `palaia ui` — browse, search, create entries in the browser. Localhost only. |
 | **Scales when needed** | Swap to PostgreSQL + pgvector for distributed teams, no code changes |
 
 ---

@@ -25,7 +25,6 @@ Every entry has a scope that controls who can read and edit it:
 | `team` | All agents | All agents | Yes |
 | `private` | Only the owner (+ aliases) | Only the owner | No |
 | `public` | All agents + exportable | All agents | No |
-| `shared:<name>` | Agents in the shared group | Agents in the group | No |
 
 ```bash
 palaia write "Secret rotation procedure" --scope private
@@ -138,6 +137,18 @@ palaia init --agent lead
 ```
 
 Isolation mode is purely additive — it doesn't affect existing entries or other agents.
+
+## Capture Health Check
+
+In multi-agent setups, auto-capture can silently fail for sub-agents (e.g. when the plugin is not correctly registered or the workspace is misconfigured). `palaia doctor` detects this:
+
+- **`capture_health` check**: Warns when `autoCapture=true` but zero entries have been captured. Run `palaia doctor` on each agent's workspace to verify auto-capture is working.
+- **`plugin_version_match` check**: Warns when the CLI version differs from the installed plugin version (e.g. after a partial upgrade).
+
+If auto-capture is not firing, verify:
+1. The OpenClaw plugin is registered: `openclaw plugins install @byte5ai/palaia`
+2. The workspace path is correct: check `ctx.workspaceDir` in plugin logs
+3. The plugin version matches the CLI: `palaia doctor`
 
 ---
 
