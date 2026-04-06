@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.7.3 — 2026-04-07
+
+### Fixed
+- **ContextEngine: `ownsCompaction: true`** — palaia now declares compaction ownership, preventing OpenClaw's built-in Pi auto-compaction from running in parallel with `palaia gc`. Without this flag, both compaction mechanisms could interfere with each other, leading to unpredictable context truncation.
+- **Doctor phantom stale-tasks warning** — `_check_stale_unassigned_tasks` now reads entries through `Store.all_entries_unfiltered()` instead of scanning `.md` files directly. The previous approach could report entries invisible to `palaia list` (e.g. entries with empty/invalid scope), causing the doctor to warn about tasks that the user cannot see or act on.
+- **Scope: empty/unknown scope no longer hides entries** — `can_access()` now treats empty or unrecognized scope values as `"team"` instead of returning `False`. Entries with missing or malformed scope are no longer silently invisible.
+
+---
+
 ## v2.7.2 — 2026-04-06
 
 ### New Features
