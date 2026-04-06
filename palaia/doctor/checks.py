@@ -1803,7 +1803,7 @@ def _check_native_vector_search(palaia_root: Path | None) -> dict[str, Any]:
 
 
 def _check_mcp_server(palaia_root: Path | None) -> dict[str, Any]:
-    """Check if MCP server is available for Claude Desktop / Cursor integration."""
+    """Check if MCP server is available for Claude Code / Claude Desktop / Cursor."""
     try:
         import mcp  # noqa: F401
 
@@ -1811,15 +1811,54 @@ def _check_mcp_server(palaia_root: Path | None) -> dict[str, Any]:
             "name": "mcp_server",
             "label": "MCP server",
             "status": "ok",
-            "message": "MCP SDK installed — palaia-mcp available for Claude Desktop, Cursor",
+            "message": "MCP SDK installed — palaia-mcp available for Claude Code, Claude Desktop, Cursor",
         }
     except ImportError:
         return {
             "name": "mcp_server",
             "label": "MCP server",
             "status": "info",
-            "message": "MCP SDK not installed. For Claude Desktop / Cursor: pip install 'palaia[mcp]'",
+            "message": "MCP SDK not installed. For Claude Code / Claude Desktop / Cursor: pip install 'palaia[mcp]'",
         }
+
+
+def _check_claude_code_config(palaia_root: Path | None) -> dict[str, Any]:
+    """Check if Claude Code is configured to use palaia as MCP server."""
+    settings_path = Path.home() / ".claude" / "settings.json"
+
+    if not settings_path.exists():
+        return {
+            "name": "claude_code_config",
+            "label": "Claude Code config",
+            "status": "info",
+            "message": "~/.claude/settings.json not found. Set up with: palaia setup claude-code",
+        }
+
+    try:
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {
+            "name": "claude_code_config",
+            "label": "Claude Code config",
+            "status": "warn",
+            "message": "~/.claude/settings.json exists but is not valid JSON",
+        }
+
+    mcp_servers = settings.get("mcpServers", {})
+    if "palaia" not in mcp_servers:
+        return {
+            "name": "claude_code_config",
+            "label": "Claude Code config",
+            "status": "info",
+            "message": "palaia not in Claude Code MCP config. Set up with: palaia setup claude-code",
+        }
+
+    return {
+        "name": "claude_code_config",
+        "label": "Claude Code config",
+        "status": "ok",
+        "message": f"palaia registered in Claude Code (command: {mcp_servers['palaia'].get('command', '?')})",
+    }
 
 
 def _check_stale_unassigned_tasks(palaia_root: Path | None) -> dict[str, Any]:

@@ -2,6 +2,10 @@
 
 ## v2.7.2 — 2026-04-06
 
+### New Features
+- **`palaia setup claude-code`** — one-command setup for Claude Code as MCP client. Configures `~/.claude/settings.json` with palaia MCP server and injects a CLAUDE.md guide into the project or global config. Supports `--global` (all projects) and `--dry-run` (preview only).
+- **Doctor: Claude Code config check** — `palaia doctor` now detects whether Claude Code is configured to use palaia as MCP server and suggests `palaia setup claude-code` if not.
+
 ### Fixed
 - **ContextEngine: `ownsCompaction: true`** — palaia now declares compaction ownership, preventing OpenClaw's built-in Pi auto-compaction from running in parallel with `palaia gc`. Without this flag, both compaction mechanisms could interfere with each other, leading to unpredictable context truncation.
 - **Doctor phantom stale-tasks warning** — `_check_stale_unassigned_tasks` now reads entries through `Store.all_entries_unfiltered()` instead of scanning `.md` files directly. The previous approach could report entries invisible to `palaia list` (e.g. entries with empty/invalid scope), causing the doctor to warn about tasks that the user cannot see or act on.

@@ -56,7 +56,14 @@ Or add to `.cursor/mcp.json`:
 
 ### Claude Code
 
-Add to `~/.claude/settings.json`:
+The fastest way:
+```bash
+palaia setup claude-code
+```
+
+This automatically writes `~/.claude/settings.json` and creates a `CLAUDE.md` that teaches Claude Code how to use palaia. See the [Claude Code guide](claude-code.md) for the full setup and workflow documentation.
+
+**Manual alternative** — add to `~/.claude/settings.json`:
 ```json
 {
   "mcpServers": {

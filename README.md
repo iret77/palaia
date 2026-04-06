@@ -32,7 +32,7 @@ palaia gives your agents a persistent, searchable knowledge store. They save wha
 - Not a chatbot or prompt manager
 - Not a cloud service (everything runs locally)
 - Not a vector database you manage yourself (it manages itself)
-- Not limited to one tool — works with OpenClaw, Claude Desktop, Cursor, and any MCP client
+- Not limited to one tool — works with OpenClaw, Claude Code, Claude Desktop, Cursor, and any MCP client
 
 ---
 
@@ -43,7 +43,7 @@ palaia gives your agents a persistent, searchable knowledge store. They save wha
 | **Agents remember across sessions** | Knowledge survives restarts, tool switches, and team handoffs |
 | **Find anything by meaning** | Hybrid BM25 + vector search across 6 embedding providers |
 | **Zero-config local setup** | SQLite with native SIMD vector search — no separate database process |
-| **Works everywhere via MCP** | One memory store for OpenClaw, Claude Desktop, Cursor, and more |
+| **Works everywhere via MCP** | One memory store for OpenClaw, Claude Code, Claude Desktop, Cursor, and more |
 | **Multi-agent ready** | Private, team, and public scopes — agents see what they should |
 | **Agent isolation** | `--isolated` mode for strict per-agent memory boundaries |
 | **Crash-safe by default** | SQLite WAL mode survives power loss, kills, OOM |
@@ -111,7 +111,17 @@ Note: `palaia[fastembed]` already includes sqlite-vec for native vector search a
 
 **Upgrading?** `palaia upgrade` — auto-detects install method, preserves extras, runs doctor.
 
-### MCP Setup (Claude Desktop, Cursor, Claude Code — no OpenClaw needed)
+### Claude Code Setup
+
+```bash
+pip install "palaia[mcp,fastembed]"
+palaia init
+palaia setup claude-code
+```
+
+One command configures everything: MCP server registration, CLAUDE.md with agent instructions. Restart Claude Code — done. See [Claude Code guide](docs/claude-code.md) for details.
+
+### MCP Setup (Claude Desktop, Cursor — no OpenClaw needed)
 
 ```bash
 pip install "palaia[mcp,fastembed]"
@@ -121,7 +131,6 @@ palaia init
 Add to your MCP config:
 - Claude Desktop: `~/.config/claude/claude_desktop_config.json`
 - Cursor: `.cursor/mcp.json`
-- Claude Code: `~/.claude/settings.json`
 ```json
 {
   "mcpServers": {
@@ -148,6 +157,7 @@ palaia status                                        # Check health
 | Document | Description |
 |----------|-------------|
 | [Getting Started](docs/getting-started.md) | Installation, first steps, quick tour |
+| [Claude Code](docs/claude-code.md) | Setup, daily workflow, comparison with built-in memory |
 | [Storage & Search](docs/backends.md) | SQLite, PostgreSQL, sqlite-vec, pgvector, embedding providers |
 | [MCP Server](docs/mcp.md) | Setup for Claude Desktop, Cursor, tool reference, read-only mode |
 | [Embed Server](docs/embed-server.md) | Performance optimization, socket transport, daemon mode |

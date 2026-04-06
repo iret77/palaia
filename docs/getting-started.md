@@ -16,6 +16,16 @@ palaia init
 palaia doctor --fix
 ```
 
+### With Claude Code
+
+```bash
+pip install "palaia[mcp,fastembed]"
+palaia init
+palaia setup claude-code
+```
+
+Restart Claude Code — palaia tools appear automatically. See [Claude Code guide](claude-code.md) for details.
+
 ### With MCP (Claude Desktop, Cursor)
 
 ```bash
@@ -90,6 +100,7 @@ If `palaia upgrade` is not recognized (versions before v2.3.0), see the [SKILL.m
 
 ## Next Steps
 
+- [Claude Code](claude-code.md) — Setup, workflow, vs. built-in memory
 - [Storage & Search](backends.md) — Backend options, embedding providers
 - [MCP Server](mcp.md) — Claude Desktop / Cursor setup
 - [Multi-Agent](multi-agent.md) — Team setup, scopes, aliases
