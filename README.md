@@ -111,7 +111,18 @@ Note: `palaia[fastembed]` already includes sqlite-vec for native vector search a
 
 **Upgrading?** `palaia upgrade` — auto-detects install method, preserves extras, runs doctor.
 
-### MCP Setup (Claude Desktop, Cursor, Claude Code — no OpenClaw needed)
+### Claude Code
+
+Paste this into Claude Code:
+
+> Install palaia for persistent memory in this Claude Code environment.
+> Run: `pip install "palaia[mcp,fastembed]" && palaia init && palaia setup claude-code --global`
+> Then tell me to restart Claude Code so the MCP tools become active.
+> After restart, read the CLAUDE.md and follow its instructions.
+
+See [Claude Code Integration](docs/claude-code.md) for the full guide.
+
+### MCP Setup (Claude Desktop, Cursor — no OpenClaw needed)
 
 ```bash
 pip install "palaia[mcp,fastembed]"
@@ -121,7 +132,6 @@ palaia init
 Add to your MCP config:
 - Claude Desktop: `~/.config/claude/claude_desktop_config.json`
 - Cursor: `.cursor/mcp.json`
-- Claude Code: `~/.claude/settings.json`
 ```json
 {
   "mcpServers": {
@@ -149,6 +159,7 @@ palaia status                                        # Check health
 |----------|-------------|
 | [Getting Started](docs/getting-started.md) | Installation, first steps, quick tour |
 | [Storage & Search](docs/backends.md) | SQLite, PostgreSQL, sqlite-vec, pgvector, embedding providers |
+| [Claude Code](docs/claude-code.md) | Claude Code integration, setup command, paste-this prompt |
 | [MCP Server](docs/mcp.md) | Setup for Claude Desktop, Cursor, tool reference, read-only mode |
 | [Embed Server](docs/embed-server.md) | Performance optimization, socket transport, daemon mode |
 | [Multi-Agent](docs/multi-agent.md) | Scopes, agent identity, team setup, aliases |

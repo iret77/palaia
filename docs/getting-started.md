@@ -16,6 +16,17 @@ palaia init
 palaia doctor --fix
 ```
 
+### With Claude Code
+
+Paste this into Claude Code:
+
+> Install palaia for persistent memory in this Claude Code environment.
+> Run: `pip install "palaia[mcp,fastembed]" && palaia init && palaia setup claude-code --global`
+> Then tell me to restart Claude Code so the MCP tools become active.
+> After restart, read the CLAUDE.md and follow its instructions.
+
+See [Claude Code Integration](claude-code.md) for details.
+
 ### With MCP (Claude Desktop, Cursor)
 
 ```bash
@@ -91,6 +102,7 @@ If `palaia upgrade` is not recognized (versions before v2.3.0), see the [SKILL.m
 ## Next Steps
 
 - [Storage & Search](backends.md) — Backend options, embedding providers
+- [Claude Code](claude-code.md) — Claude Code integration and setup
 - [MCP Server](mcp.md) — Claude Desktop / Cursor setup
 - [Multi-Agent](multi-agent.md) — Team setup, scopes, aliases
 - [CLI Reference](cli-reference.md) — All commands and flags
