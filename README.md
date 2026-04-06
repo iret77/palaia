@@ -55,8 +55,8 @@ palaia gives your agents a persistent, searchable knowledge store. They save wha
 
 ## Comparison
 
-| Feature | palaia | claude-mem | Mem0 | Stock Memory |
-|---------|--------|-----------|------|--------------|
+| Feature | palaia | claude-mem | Mem0 | Claude Built-in Memory |
+|---------|--------|-----------|------|------------------------|
 | Local-first | Yes | Yes | No (cloud) | Yes |
 | Cross-tool (MCP) | Yes (any MCP client) | No (Claude Code only) | No | No |
 | Native Vector Search | sqlite-vec / pgvector | ChromaDB (separate) | Cloud | No |
@@ -73,18 +73,22 @@ palaia gives your agents a persistent, searchable knowledge store. They save wha
 
 ### Recommended: Paste into your agent
 
-Both OpenClaw and Claude Code support fully autonomous setup — paste the prompt, the agent does the rest.
+Both OpenClaw and Claude Code support fully autonomous setup. Copy the prompt below and paste it directly into your agent's chat — the agent handles everything from there.
 
-**OpenClaw:**
+**OpenClaw** — copy this prompt into your OpenClaw agent:
 
-> Install or update the palaia memory skill from ClawHub to the latest version (even if already present). Read the SKILL.md completely and follow it step by step. Run palaia init, then palaia doctor --fix and resolve all warnings — don't stop until the doctor report is clean. Set up completely.
+```text
+Install or update the palaia memory skill from ClawHub to the latest version (even if already present). Read the SKILL.md completely and follow it step by step. Run palaia init, then palaia doctor --fix and resolve all warnings — don't stop until the doctor report is clean. Set up completely.
+```
 
-**Claude Code:**
+**Claude Code** — copy this prompt into Claude Code:
 
-> Install palaia for persistent memory in this Claude Code environment.
-> Run: `pip install "palaia[mcp,fastembed]" && palaia init && palaia setup claude-code --global`
-> Then tell me to restart Claude Code so the MCP tools become active.
-> After restart, read the CLAUDE.md and follow its instructions.
+```text
+Install palaia for persistent memory in this Claude Code environment.
+Run: pip install "palaia[mcp,fastembed]" && palaia init && palaia setup claude-code --global
+Then tell me to restart Claude Code so the MCP tools become active.
+After restart, read the CLAUDE.md and follow its instructions.
+```
 
 See [Claude Code Integration](docs/claude-code.md) for the full guide.
 

@@ -4,12 +4,14 @@ palaia works as a fully autonomous memory system for Claude Code. One command se
 
 ## Quick Start
 
-Paste this into Claude Code:
+Copy this prompt into Claude Code's chat:
 
-> Install palaia for persistent memory in this Claude Code environment.
-> Run: `pip install "palaia[mcp,fastembed]" && palaia init && palaia setup claude-code --global`
-> Then tell me to restart Claude Code so the MCP tools become active.
-> After restart, read the CLAUDE.md and follow its instructions.
+```text
+Install palaia for persistent memory in this Claude Code environment.
+Run: pip install "palaia[mcp,fastembed]" && palaia init && palaia setup claude-code --global
+Then tell me to restart Claude Code so the MCP tools become active.
+After restart, read the CLAUDE.md and follow its instructions.
+```
 
 That's it. After the restart, Claude Code has 7 memory tools and knows how to use them proactively.
 
