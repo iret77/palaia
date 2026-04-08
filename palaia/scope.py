@@ -74,6 +74,11 @@ def can_access(
             else:
                 return False
 
+    # Normalize empty/missing scope to "team" — entries must never become
+    # invisible just because scope was written as an empty string.
+    if not entry_scope:
+        entry_scope = "team"
+
     if entry_scope == "team":
         return True
     if entry_scope == "public":
@@ -87,7 +92,8 @@ def can_access(
     # Legacy shared:X entries are accessible like team entries
     if entry_scope.startswith(_LEGACY_SHARED_PREFIX):
         return True
-    return False
+    # Unknown scope: treat as team (safe default, never hide entries)
+    return True
 
 
 def is_exportable(scope: str) -> bool:

@@ -4,5 +4,5 @@ palaia — Local, cloud-free memory for OpenClaw agents.
 
 from __future__ import annotations
 
-__version__ = "2.7.2"
+__version__ = "2.7.3"
 __author__ = "byte5 GmbH"
