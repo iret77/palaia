@@ -1864,9 +1864,9 @@ def _check_claude_code_config(palaia_root: Path | None) -> dict[str, Any]:
 def _check_stale_unassigned_tasks(palaia_root: Path | None) -> dict[str, Any]:
     """Check for auto-captured tasks without assignee/due_date older than 7 days.
 
-    Uses Store.all_entries_unfiltered() to ensure consistent entry discovery
-    with `palaia list`. Previous implementation scanned .md files directly,
-    which could report entries invisible to the user (scope filtering mismatch).
+    Uses Store.all_entries() with agent scope filtering to ensure the doctor
+    only reports entries visible to `palaia list`. Entries hidden by scope
+    (e.g. private entries from a different agent) are excluded.
     """
     if palaia_root is None:
         return {
@@ -1878,6 +1878,7 @@ def _check_stale_unassigned_tasks(palaia_root: Path | None) -> dict[str, Any]:
 
     from datetime import datetime, timezone
 
+    from palaia.config import resolve_agent as resolve_agent_identity
     from palaia.store import Store
 
     now = datetime.now(tz=timezone.utc)
@@ -1885,7 +1886,8 @@ def _check_stale_unassigned_tasks(palaia_root: Path | None) -> dict[str, Any]:
 
     try:
         store = Store(palaia_root)
-        all_entries = store.all_entries_unfiltered(include_cold=False)
+        agent = resolve_agent_identity(palaia_root)
+        all_entries = store.all_entries(include_cold=False, agent=agent)
     except Exception:
         return {
             "name": "stale_unassigned_tasks",
