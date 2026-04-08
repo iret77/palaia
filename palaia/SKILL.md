@@ -25,10 +25,9 @@ metadata:
       - command: "python3 -m pip install --upgrade 'palaia[fastembed]' && openclaw plugins install @byte5ai/palaia && palaia doctor --fix && palaia warmup"
         label: "Upgrade palaia with semantic search + plugin and run health checks"
     postUpdateMessage: >
-      palaia has been updated to v2.7.2. New: `palaia setup claude-code` for
-      one-command Claude Code integration (MCP config + agent instructions),
-      doctor check for Claude Code config.
-      Run `palaia doctor --fix` to upgrade.
+      palaia has been updated to v2.7.3. Fixes: ContextEngine compaction conflict
+      with OpenClaw, doctor phantom stale-task warnings, invisible entries with
+      empty scope. Run `palaia doctor --fix` to verify.
     plugin:
       slot: memory
       package: "@byte5ai/palaia"
