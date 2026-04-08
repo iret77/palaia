@@ -438,6 +438,36 @@ Elliot will fix the caching bug."""
         result = _check_stale_unassigned_tasks(palaia_root)
         assert result["status"] == "ok"
 
+    def test_ignores_private_tasks_from_other_agent(self, palaia_root, monkeypatch):
+        """Regression: doctor must not report private-scoped entries from a
+        different agent.  This was the exact user-reported bug — doctor showed
+        4 stale tasks that ``palaia list`` didn't because scope filtering was
+        bypassed (all_entries_unfiltered instead of all_entries).
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from palaia.doctor import _check_stale_unassigned_tasks
+
+        old_date = (datetime.now(tz=timezone.utc) - timedelta(days=10)).isoformat()
+        entry_content = f"""---
+id: private-other-agent-001
+type: task
+tags: auto-capture,commitment
+created: {old_date}
+scope: private
+agent: agent-a
+title: Task only visible to agent-a
+---
+This task belongs to agent-a and must be invisible to agent-b."""
+        (palaia_root / "hot" / "private-other-agent-001.md").write_text(entry_content)
+
+        # Doctor runs as agent-b → private entry from agent-a must be invisible
+        monkeypatch.setenv("PALAIA_AGENT", "agent-b")
+        result = _check_stale_unassigned_tasks(palaia_root)
+        assert result["status"] == "ok", (
+            f"Doctor reported private entry from agent-a while running as agent-b: {result}"
+        )
+
     def test_ignores_manual_tasks(self, palaia_root):
         from datetime import datetime, timedelta, timezone
 
