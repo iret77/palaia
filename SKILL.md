@@ -452,7 +452,15 @@ palaia ui --port 9000      # Custom port (auto-fallback if busy)
 palaia ui --no-browser     # Don't auto-open browser
 ```
 
-Browse, search, create, edit, and delete entries in the browser. Manual entries are highlighted with a gold border (1.3× recall boost). Tasks are post-its: clicking ✓ deletes them. The health pill in the header shows doctor status with actionable warnings. Localhost only — no authentication, no network exposure.
+Browse, search, create, edit, and delete entries in the browser. Manual entries are highlighted with a gold border (1.3× recall boost). Tasks are post-its: clicking ✓ deletes them. The health pill in the header shows doctor status with actionable warnings.
+
+**Security:** Binds to `127.0.0.1` (localhost) by default — no authentication, no network exposure. For remote access (e.g. headless server via Tailscale/SSH):
+
+```bash
+PALAIA_UI_UNSAFE_BIND=0.0.0.0 palaia ui --no-browser --port 8384
+```
+
+This binds to all interfaces. The env var (not a CLI flag) is intentional — prevents accidental network exposure from copy-pasted commands. A warning is printed on startup. Consider an SSH tunnel or reverse proxy with auth for untrusted networks.
 
 ### `palaia doctor` — Diagnostics and auto-fix
 
