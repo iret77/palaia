@@ -80,6 +80,39 @@
     toast._timer = setTimeout(() => { t.className = "toast"; }, 3000);
   }
 
+  // ── Simple Markdown → HTML ────────────────────────────────────────────────
+  function renderMarkdown(text) {
+    if (!text) return "";
+    // Escape HTML first (security)
+    let html = esc(text);
+    // Code blocks (``` ... ```)
+    html = html.replace(/```[\s\S]*?```/g, (m) => {
+      const code = m.slice(3, -3).replace(/^\w*\n/, "");
+      return "<pre>" + code + "</pre>";
+    });
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+    // Headings
+    html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+    html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+    html = html.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+    // Bold + italic
+    html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
+    // Blockquotes
+    html = html.replace(/^&gt; (.+)$/gm, "<blockquote>$1</blockquote>");
+    // Unordered lists
+    html = html.replace(/^- (.+)$/gm, "<li>$1</li>");
+    html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>");
+    // Ordered lists
+    html = html.replace(/^\d+\. (.+)$/gm, "<li>$1</li>");
+    // Paragraphs (double newline)
+    html = html.replace(/\n\n/g, "</p><p>");
+    // Single newlines within paragraphs → <br>
+    html = html.replace(/\n/g, "<br>");
+    return "<p>" + html + "</p>";
+  }
+
   // ── Date formatting ──────────────────────────────────────────────────────
   function fmtDate(iso) {
     if (!iso) return "—";
@@ -103,8 +136,10 @@
     try {
       const d = await apiGet("/api/projects");
       const sel = $("filter-project");
+      const dl = $("project-options");
       for (const name of Object.keys(d.projects || {})) {
         sel.appendChild(el("option", { value: name }, name));
+        dl.appendChild(el("option", { value: name }));
       }
     } catch (e) { /* non-fatal */ }
   }
@@ -113,8 +148,20 @@
     try {
       const d = await apiGet("/api/agents");
       const sel = $("filter-agent");
+      const dl = $("agent-options");
       for (const name of d.agents || []) {
         sel.appendChild(el("option", { value: name }, name));
+        dl.appendChild(el("option", { value: name }));
+      }
+    } catch (e) { /* non-fatal */ }
+  }
+
+  async function loadTags() {
+    try {
+      const d = await apiGet("/api/tags");
+      const dl = $("tag-options");
+      for (const tag of d.tags || []) {
+        dl.appendChild(el("option", { value: tag }));
       }
     } catch (e) { /* non-fatal */ }
   }
@@ -347,7 +394,8 @@
       ),
     );
 
-    const body = el("pre", { class: "detail-body" }, d.content || "");
+    const body = el("div", { class: "detail-body" });
+    body.innerHTML = renderMarkdown(d.content || "");
 
     return el("div", { id: "inline-detail-" + id, class: "inline-detail" }, toolbar, dl, body);
   }
@@ -598,6 +646,7 @@
     loadStatus();
     loadProjects();
     loadAgents();
+    loadTags();
     loadDoctor();
     loadEntries();
     loadTasks();
