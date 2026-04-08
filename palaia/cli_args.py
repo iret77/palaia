@@ -292,7 +292,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("upgrade", help="Upgrade palaia to latest version (auto-detects install method and extras)")
 
     # ui — local WebUI memory explorer (localhost only, no auth)
-    p_ui = sub.add_parser("ui", help="Launch the palaia WebUI in the browser")
+    p_ui = sub.add_parser(
+        "ui",
+        help="Launch the palaia WebUI in the browser",
+        epilog="Remote access: set PALAIA_UI_UNSAFE_BIND=0.0.0.0 to bind to all interfaces (no auth — use with care).",
+    )
     p_ui.add_argument("--port", type=int, default=8384, help="Port to bind (default: 8384, will fall back if busy)")
     p_ui.add_argument("--no-browser", action="store_true", help="Do not auto-open the browser")
 
