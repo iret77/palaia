@@ -57,15 +57,15 @@ palaia gives your agents a persistent, searchable knowledge store. They save wha
 
 | Feature | palaia | claude-mem | Mem0 | OpenClaw Built-in |
 |---------|--------|-----------|------|-------------------|
-| Local-first | Yes | Yes | No (cloud) | Yes |
+| Local-first | Yes | Yes | Yes (optional cloud) | Yes |
 | Cross-tool (MCP) | Yes (any MCP client) | No (Claude Code only) | No | No (OpenClaw only) |
-| Native Vector Search | sqlite-vec / pgvector | ChromaDB (separate) | Cloud | No |
-| Structured Types | memory/process/task | decisions/bugfixes | No | No |
-| Multi-Agent Scopes | private/team/public | No | Per-user | No |
+| Native Vector Search | sqlite-vec / pgvector | ChromaDB (separate) | FAISS (embedded) | No |
+| Structured Types | memory/process/task | Yes (6 categories) | No | No |
+| Multi-Agent Scopes | private/team/public | Partial (session isolation) | Yes (user/agent/run) | No |
 | Smart Tiering | HOT/WARM/COLD | No | No | No |
-| Embedding Providers | 6 (configurable) | 1 (fixed) | Cloud | None |
-| Open Source | MIT | AGPL-3.0 | Partial | MIT |
-| Crash-safe (WAL) | Yes | Partial | N/A | No |
+| Embedding Providers | 6 (configurable) | 1 (fixed) | Cloud | External (5+) |
+| Open Source | MIT | AGPL-3.0 | Apache 2.0 | MIT |
+| Crash-safe (WAL) | Yes | Yes (WAL) | Partial (SQLite, not primary) | No |
 
 ---
 
