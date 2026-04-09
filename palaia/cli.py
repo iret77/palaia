@@ -212,14 +212,17 @@ def cmd_write(args):
     root = get_root()
     agent = _resolve_agent(args)
     instance = _resolve_instance_for_write(args)
-    tags = args.tags.split(",") if args.tags else None
+    tags = args.tags.split(",") if args.tags else []
+    # Tag entries created via CLI so recall can distinguish source
+    if "cli" not in tags:
+        tags.append("cli")
 
     result = write_entry(
         root,
         body=args.text,
         scope=args.scope,
         agent=agent,
-        tags=tags,
+        tags=tags or None,
         title=args.title,
         project=getattr(args, "project", None),
         entry_type=getattr(args, "type", None),

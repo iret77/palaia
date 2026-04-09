@@ -374,10 +374,11 @@ export function rerankByTypeWeight(
       const type = r.type || "memory";
       const weight = weights[type] ?? 1.0;
       const recency = calcRecencyBoost(r.created, recencyBoost);
-      // Manual entries (no auto-capture tag) get a boost over auto-captured ones.
+      // Human-created entries (webui/cli tags) get a boost over auto-captured and agent entries.
       // This ensures intentionally stored knowledge ranks higher than conversation noise.
-      const isAutoCapture = r.tags?.includes("auto-capture") ?? false;
-      const sourceBoost = isAutoCapture ? 1.0 : manualEntryBoost;
+      const tags = r.tags ?? [];
+      const isHumanCreated = tags.includes("webui") || tags.includes("cli");
+      const sourceBoost = isHumanCreated ? manualEntryBoost : 1.0;
       return {
         id: r.id,
         body: r.content || r.body || "",

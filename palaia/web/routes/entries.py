@@ -1,9 +1,10 @@
 """Entry CRUD routes.
 
-v2.6 semantics:
+v2.6+ semantics:
 - Tasks are post-its: setting status=done/wontfix on a task deletes it.
-- Auto-capture entries carry the 'auto-capture' tag; manual entries do not.
-  Manual entries rank 30% higher in recall (visible via is_manual flag).
+- Source tags: 'webui' (created in browser), 'cli' (palaia add/write),
+  'auto-capture' (passive capture). No source tag = agent (MCP/tool).
+  Human-created entries (webui, cli) rank 30% higher in recall.
 """
 
 from __future__ import annotations
@@ -57,10 +58,21 @@ def _validate_enum(value: str | None, valid: set[str], field: str) -> str | None
     return value
 
 
+def _detect_source(tags: list[str]) -> str:
+    """Detect entry source from tags: webui, cli, auto-capture, or agent."""
+    if "webui" in tags:
+        return "webui"
+    if "cli" in tags:
+        return "cli"
+    if "auto-capture" in tags:
+        return "auto"
+    return "agent"
+
+
 def _entry_to_dict(meta: dict, body: str, tier: str, *, preview: bool = True) -> dict:
-    """Convert store entry to JSON-serializable dict with v2.6 flags."""
+    """Convert store entry to JSON-serializable dict with source flags."""
     tags = meta.get("tags", []) or []
-    is_auto = "auto-capture" in tags
+    source = _detect_source(tags)
     return {
         "id": meta.get("id", ""),
         "title": meta.get("title", ""),
@@ -78,8 +90,9 @@ def _entry_to_dict(meta: dict, body: str, tier: str, *, preview: bool = True) ->
         "accessed": meta.get("accessed", ""),
         "access_count": meta.get("access_count", 0),
         "decay_score": meta.get("decay_score", 0),
-        "is_auto_capture": is_auto,
-        "is_manual": not is_auto,
+        "source": source,
+        "is_auto_capture": source == "auto",
+        "is_manual": source in ("webui", "cli"),
         "body_preview": (body[:200] + "…") if preview and len(body) > 200 else body,
     }
 
@@ -164,11 +177,13 @@ def get_entry(request: Request, entry_id: str) -> dict:
     if "error" in result:
         return JSONResponse(status_code=404, content=result)
 
-    # Augment with v2.6 flags
+    # Augment with source flags
     meta = result.get("meta", {}) or {}
     tags = meta.get("tags", []) or []
-    result["is_auto_capture"] = "auto-capture" in tags
-    result["is_manual"] = not result["is_auto_capture"]
+    source = _detect_source(tags)
+    result["source"] = source
+    result["is_auto_capture"] = source == "auto"
+    result["is_manual"] = source in ("webui", "cli")
     return result
 
 
@@ -196,13 +211,18 @@ def create_entry(request: Request, payload: EntryCreate) -> dict:
     store = Store(root)
     store.recover()
 
+    # Tag entries created via WebUI so recall can distinguish source
+    tags = list(payload.tags) if payload.tags else []
+    if "webui" not in tags:
+        tags.append("webui")
+
     try:
         entry_id = store.write(
             body=payload.body,
             title=payload.title,
             entry_type=payload.type,
             scope=payload.scope,
-            tags=payload.tags or None,
+            tags=tags or None,
             project=payload.project,
             status=payload.status,
             priority=payload.priority,

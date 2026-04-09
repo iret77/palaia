@@ -78,11 +78,15 @@ def search(
             logger.error("BM25 fallback failed: %s", exc)
             result = {"results": [], "has_embeddings": False, "bm25_only": True}
 
-    # Augment results with manual/auto flags
+    # Augment results with source flags
+    from palaia.web.routes.entries import _detect_source
+
     for r in result.get("results", []):
         tags = r.get("tags", []) or []
-        r["is_auto_capture"] = "auto-capture" in tags
-        r["is_manual"] = not r["is_auto_capture"]
+        source = _detect_source(tags)
+        r["source"] = source
+        r["is_auto_capture"] = source == "auto"
+        r["is_manual"] = source in ("webui", "cli")
 
     return {
         "query": q,

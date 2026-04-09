@@ -104,7 +104,7 @@ def list_tags(request: Request) -> dict:
     for meta, _body, _tier in store.all_entries_unfiltered(include_cold=True):
         for tag in meta.get("tags") or []:
             tag = tag.strip()
-            if tag and tag != "auto-capture":
+            if tag and tag not in ("auto-capture", "webui", "cli"):
                 tags.add(tag)
     return {"tags": sorted(tags)}
 

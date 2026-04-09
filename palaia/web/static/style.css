@@ -328,6 +328,7 @@ body {
 .badge-process { background: rgba(255,158,100,0.15); color: var(--orange); }
 .badge-manual { background: rgba(240,198,116,0.2); color: var(--gold); }
 .badge-auto { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+.badge-agent-source { background: rgba(122,162,247,0.12); color: var(--accent); }
 .badge-scope { background: var(--bg); color: var(--text-dim); border: 1px solid var(--border); }
 .badge-agent { background: rgba(122,162,247,0.08); color: var(--text-dim); border: 1px solid var(--border); }
 .badge-project { background: rgba(158,206,106,0.1); color: var(--green); }

@@ -308,15 +308,17 @@
     const meta = el("div", { class: "entry-meta" });
     meta.appendChild(el("span", { class: "badge badge-tier badge-" + (e.tier || "hot") }, e.tier || "hot"));
     meta.appendChild(el("span", { class: "badge badge-type badge-" + (e.type || "memory") }, e.type || "memory"));
-    meta.appendChild(el("span", { class: "badge badge-source " + (e.is_manual ? "badge-manual" : "badge-auto") },
-      e.is_manual ? "manual ✦" : "auto"));
+    const sourceLabel = { webui: "webui", cli: "cli", auto: "auto", agent: "agent" }[e.source] || "auto";
+    const sourceBadge = e.is_manual ? "badge-manual" : (e.source === "agent" ? "badge-agent-source" : "badge-auto");
+    meta.appendChild(el("span", { class: "badge badge-source " + sourceBadge }, sourceLabel));
     if (e.priority) meta.appendChild(el("span", { class: "badge badge-priority-" + e.priority }, e.priority));
     if (e.status) meta.appendChild(el("span", { class: "badge badge-status" }, e.status));
     if (e.scope && e.scope !== "team") meta.appendChild(el("span", { class: "badge badge-scope" }, e.scope));
     if (e.project) meta.appendChild(el("span", { class: "badge badge-project" }, e.project));
     if (e.agent) meta.appendChild(el("span", { class: "badge badge-agent" }, "@" + e.agent));
+    const sourceTags = new Set(["auto-capture", "webui", "cli"]);
     for (const tag of (e.tags || []).slice(0, 4)) {
-      if (tag === "auto-capture") continue; // already shown via source badge
+      if (sourceTags.has(tag)) continue; // already shown via source badge
       meta.appendChild(el("span", { class: "tag" }, tag));
     }
     card.appendChild(meta);
@@ -360,17 +362,25 @@
 
   function renderDetailPanel(id, d) {
     const m = d.meta || {};
-    const isManual = d.is_manual ?? !(m.tags || []).includes("auto-capture");
+    const source = d.source || (d.is_manual ? "cli" : "auto");
+    const sourceLabels = {
+      webui: "webui (1.3× boost)",
+      cli: "cli (1.3× boost)",
+      auto: "auto-capture",
+      agent: "agent",
+    };
+    const sourceTags = new Set(["auto-capture", "webui", "cli"]);
+    const displayTags = (m.tags || []).filter(t => !sourceTags.has(t));
 
     const rows = [
       ["Type", m.type || "memory"],
       ["Scope", m.scope || "team"],
       ["Tier", m.tier || "—"],
-      ["Source", isManual ? "manual (1.3× boost)" : "auto-capture"],
+      ["Source", sourceLabels[source] || source],
       ["Created", fmtDate(m.created)],
       ["Accessed", fmtDate(m.accessed)],
       ["Decay", Number(m.decay_score || 0).toFixed(4)],
-      ["Tags", (m.tags || []).join(", ") || "—"],
+      ["Tags", displayTags.join(", ") || "—"],
       ["Agent", m.agent || "—"],
     ];
     if (m.priority) rows.push(["Priority", m.priority]);
