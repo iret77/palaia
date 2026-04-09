@@ -83,34 +83,45 @@
   // ── Simple Markdown → HTML ────────────────────────────────────────────────
   function renderMarkdown(text) {
     if (!text) return "";
-    // Escape HTML first (security)
-    let html = esc(text);
-    // Code blocks (``` ... ```)
-    html = html.replace(/```[\s\S]*?```/g, (m) => {
-      const code = m.slice(3, -3).replace(/^\w*\n/, "");
-      return "<pre>" + code + "</pre>";
+    // Extract code blocks BEFORE escaping so their content stays raw.
+    const codeBlocks = [];
+    let safe = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, _lang, code) => {
+      const idx = codeBlocks.length;
+      codeBlocks.push("<pre>" + esc(code) + "</pre>");
+      return "\x00CB" + idx + "\x00";
     });
-    // Inline code
-    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+    // Extract inline code before escaping
+    const inlineCode = [];
+    safe = safe.replace(/`([^`]+)`/g, (_m, code) => {
+      const idx = inlineCode.length;
+      inlineCode.push("<code>" + esc(code) + "</code>");
+      return "\x00IC" + idx + "\x00";
+    });
+    // Now escape remaining HTML
+    safe = esc(safe);
     // Headings
-    html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
-    html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
-    html = html.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+    safe = safe.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+    safe = safe.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+    safe = safe.replace(/^# (.+)$/gm, "<h1>$1</h1>");
     // Bold + italic
-    html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-    html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
+    safe = safe.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    safe = safe.replace(/\*(.+?)\*/g, "<em>$1</em>");
     // Blockquotes
-    html = html.replace(/^&gt; (.+)$/gm, "<blockquote>$1</blockquote>");
+    safe = safe.replace(/^&gt; (.+)$/gm, "<blockquote>$1</blockquote>");
     // Unordered lists
-    html = html.replace(/^- (.+)$/gm, "<li>$1</li>");
-    html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>");
+    safe = safe.replace(/^- (.+)$/gm, "<li>$1</li>");
+    safe = safe.replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>");
     // Ordered lists
-    html = html.replace(/^\d+\. (.+)$/gm, "<li>$1</li>");
+    safe = safe.replace(/^(\d+)\. (.+)$/gm, "<li>$2</li>");
+    safe = safe.replace(/((?:<li>.*<\/li>\n?)+)/g, (m) => m.includes("<ul>") ? m : "<ol>" + m + "</ol>");
     // Paragraphs (double newline)
-    html = html.replace(/\n\n/g, "</p><p>");
-    // Single newlines within paragraphs → <br>
-    html = html.replace(/\n/g, "<br>");
-    return "<p>" + html + "</p>";
+    safe = safe.replace(/\n\n/g, "</p><p>");
+    // Single newlines → <br>
+    safe = safe.replace(/\n/g, "<br>");
+    // Restore code blocks and inline code
+    safe = safe.replace(/\x00CB(\d+)\x00/g, (_m, idx) => codeBlocks[idx]);
+    safe = safe.replace(/\x00IC(\d+)\x00/g, (_m, idx) => inlineCode[idx]);
+    return "<p>" + safe + "</p>";
   }
 
   // ── Date formatting ──────────────────────────────────────────────────────
@@ -243,7 +254,7 @@
         id: r.id, title: r.title, type: r.type, scope: r.scope, tier: r.tier,
         tags: r.tags || [], project: r.project, status: r.status, priority: r.priority,
         decay_score: r.decay_score, body_preview: r.body || r.content,
-        score: r.score, is_manual: r.is_manual, is_auto_capture: r.is_auto_capture,
+        score: r.score, source: r.source, is_manual: r.is_manual, is_auto_capture: r.is_auto_capture,
         agent: r.agent,
       }));
       state.entries = entries;
@@ -501,7 +512,7 @@
     $("form-type").value = m.type || "memory";
     $("form-scope").value = m.scope || "team";
     $("form-project").value = m.project || "";
-    $("form-tags").value = (m.tags || []).filter(t => t !== "auto-capture").join(", ");
+    $("form-tags").value = (m.tags || []).filter(t => !["auto-capture", "webui", "cli"].includes(t)).join(", ");
     $("form-agent").value = m.agent || "";
     $("form-priority").value = m.priority || "";
     $("form-status").value = m.status || "";
