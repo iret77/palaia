@@ -39,6 +39,9 @@
   <aside class="sidebar">
     <div class="search-box">
       <input type="text" id="search-input" placeholder="Search memories…" autofocus>
+      <datalist id="project-options"></datalist>
+      <datalist id="agent-options"></datalist>
+      <datalist id="tag-options"></datalist>
       <button data-action="search">Search</button>
     </div>
 
@@ -102,6 +105,18 @@
       </select>
     </section>
 
+    <!-- Active Tasks (inline in sidebar for visibility) -->
+    <div class="sidebar-tasks">
+      <div class="tasks-header">
+        <h3>Active Tasks</h3>
+        <button class="btn-small" data-action="new-task">+</button>
+      </div>
+      <div class="task-list" id="task-list">
+        <div class="loading-sm">…</div>
+      </div>
+      <p class="tasks-hint">Click ✓ to complete (deletes the task).</p>
+    </div>
+
     <button class="btn-primary" data-action="new-entry">+ New Entry</button>
   </aside>
 
@@ -114,18 +129,6 @@
       <div class="loading">Loading…</div>
     </div>
   </section>
-
-  <!-- Right sidebar: Active Tasks Panel (v2.6 post-it UX) -->
-  <aside class="tasks-panel">
-    <div class="tasks-header">
-      <h3>Active Tasks</h3>
-      <button class="btn-small" data-action="new-task">+</button>
-    </div>
-    <div class="task-list" id="task-list">
-      <div class="loading-sm">…</div>
-    </div>
-    <p class="tasks-hint">Click ✓ to complete (deletes the task).</p>
-  </aside>
 
 </main>
 
@@ -168,18 +171,18 @@
         </div>
         <div class="form-group">
           <label for="form-project">Project</label>
-          <input type="text" id="form-project" placeholder="optional">
+          <input type="text" id="form-project" list="project-options" placeholder="optional" autocomplete="off">
         </div>
       </div>
 
       <div class="form-row">
         <div class="form-group">
           <label for="form-tags">Tags</label>
-          <input type="text" id="form-tags" placeholder="comma,separated">
+          <input type="text" id="form-tags" list="tag-options" placeholder="comma,separated" autocomplete="off">
         </div>
         <div class="form-group">
           <label for="form-agent">Agent</label>
-          <input type="text" id="form-agent" placeholder="optional">
+          <input type="text" id="form-agent" list="agent-options" placeholder="optional" autocomplete="off">
         </div>
       </div>
 

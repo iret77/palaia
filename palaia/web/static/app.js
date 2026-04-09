@@ -80,6 +80,50 @@
     toast._timer = setTimeout(() => { t.className = "toast"; }, 3000);
   }
 
+  // ── Simple Markdown → HTML ────────────────────────────────────────────────
+  function renderMarkdown(text) {
+    if (!text) return "";
+    // Extract code blocks BEFORE escaping so their content stays raw.
+    const codeBlocks = [];
+    let safe = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, _lang, code) => {
+      const idx = codeBlocks.length;
+      codeBlocks.push("<pre>" + esc(code) + "</pre>");
+      return "\x00CB" + idx + "\x00";
+    });
+    // Extract inline code before escaping
+    const inlineCode = [];
+    safe = safe.replace(/`([^`]+)`/g, (_m, code) => {
+      const idx = inlineCode.length;
+      inlineCode.push("<code>" + esc(code) + "</code>");
+      return "\x00IC" + idx + "\x00";
+    });
+    // Now escape remaining HTML
+    safe = esc(safe);
+    // Headings
+    safe = safe.replace(/^### (.+)$/gm, "<h3>$1</h3>");
+    safe = safe.replace(/^## (.+)$/gm, "<h2>$1</h2>");
+    safe = safe.replace(/^# (.+)$/gm, "<h1>$1</h1>");
+    // Bold + italic
+    safe = safe.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    safe = safe.replace(/\*(.+?)\*/g, "<em>$1</em>");
+    // Blockquotes
+    safe = safe.replace(/^&gt; (.+)$/gm, "<blockquote>$1</blockquote>");
+    // Unordered lists
+    safe = safe.replace(/^- (.+)$/gm, "<li>$1</li>");
+    safe = safe.replace(/((?:<li>.*<\/li>\n?)+)/g, "<ul>$1</ul>");
+    // Ordered lists
+    safe = safe.replace(/^(\d+)\. (.+)$/gm, "<li>$2</li>");
+    safe = safe.replace(/((?:<li>.*<\/li>\n?)+)/g, (m) => m.includes("<ul>") ? m : "<ol>" + m + "</ol>");
+    // Paragraphs (double newline)
+    safe = safe.replace(/\n\n/g, "</p><p>");
+    // Single newlines → <br>
+    safe = safe.replace(/\n/g, "<br>");
+    // Restore code blocks and inline code
+    safe = safe.replace(/\x00CB(\d+)\x00/g, (_m, idx) => codeBlocks[idx]);
+    safe = safe.replace(/\x00IC(\d+)\x00/g, (_m, idx) => inlineCode[idx]);
+    return "<p>" + safe + "</p>";
+  }
+
   // ── Date formatting ──────────────────────────────────────────────────────
   function fmtDate(iso) {
     if (!iso) return "—";
@@ -103,8 +147,10 @@
     try {
       const d = await apiGet("/api/projects");
       const sel = $("filter-project");
+      const dl = $("project-options");
       for (const name of Object.keys(d.projects || {})) {
         sel.appendChild(el("option", { value: name }, name));
+        dl.appendChild(el("option", { value: name }));
       }
     } catch (e) { /* non-fatal */ }
   }
@@ -113,8 +159,20 @@
     try {
       const d = await apiGet("/api/agents");
       const sel = $("filter-agent");
+      const dl = $("agent-options");
       for (const name of d.agents || []) {
         sel.appendChild(el("option", { value: name }, name));
+        dl.appendChild(el("option", { value: name }));
+      }
+    } catch (e) { /* non-fatal */ }
+  }
+
+  async function loadTags() {
+    try {
+      const d = await apiGet("/api/tags");
+      const dl = $("tag-options");
+      for (const tag of d.tags || []) {
+        dl.appendChild(el("option", { value: tag }));
       }
     } catch (e) { /* non-fatal */ }
   }
@@ -196,7 +254,7 @@
         id: r.id, title: r.title, type: r.type, scope: r.scope, tier: r.tier,
         tags: r.tags || [], project: r.project, status: r.status, priority: r.priority,
         decay_score: r.decay_score, body_preview: r.body || r.content,
-        score: r.score, is_manual: r.is_manual, is_auto_capture: r.is_auto_capture,
+        score: r.score, source: r.source, is_manual: r.is_manual, is_auto_capture: r.is_auto_capture,
         agent: r.agent,
       }));
       state.entries = entries;
@@ -261,15 +319,17 @@
     const meta = el("div", { class: "entry-meta" });
     meta.appendChild(el("span", { class: "badge badge-tier badge-" + (e.tier || "hot") }, e.tier || "hot"));
     meta.appendChild(el("span", { class: "badge badge-type badge-" + (e.type || "memory") }, e.type || "memory"));
-    meta.appendChild(el("span", { class: "badge badge-source " + (e.is_manual ? "badge-manual" : "badge-auto") },
-      e.is_manual ? "manual ✦" : "auto"));
+    const sourceLabel = { webui: "webui", cli: "cli", auto: "auto", agent: "agent" }[e.source] || "auto";
+    const sourceBadge = e.is_manual ? "badge-manual" : (e.source === "agent" ? "badge-agent-source" : "badge-auto");
+    meta.appendChild(el("span", { class: "badge badge-source " + sourceBadge }, sourceLabel));
     if (e.priority) meta.appendChild(el("span", { class: "badge badge-priority-" + e.priority }, e.priority));
     if (e.status) meta.appendChild(el("span", { class: "badge badge-status" }, e.status));
     if (e.scope && e.scope !== "team") meta.appendChild(el("span", { class: "badge badge-scope" }, e.scope));
     if (e.project) meta.appendChild(el("span", { class: "badge badge-project" }, e.project));
     if (e.agent) meta.appendChild(el("span", { class: "badge badge-agent" }, "@" + e.agent));
+    const sourceTags = new Set(["auto-capture", "webui", "cli"]);
     for (const tag of (e.tags || []).slice(0, 4)) {
-      if (tag === "auto-capture") continue; // already shown via source badge
+      if (sourceTags.has(tag)) continue; // already shown via source badge
       meta.appendChild(el("span", { class: "tag" }, tag));
     }
     card.appendChild(meta);
@@ -313,17 +373,25 @@
 
   function renderDetailPanel(id, d) {
     const m = d.meta || {};
-    const isManual = d.is_manual ?? !(m.tags || []).includes("auto-capture");
+    const source = d.source || (d.is_manual ? "cli" : "auto");
+    const sourceLabels = {
+      webui: "webui (1.3× boost)",
+      cli: "cli (1.3× boost)",
+      auto: "auto-capture",
+      agent: "agent",
+    };
+    const sourceTags = new Set(["auto-capture", "webui", "cli"]);
+    const displayTags = (m.tags || []).filter(t => !sourceTags.has(t));
 
     const rows = [
       ["Type", m.type || "memory"],
       ["Scope", m.scope || "team"],
       ["Tier", m.tier || "—"],
-      ["Source", isManual ? "manual (1.3× boost)" : "auto-capture"],
+      ["Source", sourceLabels[source] || source],
       ["Created", fmtDate(m.created)],
       ["Accessed", fmtDate(m.accessed)],
       ["Decay", Number(m.decay_score || 0).toFixed(4)],
-      ["Tags", (m.tags || []).join(", ") || "—"],
+      ["Tags", displayTags.join(", ") || "—"],
       ["Agent", m.agent || "—"],
     ];
     if (m.priority) rows.push(["Priority", m.priority]);
@@ -347,7 +415,8 @@
       ),
     );
 
-    const body = el("pre", { class: "detail-body" }, d.content || "");
+    const body = el("div", { class: "detail-body" });
+    body.innerHTML = renderMarkdown(d.content || "");
 
     return el("div", { id: "inline-detail-" + id, class: "inline-detail" }, toolbar, dl, body);
   }
@@ -443,7 +512,7 @@
     $("form-type").value = m.type || "memory";
     $("form-scope").value = m.scope || "team";
     $("form-project").value = m.project || "";
-    $("form-tags").value = (m.tags || []).filter(t => t !== "auto-capture").join(", ");
+    $("form-tags").value = (m.tags || []).filter(t => !["auto-capture", "webui", "cli"].includes(t)).join(", ");
     $("form-agent").value = m.agent || "";
     $("form-priority").value = m.priority || "";
     $("form-status").value = m.status || "";
@@ -598,6 +667,7 @@
     loadStatus();
     loadProjects();
     loadAgents();
+    loadTags();
     loadDoctor();
     loadEntries();
     loadTasks();

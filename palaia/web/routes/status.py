@@ -92,6 +92,23 @@ def list_agents(request: Request) -> dict:
     return {"agents": sorted(agents)}
 
 
+@router.get("/tags")
+def list_tags(request: Request) -> dict:
+    """List distinct tags found in entries."""
+    from palaia.store import Store
+
+    root = request.app.state.palaia_root
+    store = Store(root)
+    store.recover()
+    tags: set[str] = set()
+    for meta, _body, _tier in store.all_entries_unfiltered(include_cold=True):
+        for tag in meta.get("tags") or []:
+            tag = tag.strip()
+            if tag and tag not in ("auto-capture", "webui", "cli"):
+                tags.add(tag)
+    return {"tags": sorted(tags)}
+
+
 @router.get("/doctor")
 def run_doctor(request: Request) -> dict:
     """Run palaia doctor and return results for the UI banner.
