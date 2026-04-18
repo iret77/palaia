@@ -209,3 +209,7 @@ pytest
 ---
 
 MIT — (c) 2026 [byte5 GmbH](https://byte5.de)
+
+## Download History
+
+[![Download History](https://skill-history.com/chart/iret77/palaia.svg)](https://skill-history.com/iret77/palaia)
